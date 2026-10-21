@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@syaocode/core": ["../core/src/index.ts"],
+      "@syaocode/providers": ["../providers/src/index.ts"],
+      "@syaocode/tools": ["../tools/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

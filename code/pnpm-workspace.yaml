@@ -1,0 +1,10 @@
+packages:
+  - packages/*
+
+# pnpm ≥10 默认拦截依赖的 postinstall 脚本；esbuild（tsx/vitest 的构建依赖）
+# 需要安装二进制，显式放行。allowBuilds 是 pnpm 12 的持久化审批键
+# （由 `pnpm approve-builds` 写入）；onlyBuiltDependencies 供旧版 pnpm 读取。
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild

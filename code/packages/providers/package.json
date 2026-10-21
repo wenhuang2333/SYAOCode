@@ -1,0 +1,58 @@
+{
+  "name": "@syaocode/providers",
+  "version": "0.1.0",
+  "description": "SYAOCode provider adapters: OpenAI-compatible (DeepSeek etc.) and native Anthropic Messages",
+  "type": "module",
+  "license": "Apache-2.0",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./openai-compatible": "./src/openai-compatible.ts",
+    "./anthropic": "./src/anthropic.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm run typecheck && pnpm run build"
+  },
+  "dependencies": {
+    "@syaocode/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@syaocode/testing": "workspace:*",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wenhuang2333/SYAOCode.git"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./openai-compatible": {
+        "types": "./dist/openai-compatible.d.ts",
+        "default": "./dist/openai-compatible.js"
+      },
+      "./anthropic": {
+        "types": "./dist/anthropic.d.ts",
+        "default": "./dist/anthropic.js"
+      }
+    }
+  }
+}

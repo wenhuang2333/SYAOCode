@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+*.log
+.DS_Store
+.syaocode/local.json
+sessions/
