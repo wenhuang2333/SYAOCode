@@ -1,0 +1,28 @@
+# 本地第三方参考快照（只读，不入库）
+/reference/
+
+# 工作区管理文件（不进公开仓库）
+/AGENTS.md
+/github 管理.md
+/测试 api.txt
+
+# 本地备份
+/.local-backup/
+
+# 根目录转发层（本地 pnpm 便利脚本，不属于发布内容）
+/package.json
+/pnpm-lock.yaml
+
+# 依赖与构建产物
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# 机密与本地状态
+.env
+.env.*
+*.log
+.DS_Store
+.syaocode/local.json
+sessions/

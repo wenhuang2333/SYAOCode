@@ -1,0 +1,53 @@
+{
+  "name": "syaocode",
+  "version": "0.1.0",
+  "description": "SYAOCode reference CLI (syao). v0.1: non-interactive -p/exec, doctor, config.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": {
+    "syaocode": "./dist/main.js",
+    "syao": "./dist/main.js"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm run typecheck && pnpm run build"
+  },
+  "dependencies": {
+    "@syaocode/core": "workspace:*",
+    "@syaocode/providers": "workspace:*",
+    "@syaocode/testing": "workspace:*",
+    "@syaocode/tools": "workspace:*",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "tsx": "^4.19.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wenhuang2333/SYAOCode.git"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/main.js",
+    "types": "./dist/main.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/main.d.ts",
+        "default": "./dist/main.js"
+      }
+    }
+  }
+}

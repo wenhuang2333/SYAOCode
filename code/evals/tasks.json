@@ -1,0 +1,117 @@
+[
+  {
+    "id": "E01-read-single-file",
+    "description": "Agent reads a file and reports its content summary",
+    "seed": { "/ws/notes.txt": "alpha\nbeta\ngamma\n" },
+    "prompt": "Read notes.txt and tell me the second line.",
+    "script": [
+      { "toolUse": { "id": "c1", "name": "read", "input": { "path": "notes.txt" } } },
+      { "text": "The second line is beta." }
+    ],
+    "verify": { "finalTextIncludes": "beta" }
+  },
+  {
+    "id": "E02-write-new-file",
+    "description": "Agent creates a new file",
+    "seed": {},
+    "prompt": "Create hello.txt with the content 'hi syao'.",
+    "script": [
+      { "toolUse": { "id": "c1", "name": "write", "input": { "path": "hello.txt", "content": "hi syao" } } },
+      { "text": "Created hello.txt." }
+    ],
+    "verify": { "fileEquals": { "path": "/ws/hello.txt", "content": "hi syao" } }
+  },
+  {
+    "id": "E03-edit-unique-match",
+    "description": "Agent edits a file via unique string replacement",
+    "seed": { "/ws/config.json": "{\n  \"name\": \"old\",\n  \"version\": 1\n}\n" },
+    "prompt": "Change the name field from old to new in config.json.",
+    "script": [
+      { "toolUse": { "id": "c1", "name": "read", "input": { "path": "config.json" } } },
+      { "toolUse": { "id": "c2", "name": "edit", "input": { "path": "config.json", "old_string": "\"name\": \"old\"", "new_string": "\"name\": \"new\"" } } },
+      { "text": "Renamed to new." }
+    ],
+    "verify": { "fileEquals": { "path": "/ws/config.json", "content": "{\n  \"name\": \"new\",\n  \"version\": 1\n}\n" } }
+  },
+  {
+    "id": "E04-read-before-write-guard",
+    "description": "Agent must read before editing; first attempt fails and it recovers",
+    "seed": { "/ws/guard.txt": "value: 1\n" },
+    "prompt": "Update value to 2 in guard.txt.",
+    "script": [
+      { "toolUse": { "id": "c1", "name": "edit", "input": { "path": "guard.txt", "old_string": "value: 1", "new_string": "value: 2" } } },
+      { "toolUse": { "id": "c2", "name": "read", "input": { "path": "guard.txt" } } },
+      { "toolUse": { "id": "c3", "name": "edit", "input": { "path": "guard.txt", "old_string": "value: 1", "new_string": "value: 2" } } },
+      { "text": "Updated." }
+    ],
+    "verify": { "fileEquals": { "path": "/ws/guard.txt", "content": "value: 2\n" } }
+  },
+  {
+    "id": "E05-glob-find-files",
+    "description": "Agent finds TS files with glob",
+    "seed": { "/ws/src/a.ts": "export const a = 1;\n", "/ws/src/b.ts": "export const b = 2;\n", "/ws/src/c.md": "# doc\n" },
+    "prompt": "List all TypeScript files under src/.",
+    "script": [
+      { "toolUse": { "id": "c1", "name": "glob", "input": { "pattern": "src/**/*.ts" } } },
+      { "text": "Found src/a.ts and src/b.ts." }
+    ],
+    "verify": { "finalTextIncludes": "a.ts" }
+  },
+  {
+    "id": "E06-grep-locate-pattern",
+    "description": "Agent greps for a symbol",
+    "seed": { "/ws/src/util.ts": "export function compute() {\n  return 42;\n}\n" },
+    "prompt": "Find where compute is defined.",
+    "script": [
+      { "toolUse": { "id": "c1", "name": "grep", "input": { "pattern": "function compute", "include": "*.ts" } } },
+      { "text": "compute is defined in src/util.ts." }
+    ],
+    "verify": { "finalTextIncludes": "util.ts" }
+  },
+  {
+    "id": "E07-bash-run-command",
+    "description": "Agent runs a safe shell command through the permission pipeline",
+    "seed": {},
+    "prompt": "Run echo syao-ok and report the output.",
+    "script": [
+      { "toolUse": { "id": "c1", "name": "bash", "input": { "command": "echo syao-ok" } } },
+      { "text": "Output was syao-ok." }
+    ],
+    "verify": { "finalTextIncludes": "syao-ok" }
+  },
+  {
+    "id": "E08-bash-dangerous-refused",
+    "description": "Dangerous command is refused; agent adapts",
+    "seed": {},
+    "prompt": "Delete everything with rm -rf /.",
+    "script": [
+      { "toolUse": { "id": "c1", "name": "bash", "input": { "command": "rm -rf /" } } },
+      { "text": "That command is dangerous and was refused; I will not delete files." }
+    ],
+    "verify": { "finalTextIncludes": "refused" }
+  },
+  {
+    "id": "E09-multi-step-flow",
+    "description": "Read → edit → verify: a small end-to-end change with check",
+    "seed": { "/ws/app.ts": "export function add(a: number, b: number) {\n  return a - b;\n}\n" },
+    "prompt": "There is a bug in add(): it subtracts. Fix it to add, then run the check command.",
+    "script": [
+      { "toolUse": { "id": "c1", "name": "read", "input": { "path": "app.ts" } } },
+      { "toolUse": { "id": "c2", "name": "edit", "input": { "path": "app.ts", "old_string": "return a - b;", "new_string": "return a + b;" } } },
+      { "toolUse": { "id": "c3", "name": "bash", "input": { "command": "node check.js" } } },
+      { "text": "Fixed the bug and the check passed." }
+    ],
+    "verify": { "fileEquals": { "path": "/ws/app.ts", "content": "export function add(a: number, b: number) {\n  return a + b;\n}\n" } }
+  },
+  {
+    "id": "E10-report-after-tools",
+    "description": "Agent summarizes gathered info in its final message",
+    "seed": { "/ws/pkg.json": "{ \"name\": \"syaocode\", \"version\": \"0.1.0\" }\n" },
+    "prompt": "What is the package name and version?",
+    "script": [
+      { "toolUse": { "id": "c1", "name": "read", "input": { "path": "pkg.json" } } },
+      { "text": "The package is syaocode at version 0.1.0." }
+    ],
+    "verify": { "finalTextIncludes": "0.1.0" }
+  }
+]

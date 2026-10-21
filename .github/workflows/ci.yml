@@ -1,0 +1,32 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [22]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: code
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          cache-dependency-path: code/pnpm-lock.yaml
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm lint:registry
+      - run: corepack pnpm typecheck
+      - run: corepack pnpm test
+      - run: corepack pnpm test:evals

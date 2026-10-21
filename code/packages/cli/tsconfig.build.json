@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": false,
+    "declarationMap": false,
+    "rewriteRelativeImportExtensions": true,
+    "paths": {
+      "@syaocode/core": [
+        "../core/dist/index.d.ts"
+      ],
+      "@syaocode/providers": [
+        "../providers/dist/index.d.ts"
+      ],
+      "@syaocode/tools": [
+        "../tools/dist/index.d.ts"
+      ],
+      "@syaocode/testing": [
+        "../testing/dist/index.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}
