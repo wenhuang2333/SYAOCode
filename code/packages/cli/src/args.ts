@@ -26,13 +26,13 @@ export interface CliArgs {
   configSub?: 'list' | 'get' | 'path';
 }
 
-export type PermissionTier = 'strict' | 'YAO' | 'SI' | 'acceptEdits' | 'plan';
+export type PermissionTier = 'strict' | 'yao' | 'si' | 'acceptEdits' | 'plan';
 
 /**
  * Three-tier permission mapping:
  *  - no flag  → default  读取免确认；写/删/执行需确认（规范 FR-041 的 default）
- *  - --YAO → default 同上（显式写法）
- *  - --SI   → bypass  文件增删改查读全部免确认（危险命令库仍拒绝，BR-006）
+ *  - --yao → default 同上（显式写法）
+ *  - --si   → bypass  文件增删改查读全部免确认（危险命令库仍拒绝，BR-006）
  * Precedence: --permission-mode > tier flag > saved user config > default.
  *
  * strict 仍可用（--permission-mode strict 或 /permission strict）：一切操作都确认。
@@ -46,16 +46,16 @@ export function resolvePermissionTier(
   if (args.permissionMode !== undefined) {
     return { mode: args.permissionMode, tier: tierOfMode(args.permissionMode), source: '--permission-mode' };
   }
-  if (args.si) return { mode: 'bypass', tier: 'SI', source: '--SI' };
-  if (args.yao) return { mode: 'default', tier: 'YAO', source: '--YAO' };
+  if (args.si) return { mode: 'bypass', tier: 'si', source: '--si' };
+  if (args.yao) return { mode: 'default', tier: 'yao', source: '--yao' };
   if (savedMode !== undefined) return { mode: savedMode, tier: tierOfMode(savedMode), source: 'user-config' };
-  return { mode: 'default', tier: 'YAO', source: 'default' };
+  return { mode: 'default', tier: 'yao', source: 'default' };
 }
 
 function tierOfMode(mode: 'strict' | 'default' | 'acceptEdits' | 'plan' | 'bypass'): PermissionTier {
   switch (mode) {
-    case 'bypass': return 'SI';
-    case 'default': return 'YAO';
+    case 'bypass': return 'si';
+    case 'default': return 'yao';
     default: return mode; // strict | acceptEdits | plan pass through as their own label
   }
 }
@@ -138,12 +138,10 @@ export function parseArgs(argv: string[]): CliArgs {
         args.permissionMode = v;
         break;
       }
-      case '--SI':
       case '--si':
         args.si = true;
         if (args.yao) throw new UsageError(t('args.mutuallyExclusive'));
         break;
-      case '--YAO':
       case '--yao':
         args.yao = true;
         if (args.si) throw new UsageError(t('args.mutuallyExclusive'));

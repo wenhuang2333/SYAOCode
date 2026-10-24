@@ -10,8 +10,8 @@ import { setLanguage } from '../src/i18n/index';
 describe('slash /permission 档位解析（三档 + 高级模式 + 别名）', () => {
   it('三个档位名正映射到引擎模式', () => {
     expect(parsePermissionArg('strict')).toEqual({ key: 'strict', mode: 'strict' });
-    expect(parsePermissionArg('YAO')).toEqual({ key: 'YAO', mode: 'default' });
-    expect(parsePermissionArg('SI')).toEqual({ key: 'SI', mode: 'bypass' });
+    expect(parsePermissionArg('yao')).toEqual({ key: 'yao', mode: 'default' });
+    expect(parsePermissionArg('si')).toEqual({ key: 'si', mode: 'bypass' });
   });
 
   it('大小写与连字符/下划线不敏感', () => {
@@ -22,8 +22,8 @@ describe('slash /permission 档位解析（三档 + 高级模式 + 别名）', (
   });
 
   it('模式别名与高级模式', () => {
-    expect(parsePermissionArg('default')!.key).toBe('YAO');
-    expect(parsePermissionArg('bypass')!.key).toBe('SI');
+    expect(parsePermissionArg('default')!.key).toBe('yao');
+    expect(parsePermissionArg('bypass')!.key).toBe('si');
     expect(parsePermissionArg('acceptEdits')!.mode).toBe('acceptEdits');
     expect(parsePermissionArg('plan')!.mode).toBe('plan');
   });
@@ -60,7 +60,7 @@ describe('slash /permission 展示文本', () => {
       setLanguage(lang);
       const panel = permissionTierPanel('default').join('\n');
       for (const tier of permissionTiers()) expect(panel).toContain(tier.key);
-      expect(panel).toMatch(/● YAO/);
+      expect(panel).toMatch(/● yao/);
       expect(panel).not.toMatch(/● strict/);
     }
     setLanguage('zh');

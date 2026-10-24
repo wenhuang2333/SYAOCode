@@ -57,7 +57,7 @@ export async function runPrint(args: CliArgs, prompt: string): Promise<number> {
   // Headless permission policy (BR-042): ask → deny with a clear note.
   const headlessHandler: PermissionHandler = async (req) => ({
     decision: 'deny',
-    message: `Non-interactive run: '${req.tool}' needs approval; headless ask resolves to deny (SY-CLI-002). Pre-approve via --allowed-tools, raise the tier (--YAO/--SI), or run interactively.`,
+    message: `Non-interactive run: '${req.tool}' needs approval; headless ask resolves to deny (SY-CLI-002). Pre-approve via --allowed-tools, raise the tier (--yao/--si), or run interactively.`,
   });
 
   const agent: Agent = createAgent({
