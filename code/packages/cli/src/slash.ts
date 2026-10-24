@@ -50,8 +50,8 @@ export function commandDocs(): CommandDoc[] {
 }
 
 // ── 权限档位（三档）────────────────────────────────────────────────────
-// 与 CLI 参数一一对应：无参数=strict（严格档）/ --YAO=default（部分权限）
-// / --SI=bypass（完全权限）。/permission 指令在会话内直接切换档位。
+// 与 CLI 参数一一对应：无参数=strict（严格档）/ --yao=default（部分权限）
+// / --si=bypass（完全权限）。/permission 指令在会话内直接切换档位。
 
 export interface PermissionTierDef {
   /** 档位名（/permission 指令与命令行参数使用的名字） */
@@ -67,13 +67,13 @@ export interface PermissionTierDef {
 export function permissionTiers(): PermissionTierDef[] {
   return [
     { key: 'strict', mode: 'strict', label: t('tier.strict.label'), desc: t('tier.strict.desc') },
-    { key: 'YAO', mode: 'default', label: t('tier.yao.label'), desc: t('tier.yao.desc') },
-    { key: 'SI', mode: 'bypass', label: t('tier.si.label'), desc: t('tier.si.desc') },
+    { key: 'yao', mode: 'default', label: t('tier.yao.label'), desc: t('tier.yao.desc') },
+    { key: 'si', mode: 'bypass', label: t('tier.si.label'), desc: t('tier.si.desc') },
   ];
 }
 
 /**
- * 解析 /permission 的参数：接受档位名（strict / YAO / SI，大小写不敏感）、
+ * 解析 /permission 的参数：接受档位名（strict / yao / si，大小写不敏感）、
  * 高级模式名（acceptEdits / plan）以及模式别名（default / bypass）。
  * 无法识别返回 null。
  */
@@ -84,10 +84,10 @@ export function parsePermissionArg(raw: string): { key: string; mode: Permission
       return { key: 'strict', mode: 'strict' };
     case 'yao':
     case 'default':
-      return { key: 'YAO', mode: 'default' };
+      return { key: 'yao', mode: 'default' };
     case 'si':
     case 'bypass':
-      return { key: 'SI', mode: 'bypass' };
+      return { key: 'si', mode: 'bypass' };
     case 'acceptedits':
       return { key: 'acceptEdits', mode: 'acceptEdits' };
     case 'plan':

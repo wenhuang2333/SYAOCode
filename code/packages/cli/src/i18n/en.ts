@@ -19,9 +19,9 @@ export const en = {
   // ── permission tiers ────────────────────────────────────────────────────
   'tier.strict.label': 'strict',
   'tier.strict.desc': 'every action (including reads) requires confirmation',
-  'tier.yao.label': 'YAO (partial)',
+  'tier.yao.label': 'yao (partial)',
   'tier.yao.desc': 'reads pass; writes, deletes and exec ask',
-  'tier.si.label': 'SI (full)',
+  'tier.si.label': 'si (full)',
   'tier.si.desc': 'file operations pass; dangerous commands still denied',
   'tier.mode.strict': 'strict: ask for everything',
   'tier.mode.default': 'partial: reads allowed',
@@ -32,22 +32,22 @@ export const en = {
   'tier.panel.advancedCurrent': '  ● {mode} (advanced mode: {label})',
   'tier.panel.advancedHint': '   (advanced modes acceptEdits / plan are also valid tier arguments)',
   'tier.switched': 'Permission tier switched to {key} ({label}).',
-  'tier.sessionOnly': 'Session only; start with --YAO / --SI or set permissionMode for a new default.',
-  'tier.usage': 'Usage: {invoked} [strict|YAO|SI] | {invoked} mode <m> | {invoked} allow|deny <tool>',
-  'tier.usageLong': 'Usage: {invoked} [strict|YAO|SI|acceptEdits|plan] | {invoked} mode <m> | {invoked} allow|deny <tool>',
+  'tier.sessionOnly': 'Session only; start with --yao / --si or set permissionMode for a new default.',
+  'tier.usage': 'Usage: {invoked} [strict|yao|si] | {invoked} mode <m> | {invoked} allow|deny <tool>',
+  'tier.usageLong': 'Usage: {invoked} [strict|yao|si|acceptEdits|plan] | {invoked} mode <m> | {invoked} allow|deny <tool>',
   'config.guidedHint': '(no argument enters the guided flow)',
-  'tier.long.strict': 'strict: every action requires confirmation (--YAO allows reads, --SI allows all)',
-  'tier.long.default': 'partial (--YAO): reads pass; writes, deletes and exec ask',
+  'tier.long.strict': 'strict: every action requires confirmation (--yao allows reads, --si allows all)',
+  'tier.long.default': 'partial (--yao): reads pass; writes, deletes and exec ask',
   'tier.long.acceptEdits': 'acceptEdits: workspace writes pass',
   'tier.long.plan': 'plan: read-only',
-  'tier.long.bypass': 'full (--SI): all file operations pass (dangerous commands still denied)',
+  'tier.long.bypass': 'full (--si): all file operations pass (dangerous commands still denied)',
 
   // ── command metadata (help + palette) ───────────────────────────────────
   'cmd.help.usage': '/help [command]',
   'cmd.help.summary': 'Show all commands or detailed usage of one command',
   'cmd.model.usage': '/model [list|use|config|show]',
   'cmd.model.summary': 'Show, switch or configure the model and provider',
-  'cmd.permission.usage': '/permission [strict|YAO|SI]',
+  'cmd.permission.usage': '/permission [strict|yao|si]',
   'cmd.permission.summary': 'Show or switch the permission tier (session only)',
   'cmd.permissions.usage': '/permissions [mode <m>|allow <tool>|deny <tool>]',
   'cmd.permissions.summary': 'Show or adjust the permission mode and session rules',
@@ -195,7 +195,7 @@ export const en = {
   'config.unknownCommand': "Unknown command '{cmd}'. Type /help to see all commands.",
   'config.indexModels': 'Model ({models}):',
   'config.invalidModeShort': 'Mode must be strict | default | acceptEdits | plan | bypass',
-  'config.advancedNote': 'Session only; start with --YAO / --SI or set permissionMode for a new default.',
+  'config.advancedNote': 'Session only; start with --yao / --si or set permissionMode for a new default.',
   'config.finalState': 'Final state:',
   'config.noProfiles': 'No custom model profiles yet. Run /setup to create one.',
   'config.profilesSaved': 'Saved model profiles ({n}):',
@@ -274,7 +274,7 @@ export const en = {
   'args.missingValue': 'missing value for {flag}',
   'args.invalidOutputFormat': "invalid --output-format '{value}' (SY-CLI-001)",
   'args.invalidPermissionMode': "invalid --permission-mode '{value}' (SY-CLI-001)",
-  'args.mutuallyExclusive': '--SI and --YAO are mutually exclusive (SY-CLI-001)',
+  'args.mutuallyExclusive': '--si and --yao are mutually exclusive (SY-CLI-001)',
   'args.unknownOption': "unknown option '{option}' (SY-CLI-001)",
   'args.configSubcommand': 'config subcommand must be list | get | path (SY-CLI-001)',
   'args.modelSpec': "--model must be <provider>:<model>, got '{value}' (SY-CLI-001)",
@@ -299,11 +299,11 @@ Inside interactive mode:
 
 Permission tiers (choose one):
   (no flag)                      default: reads pass; writes, deletes and exec ask
-      --YAO                same as the default (explicit form)
+      --yao                      same as the default (explicit form)
       --permission-mode strict   ask for every action, including reads
-      --SI                  full: all file operations pass (dangerous commands still denied)
+      --si                        full: all file operations pass (dangerous commands still denied)
   Or use --permission-mode <strict|default|acceptEdits|plan|bypass>
-  Session switch: /permission <tier> (for example /permission YAO; session only)
+  Session switch: /permission <tier> (for example /permission yao; session only)
 
 Options:
   -p, --print                      non-interactive run
@@ -331,7 +331,7 @@ Options:
   'doctor.keySet': '{env} is set (value hidden)',
   'doctor.keyUnset': '{env} not set — use the mock: provider for offline runs',
 
-  'perm.switchAsk': 'switch tier? strict / YAO / SI / acceptEdits / plan (empty = keep): ',
+  'perm.switchAsk': 'switch tier? strict / yao / si / acceptEdits / plan (empty = keep): ',
   'perm.allowAsk': 'add an ALLOW rule (tool name or pattern, empty = skip): ',
   'perm.denyAsk': 'add a DENY rule (tool name or pattern, empty = skip): ',
   'perm.unrecognized': "Unrecognized '{value}'; tier unchanged.",

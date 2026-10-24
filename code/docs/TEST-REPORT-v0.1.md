@@ -5,7 +5,7 @@
 - **环境**：macOS (darwin 25.5.0, arm64) / Node v24.15.0 / pnpm 12.11.2 / TypeScript 5.7 / Vitest 3.2
 - **结论**：✅ 全部通过 —— typecheck 0 错误、**211/211** 单元与合约测试（含 13 项管道式 REPL 冒烟）、10/10 评测任务。测试过程累计发现并修复 25 项缺陷（§4）。
 
-> 增量（权限三档）：新增 `strict` 权限模式（core 引擎一级模式：一切操作含读取都需确认）；CLI 新增 `--YAO`（读取免确认，写/删/执行需确认）与 `--SI`（文件增删改查读全免确认）档位参数，二者互斥；无参数启动默认严格档；优先级 `--permission-mode > 档位 > 用户配置 > strict`；REPL 横幅与 `/permissions` 显示当前档位。修复 macOS realpath（/var vs /private/var）导致临时目录工作区被判越界的缺陷。
+> 增量（权限三档）：新增 `strict` 权限模式（core 引擎一级模式：一切操作含读取都需确认）；CLI 新增 `--yao`（读取免确认，写/删/执行需确认）与 `--si`（文件增删改查读全免确认）档位参数，二者互斥；无参数启动默认严格档；优先级 `--permission-mode > 档位 > 用户配置 > strict`；REPL 横幅与 `/permissions` 显示当前档位。修复 macOS realpath（/var vs /private/var）导致临时目录工作区被判越界的缺陷。
 
 > 增量（渲染稳定性 + `/permission`）：新增 `/permission` 指令（三档直接切换，`/permissions` 与之参数互通）；指令联想改为**全量列表 + 行内中文简介 + 视窗滚动**；TUI chrome 改为**逐行差分渲染 + synchronized update**，实测消除移动选择与空闲时的终端闪烁（§8）。修复光标定位 off-by-one（落在框底边框而非输入行，经 pyte 交叉验证，§4 #25）。
 
@@ -198,10 +198,10 @@ openai-compatible 新增 authStyle：x-api-key 头与 ?key= 查询参数按配�
 
 ### 8.1 `/permission`（三档快捷切换，7 项单测 + 1 项 REPL 冒烟 + 1 项 TUI 探针）
 
-- 档位解析 `parsePermissionArg`：三档名正映射（strict→strict / YAO→default / SI→bypass）；大小写不敏感（`YAO`/`yao`、`SI`/`si`）；`default`/`bypass` 模式别名；`acceptEdits`/`plan` 高级模式；无法识别返回 null（`mode`/`allow`/`deny` 保留给子命令）。
+- 档位解析 `parsePermissionArg`：三档名正映射（strict→strict / yao→default / si→bypass）；输入大小写不敏感（`yao`/`YaO`、`si`/`Si`）；`default`/`bypass` 模式别名；`acceptEdits`/`plan` 高级模式；无法识别返回 null（`mode`/`allow`/`deny` 保留给子命令）。
 - 展示文本：`permissionModeShort` 覆盖全部模式；`permissionTierPanel` 列出三档并以 `●` 标记当前档位（含 plan/acceptEdits 当前态）。
-- 集成（REPL 管道冒烟）：`/permission` 展示速查表；`/permission YAO|SI|strict` 三档直接切换且消息含档位说明；非法参数给出用法。
-- TUI 路径（PTY 探针）：输入 `/perm` → Tab 补全 `/permission ` → 输入 `YAO` 回车 → 输出区出现切换消息、输入框标题档位更新为「部分权限：读免确认」。
+- 集成（REPL 管道冒烟）：`/permission` 展示速查表；`/permission yao|si|strict` 三档直接切换且消息含档位说明；非法参数给出用法。
+- TUI 路径（PTY 探针）：输入 `/perm` → Tab 补全 `/permission ` → 输入 `yao` 回车 → 输出区出现切换消息、输入框标题档位更新为「部分权限：读免确认」。
 - `/permissions` 与 `/permission` 参数互通（`mode/allow/deny` 子命令与档位参数在同一处理器内解析）。
 
 ### 8.2 chrome 帧差分渲染（闪烁消除，PTY 字节级 + 屏幕级双探针）
@@ -296,7 +296,7 @@ openai-compatible 新增 authStyle：x-api-key 头与 ?key= 查询参数按配�
 - 生成的 `test/calculator.cpp` 通过 `g++ -std=c++17 -O2 -Wall` 编译，实测：`3 + 4 = 7`（退出 0）、`10 / 0`（错误信息 + 非零退出）、`3 + abc`（带位置的错误信息）、`1e308 * 10`（溢出检测）。
 - 流式反馈：思考行（暗色 `⋯`）与正文连续成段；工具行 `⚙ write/read/bash` + `✔/✖` 即时出现；最终中文 Markdown 表格在 TUI 中正常对齐。
 - 用量：25 requests · 216.6k in / 12.5k out · 缓存命中 46% · 费用 $0.0093；状态栏上下文 14.5k 与 `/status` 面板 14.9k 一致（估算误差 <3%）。
-- 权限审批（`--YAO`）：写操作弹出 `⚠ 权限请求`，`y` 本次允许后 write 执行、read 自动放行，最终回复正常。截图：`test/tui-real/02-code/`、`03-perm/`。
+- 权限审批（`--yao`）：写操作弹出 `⚠ 权限请求`，`y` 本次允许后 write 执行、read 自动放行，最终回复正常。截图：`test/tui-real/02-code/`、`03-perm/`。
 
 ## 12. 双语 CLI / 联想弹层下移 / 开机按键跳过（v0.1 追加）
 

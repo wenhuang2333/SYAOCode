@@ -46,18 +46,16 @@ describe('parseArgs (FR-135 subset)', () => {
 });
 
 describe('three-tier permission flags', () => {
-  it('parses --SI / --YAO (case variants) and rejects mixing them', () => {
-    expect(parseArgs(['--SI']).si).toBe(true);
-    expect(parseArgs(['--YAO']).yao).toBe(true);
+  it('parses --si / --yao and rejects mixing them', () => {
     expect(parseArgs(['--si']).si).toBe(true);
     expect(parseArgs(['--yao']).yao).toBe(true);
-    expect(() => parseArgs(['--SI', '--YAO'])).toThrow(/mutually exclusive/);
+    expect(() => parseArgs(['--si', '--yao'])).toThrow(/mutually exclusive/);
   });
 
-  it('resolvePermissionTier maps the ladder: bare→default(reads pass), YAO→default, SI→bypass', () => {
+  it('resolvePermissionTier maps the ladder: bare→default(reads pass), yao→default, si→bypass', () => {
     expect(resolvePermissionTier({ si: false, yao: false })).toEqual({
       mode: 'default',
-      tier: 'YAO',
+      tier: 'yao',
       source: 'default',
     });
     expect(resolvePermissionTier({ si: false, yao: true }).mode).toBe('default');
