@@ -17,10 +17,10 @@ export const zh: Record<MsgKey, string> = {
   // ── 权限档位 ────────────────────────────────────────────────────────────
   'tier.strict.label': '严格档',
   'tier.strict.desc': '一切操作（含读取）都需确认',
-  'tier.huang.label': '部分权限（HuangAura）',
-  'tier.huang.desc': '读取免确认；写、删、执行需确认',
-  'tier.wen.label': '完全权限（WenNova）',
-  'tier.wen.desc': '文件操作全部免确认；危险命令仍拒绝',
+  'tier.yao.label': '部分权限（YAO）',
+  'tier.yao.desc': '读取免确认；写、删、执行需确认',
+  'tier.si.label': '完全权限（SI）',
+  'tier.si.desc': '文件操作全部免确认；危险命令仍拒绝',
   'tier.mode.strict': '严格档：均需确认',
   'tier.mode.default': '部分权限：读免确认',
   'tier.mode.acceptEdits': 'acceptEdits',
@@ -30,22 +30,22 @@ export const zh: Record<MsgKey, string> = {
   'tier.panel.advancedCurrent': '  ● {mode}（高级模式：{label}）',
   'tier.panel.advancedHint': '   （高级模式 acceptEdits / plan 亦可作为档位参数）',
   'tier.switched': '权限档位已切换为 {key}（{label}）。',
-  'tier.sessionOnly': '仅本次会话；启动默认用 --HuangAura / --WenNova 或配置 permissionMode。',
-  'tier.usage': '用法：{invoked} [strict|HuangAura|WenNova] | {invoked} mode <模式> | {invoked} allow|deny <工具>',
-  'tier.usageLong': '用法：{invoked} [strict|HuangAura|WenNova|acceptEdits|plan] | {invoked} mode <模式> | {invoked} allow|deny <工具>',
+  'tier.sessionOnly': '仅本次会话；启动默认用 --YAO / --SI 或配置 permissionMode。',
+  'tier.usage': '用法：{invoked} [strict|YAO|SI] | {invoked} mode <模式> | {invoked} allow|deny <工具>',
+  'tier.usageLong': '用法：{invoked} [strict|YAO|SI|acceptEdits|plan] | {invoked} mode <模式> | {invoked} allow|deny <工具>',
   'config.guidedHint': '（无参数进入问答引导）',
-  'tier.long.strict': '严格档：一切操作均需确认（--HuangAura 升级读取免确认，--WenNova 全免确认）',
-  'tier.long.default': '部分权限（--HuangAura）：读取免确认，写/删/执行需确认',
+  'tier.long.strict': '严格档：一切操作均需确认（--YAO 升级读取免确认，--SI 全免确认）',
+  'tier.long.default': '部分权限（--YAO）：读取免确认，写/删/执行需确认',
   'tier.long.acceptEdits': 'acceptEdits：工作区内写入免确认',
   'tier.long.plan': 'plan：仅只读',
-  'tier.long.bypass': '完全权限（--WenNova）：文件增删改查读免确认（危险命令仍拒绝）',
+  'tier.long.bypass': '完全权限（--SI）：文件增删改查读免确认（危险命令仍拒绝）',
 
   // ── 命令元数据（帮助 + 联想） ───────────────────────────────────────────
   'cmd.help.usage': '/help [命令]',
   'cmd.help.summary': '显示全部命令或某条命令的详细用法',
   'cmd.model.usage': '/model [list|use|config|show]',
   'cmd.model.summary': '查看、切换或配置模型与 Provider',
-  'cmd.permission.usage': '/permission [strict|HuangAura|WenNova]',
+  'cmd.permission.usage': '/permission [strict|YAO|SI]',
   'cmd.permission.summary': '查看或切换权限档位（仅本次会话生效）',
   'cmd.permissions.usage': '/permissions [mode <模式>|allow <工具>|deny <工具>]',
   'cmd.permissions.summary': '查看或调整权限模式与临时规则',
@@ -193,7 +193,7 @@ export const zh: Record<MsgKey, string> = {
   'config.unknownCommand': '未知命令「{cmd}」。输入 /help 查看全部命令。',
   'config.indexModels': '模型（{models}）：',
   'config.invalidModeShort': '模式必须为 strict | default | acceptEdits | plan | bypass',
-  'config.advancedNote': '仅本次会话；启动默认用 --HuangAura / --WenNova 或配置 permissionMode。',
+  'config.advancedNote': '仅本次会话；启动默认用 --YAO / --SI 或配置 permissionMode。',
   'config.finalState': '最终状态：',
   'config.noProfiles': '暂无自定义模型档案。运行 /setup 创建第一个。',
   'config.profilesSaved': '已保存模型档案（{n} 个）：',
@@ -272,7 +272,7 @@ export const zh: Record<MsgKey, string> = {
   'args.missingValue': '参数 {flag} 缺少取值',
   'args.invalidOutputFormat': '无效的 --output-format「{value}」（SY-CLI-001）',
   'args.invalidPermissionMode': '无效的 --permission-mode「{value}」（SY-CLI-001）',
-  'args.mutuallyExclusive': '--WenNova 与 --HuangAura 互斥（SY-CLI-001）',
+  'args.mutuallyExclusive': '--SI 与 --YAO 互斥（SY-CLI-001）',
   'args.unknownOption': '未知选项「{option}」（SY-CLI-001）',
   'args.configSubcommand': 'config 子命令必须为 list | get | path（SY-CLI-001）',
   'args.modelSpec': '--model 必须为 <provider>:<model>，收到「{value}」（SY-CLI-001）',
@@ -297,11 +297,11 @@ export const zh: Record<MsgKey, string> = {
 
 权限档位（三选一）：
   （无参数）                     默认档：读取免确认；写、删、执行仍需确认
-      --HuangAura                与默认档相同（显式写法）
+      --YAO                与默认档相同（显式写法）
       --permission-mode strict   严格档：一切操作（含读取）都需确认
-      --WenNova                  完全权限：文件增删改查读均免确认（危险命令仍拒绝）
+      --SI                  完全权限：文件增删改查读均免确认（危险命令仍拒绝）
   也可用 --permission-mode <strict|default|acceptEdits|plan|bypass> 精确指定
-  会话内切换：/permission <档位>（如 /permission HuangAura；仅本次会话生效）
+  会话内切换：/permission <档位>（如 /permission YAO；仅本次会话生效）
 
 选项：
   -p, --print                      非交互执行
@@ -329,7 +329,7 @@ export const zh: Record<MsgKey, string> = {
   'doctor.keySet': '{env} 已设置（值隐藏）',
   'doctor.keyUnset': '{env} 未设置——离线运行可使用 mock: provider',
 
-  'perm.switchAsk': '切换档位？strict / HuangAura / WenNova / acceptEdits / plan（留空＝保持）：',
+  'perm.switchAsk': '切换档位？strict / YAO / SI / acceptEdits / plan（留空＝保持）：',
   'perm.allowAsk': '添加 ALLOW 规则（工具名或模式，留空＝跳过）：',
   'perm.denyAsk': '添加 DENY 规则（工具名或模式，留空＝跳过）：',
   'perm.unrecognized': '无法识别「{value}」，档位未变更。',

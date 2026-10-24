@@ -27,21 +27,21 @@
 | 启动方式 | 档位 | 行为 |
 | --- | --- | --- |
 | `syao`（无参数） | **默认档（部分权限）** | 读取类操作（read/glob/grep、`ls` 等只读命令）免确认；写、删、执行仍需确认（规范 FR-041 的 default；降低上手打断） |
-| `syao --HuangAura` | **部分权限（显式写法）** | 与默认档相同 |
+| `syao --YAO` | **部分权限（显式写法）** | 与默认档相同 |
 | `syao --permission-mode strict` | **严格档** | 一切操作（含读取）都需逐条确认；非交互管道下按拒绝处理 |
-| `syao --WenNova` | **完全权限** | 文件增、删、改、查、读全部免确认，不询问用户（危险命令库仍拒绝，见下） |
+| `syao --SI` | **完全权限** | 文件增、删、改、查、读全部免确认，不询问用户（危险命令库仍拒绝，见下） |
 
-- 三档互斥：`--WenNova --HuangAura` 同用报 `SY-CLI-001`
+- 三档互斥：`--SI --YAO` 同用报 `SY-CLI-001`
 - 优先级：`--permission-mode` > 档位参数 > 用户配置（`~/.syaocode/config.json` 的 `permissionMode`）> **默认档（读免确认，写/删/执行审批）**
-- **安全底线不随档位放宽**：`rm -rf /`、`mkfs`、`git push --force`、格式化磁盘等危险命令在**任何档位（含 --WenNova）都默认拒绝**（BR-006），需要显式 `--allowed-tools` 用户级规则才可放行；`deny` 永远不能被模型提升为 `allow`
-- 档位只是免确认范围的变化；**会话内可直接用 `/permission <档位>` 切换**（如 `/permission HuangAura` 升档、`/permission strict` 降档，仅本次会话生效），或用 `/permissions mode <m>` 精确设置
+- **安全底线不随档位放宽**：`rm -rf /`、`mkfs`、`git push --force`、格式化磁盘等危险命令在**任何档位（含 --SI）都默认拒绝**（BR-006），需要显式 `--allowed-tools` 用户级规则才可放行；`deny` 永远不能被模型提升为 `allow`
+- 档位只是免确认范围的变化；**会话内可直接用 `/permission <档位>` 切换**（如 `/permission YAO` 升档、`/permission strict` 降档，仅本次会话生效），或用 `/permissions mode <m>` 精确设置
 
 ### 其他参数
 
 | 参数 | 取值 | 说明 |
 | --- | --- | --- |
 | `-m, --model` | `<provider>:<model>` | 指定模型，如 `mock:default`、`deepseek:deepseek-chat`、`anthropic:claude-sonnet-4`；省略时按 `SYAO_MODEL` > `~/.syaocode/config.json` 的 `model` > mock 解析（`-p`/`exec` 与交互模式一致） |
-| `--permission-mode` | `strict` / `default` / `acceptEdits` / `plan` / `bypass` | 精确指定模式（`default` 即 HuangAura 行为、`bypass` 即 WenNova 行为；不指定时默认 `default`） |
+| `--permission-mode` | `strict` / `default` / `acceptEdits` / `plan` / `bypass` | 精确指定模式（`default` 即 YAO 行为、`bypass` 即 SI 行为；不指定时默认 `default`） |
 | `--allowed-tools` | 工具名/通配符（空格分隔） | 预授权，如 `--allowed-tools read grep`；在严格档下可放行读取 |
 | `--disallowed-tools` | 工具名/通配符 | 显式拒绝；不可放宽内置硬拒绝 |
 | `--max-turns` | 正整数 | 轮次上限，触发出码 4 |
@@ -56,7 +56,7 @@
 
 ## 3. TUI 常驻界面（TTY 终端）
 
-TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/React）。**所有交互式入口统一先播启动动画**——无论是否带权限档位（`--WenNova` / `--HuangAura` / `--permission-mode`）、是否附带首轮 prompt；仅非交互（`-p`/`exec`）与管道输入跳过。
+TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/React）。**所有交互式入口统一先播启动动画**——无论是否带权限档位（`--SI` / `--YAO` / `--permission-mode`）、是否附带首轮 prompt；仅非交互（`-p`/`exec`）与管道输入跳过。
 
 ### 启动动画（约 6.4 秒，任意键跳过 / `--no-boot`）
 
@@ -287,10 +287,10 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 | --- | --- |
 | `/permission` | 显示当前模式/档位 + 三档速查表（`●` 标记当前档位）+ 本会话临时规则 |
 | `/permission strict` | 切回**严格档**：一切操作（含读取）都需确认 |
-| `/permission HuangAura` | **部分权限**：读取免确认；写、删、执行需确认 |
-| `/permission WenNova` | **完全权限**：文件增删改查读全部免确认（危险命令仍拒绝） |
+| `/permission YAO` | **部分权限**：读取免确认；写、删、执行需确认 |
+| `/permission SI` | **完全权限**：文件增删改查读全部免确认（危险命令仍拒绝） |
 
-档位名大小写与连字符不敏感（`huang-aura`、`wennova` 均可），`default`/`bypass` 作为模式别名同样接受，
+档位名大小写不敏感（`YAO`/`yao`、`SI`/`si` 均可），`default`/`bypass` 作为模式别名同样接受，
 高级模式 `acceptEdits`/`plan` 也可直接作为参数。**切换仅本次会话生效**——启动默认仍由命令行档位参数
 或配置 `permissionMode` 决定；切换后输入框标题的档位标识即时更新。
 
@@ -303,7 +303,7 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 | `/permissions allow <tool>` | 添加会话级放行规则（如 `/permissions allow write`、`/permissions allow mcp__github__*`） |
 | `/permissions deny <tool>` | 添加会话级拒绝规则 |
 
-规则语义（不可绕过）：`deny > ask > allow`；危险命令任何档位默认拒绝；项目级配置不能放宽用户级 deny（BR-024）；**任何模型输出都不能提升权限**。档位（strict/HuangAura/WenNova）只是改变"哪些操作免确认"，不改变这些硬规则。
+规则语义（不可绕过）：`deny > ask > allow`；危险命令任何档位默认拒绝；项目级配置不能放宽用户级 deny（BR-024）；**任何模型输出都不能提升权限**。档位（strict/YAO/SI）只是改变"哪些操作免确认"，不改变这些硬规则。
 
 ### 计划中的命令（当前为占位提示）
 
@@ -346,18 +346,18 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 syao
 
 # 部分权限：读免确认，写/删要确认
-syao --HuangAura
-syao --HuangAura -m deepseek:deepseek-chat "审查这个仓库"
+syao --YAO
+syao --YAO -m deepseek:deepseek-chat "审查这个仓库"
 
 # 完全权限：文件增删改查读都不问（危险命令仍拒绝）
-syao --WenNova "跑一遍测试并修复失败项"
+syao --SI "跑一遍测试并修复失败项"
 
 # 只读审查（plan 模式：写/执行一律拒绝）
 syao --permission-mode plan "审查 src/agent.ts 的错误处理"
 
 # 脚本化使用
-cat error.log | syao -p "分析报错原因" --output-format json --HuangAura
-syao -p "跑测试并修复" --WenNova --max-turns 20; echo "exit=$?"
+cat error.log | syao -p "分析报错原因" --output-format json --YAO
+syao -p "跑测试并修复" --SI --max-turns 20; echo "exit=$?"
 
 # 会话恢复
 syao                      # /resume → 选择历史会话 → 继续对话

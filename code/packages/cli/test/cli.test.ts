@@ -46,26 +46,26 @@ describe('parseArgs (FR-135 subset)', () => {
 });
 
 describe('three-tier permission flags', () => {
-  it('parses --WenNova / --HuangAura (case variants) and rejects mixing them', () => {
-    expect(parseArgs(['--WenNova']).wenNova).toBe(true);
-    expect(parseArgs(['--HuangAura']).huangAura).toBe(true);
-    expect(parseArgs(['--wennova']).wenNova).toBe(true);
-    expect(parseArgs(['--huang-aura']).huangAura).toBe(true);
-    expect(() => parseArgs(['--WenNova', '--HuangAura'])).toThrow(/mutually exclusive/);
+  it('parses --SI / --YAO (case variants) and rejects mixing them', () => {
+    expect(parseArgs(['--SI']).si).toBe(true);
+    expect(parseArgs(['--YAO']).yao).toBe(true);
+    expect(parseArgs(['--si']).si).toBe(true);
+    expect(parseArgs(['--yao']).yao).toBe(true);
+    expect(() => parseArgs(['--SI', '--YAO'])).toThrow(/mutually exclusive/);
   });
 
-  it('resolvePermissionTier maps the ladder: bare→default(reads pass), HuangAura→default, WenNova→bypass', () => {
-    expect(resolvePermissionTier({ wenNova: false, huangAura: false })).toEqual({
+  it('resolvePermissionTier maps the ladder: bare→default(reads pass), YAO→default, SI→bypass', () => {
+    expect(resolvePermissionTier({ si: false, yao: false })).toEqual({
       mode: 'default',
-      tier: 'HuangAura',
+      tier: 'YAO',
       source: 'default',
     });
-    expect(resolvePermissionTier({ wenNova: false, huangAura: true }).mode).toBe('default');
-    expect(resolvePermissionTier({ wenNova: true, huangAura: false }).mode).toBe('bypass');
+    expect(resolvePermissionTier({ si: false, yao: true }).mode).toBe('default');
+    expect(resolvePermissionTier({ si: true, yao: false }).mode).toBe('bypass');
     // explicit --permission-mode wins over tier flags
-    expect(resolvePermissionTier({ permissionMode: 'plan', wenNova: true, huangAura: false }).mode).toBe('plan');
+    expect(resolvePermissionTier({ permissionMode: 'plan', si: true, yao: false }).mode).toBe('plan');
     // saved user config beats the bare default
-    expect(resolvePermissionTier({ wenNova: false, huangAura: false }, 'acceptEdits').mode).toBe('acceptEdits');
+    expect(resolvePermissionTier({ si: false, yao: false }, 'acceptEdits').mode).toBe('acceptEdits');
     // --permission-mode now accepts strict
     expect(parseArgs(['--permission-mode', 'strict']).permissionMode).toBe('strict');
   });

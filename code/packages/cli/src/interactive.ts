@@ -558,7 +558,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
       output.write(ANSI.green(`${t('config.ruleAdded', { effect: args[0] ?? '', tool: args[1] ?? '' })}\n`));
       return;
     }
-    // 直接切换档位：/permission strict | HuangAura | WenNova（大小写/连字符不敏感）
+    // 直接切换档位：/permission strict | YAO | SI（大小写不敏感）
     const tier = parsePermissionArg(args[0]!);
     if (tier !== null) {
       agent.engine.setMode(tier.mode);
