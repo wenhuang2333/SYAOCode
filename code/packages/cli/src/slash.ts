@@ -50,8 +50,8 @@ export function commandDocs(): CommandDoc[] {
 }
 
 // ── 权限档位（三档）────────────────────────────────────────────────────
-// 与 CLI 参数一一对应：无参数=strict（严格档）/ --HuangAura=default（部分权限）
-// / --WenNova=bypass（完全权限）。/permission 指令在会话内直接切换档位。
+// 与 CLI 参数一一对应：无参数=strict（严格档）/ --YAO=default（部分权限）
+// / --SI=bypass（完全权限）。/permission 指令在会话内直接切换档位。
 
 export interface PermissionTierDef {
   /** 档位名（/permission 指令与命令行参数使用的名字） */
@@ -67,14 +67,14 @@ export interface PermissionTierDef {
 export function permissionTiers(): PermissionTierDef[] {
   return [
     { key: 'strict', mode: 'strict', label: t('tier.strict.label'), desc: t('tier.strict.desc') },
-    { key: 'HuangAura', mode: 'default', label: t('tier.huang.label'), desc: t('tier.huang.desc') },
-    { key: 'WenNova', mode: 'bypass', label: t('tier.wen.label'), desc: t('tier.wen.desc') },
+    { key: 'YAO', mode: 'default', label: t('tier.yao.label'), desc: t('tier.yao.desc') },
+    { key: 'SI', mode: 'bypass', label: t('tier.si.label'), desc: t('tier.si.desc') },
   ];
 }
 
 /**
- * 解析 /permission 的参数：接受档位名（strict / HuangAura / WenNova，大小写与
- * 连字符不敏感）、高级模式名（acceptEdits / plan）以及模式别名（default / bypass）。
+ * 解析 /permission 的参数：接受档位名（strict / YAO / SI，大小写不敏感）、
+ * 高级模式名（acceptEdits / plan）以及模式别名（default / bypass）。
  * 无法识别返回 null。
  */
 export function parsePermissionArg(raw: string): { key: string; mode: PermissionMode } | null {
@@ -82,12 +82,12 @@ export function parsePermissionArg(raw: string): { key: string; mode: Permission
   switch (a) {
     case 'strict':
       return { key: 'strict', mode: 'strict' };
-    case 'huangaura':
+    case 'yao':
     case 'default':
-      return { key: 'HuangAura', mode: 'default' };
-    case 'wennova':
+      return { key: 'YAO', mode: 'default' };
+    case 'si':
     case 'bypass':
-      return { key: 'WenNova', mode: 'bypass' };
+      return { key: 'SI', mode: 'bypass' };
     case 'acceptedits':
       return { key: 'acceptEdits', mode: 'acceptEdits' };
     case 'plan':

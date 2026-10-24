@@ -9,9 +9,9 @@ export interface CliArgs {
   model?: string;
   permissionMode?: 'strict' | 'default' | 'acceptEdits' | 'plan' | 'bypass';
   /** Full-permission tier shortcut (maps to bypass). */
-  wenNova: boolean;
+  si: boolean;
   /** Partial-permission tier shortcut (reads pass, writes/exec ask; maps to default). */
-  huangAura: boolean;
+  yao: boolean;
   allowedTools: string[];
   disallowedTools: string[];
   maxTurns?: number;
@@ -26,13 +26,13 @@ export interface CliArgs {
   configSub?: 'list' | 'get' | 'path';
 }
 
-export type PermissionTier = 'strict' | 'HuangAura' | 'WenNova' | 'acceptEdits' | 'plan';
+export type PermissionTier = 'strict' | 'YAO' | 'SI' | 'acceptEdits' | 'plan';
 
 /**
  * Three-tier permission mapping:
  *  - no flag  → default  读取免确认；写/删/执行需确认（规范 FR-041 的 default）
- *  - --HuangAura → default 同上（显式写法）
- *  - --WenNova   → bypass  文件增删改查读全部免确认（危险命令库仍拒绝，BR-006）
+ *  - --YAO → default 同上（显式写法）
+ *  - --SI   → bypass  文件增删改查读全部免确认（危险命令库仍拒绝，BR-006）
  * Precedence: --permission-mode > tier flag > saved user config > default.
  *
  * strict 仍可用（--permission-mode strict 或 /permission strict）：一切操作都确认。
@@ -40,22 +40,22 @@ export type PermissionTier = 'strict' | 'HuangAura' | 'WenNova' | 'acceptEdits' 
  * 写/删/执行仍然必须审批，安全边界不变。
  */
 export function resolvePermissionTier(
-  args: Pick<CliArgs, 'permissionMode' | 'wenNova' | 'huangAura'>,
+  args: Pick<CliArgs, 'permissionMode' | 'si' | 'yao'>,
   savedMode?: 'strict' | 'default' | 'acceptEdits' | 'plan' | 'bypass',
 ): { mode: 'strict' | 'default' | 'acceptEdits' | 'plan' | 'bypass'; tier: PermissionTier; source: string } {
   if (args.permissionMode !== undefined) {
     return { mode: args.permissionMode, tier: tierOfMode(args.permissionMode), source: '--permission-mode' };
   }
-  if (args.wenNova) return { mode: 'bypass', tier: 'WenNova', source: '--WenNova' };
-  if (args.huangAura) return { mode: 'default', tier: 'HuangAura', source: '--HuangAura' };
+  if (args.si) return { mode: 'bypass', tier: 'SI', source: '--SI' };
+  if (args.yao) return { mode: 'default', tier: 'YAO', source: '--YAO' };
   if (savedMode !== undefined) return { mode: savedMode, tier: tierOfMode(savedMode), source: 'user-config' };
-  return { mode: 'default', tier: 'HuangAura', source: 'default' };
+  return { mode: 'default', tier: 'YAO', source: 'default' };
 }
 
 function tierOfMode(mode: 'strict' | 'default' | 'acceptEdits' | 'plan' | 'bypass'): PermissionTier {
   switch (mode) {
-    case 'bypass': return 'WenNova';
-    case 'default': return 'HuangAura';
+    case 'bypass': return 'SI';
+    case 'default': return 'YAO';
     default: return mode; // strict | acceptEdits | plan pass through as their own label
   }
 }
@@ -70,8 +70,8 @@ export function parseArgs(argv: string[]): CliArgs {
     positional: [],
     print: false,
     outputFormat: 'text',
-    wenNova: false,
-    huangAura: false,
+    si: false,
+    yao: false,
     allowedTools: [],
     disallowedTools: [],
     verbose: false,
@@ -138,17 +138,15 @@ export function parseArgs(argv: string[]): CliArgs {
         args.permissionMode = v;
         break;
       }
-      case '--WenNova':
-      case '--wennova':
-      case '--wen-nova':
-        args.wenNova = true;
-        if (args.huangAura) throw new UsageError(t('args.mutuallyExclusive'));
+      case '--SI':
+      case '--si':
+        args.si = true;
+        if (args.yao) throw new UsageError(t('args.mutuallyExclusive'));
         break;
-      case '--HuangAura':
-      case '--huangaura':
-      case '--huang-aura':
-        args.huangAura = true;
-        if (args.wenNova) throw new UsageError(t('args.mutuallyExclusive'));
+      case '--YAO':
+      case '--yao':
+        args.yao = true;
+        if (args.si) throw new UsageError(t('args.mutuallyExclusive'));
         break;
       case '--allowed-tools':
         args.allowedTools.push(...untilNextFlag());

@@ -10,20 +10,20 @@ import { setLanguage } from '../src/i18n/index';
 describe('slash /permission 档位解析（三档 + 高级模式 + 别名）', () => {
   it('三个档位名正映射到引擎模式', () => {
     expect(parsePermissionArg('strict')).toEqual({ key: 'strict', mode: 'strict' });
-    expect(parsePermissionArg('HuangAura')).toEqual({ key: 'HuangAura', mode: 'default' });
-    expect(parsePermissionArg('WenNova')).toEqual({ key: 'WenNova', mode: 'bypass' });
+    expect(parsePermissionArg('YAO')).toEqual({ key: 'YAO', mode: 'default' });
+    expect(parsePermissionArg('SI')).toEqual({ key: 'SI', mode: 'bypass' });
   });
 
   it('大小写与连字符/下划线不敏感', () => {
-    expect(parsePermissionArg('huangaura')!.mode).toBe('default');
-    expect(parsePermissionArg('HUANG-AURA')!.mode).toBe('default');
-    expect(parsePermissionArg('wen_nova')!.mode).toBe('bypass');
+    expect(parsePermissionArg('yao')!.mode).toBe('default');
+    expect(parsePermissionArg('YaO')!.mode).toBe('default');
+    expect(parsePermissionArg('si')!.mode).toBe('bypass');
     expect(parsePermissionArg('  Strict  ')!.mode).toBe('strict');
   });
 
   it('模式别名与高级模式', () => {
-    expect(parsePermissionArg('default')!.key).toBe('HuangAura');
-    expect(parsePermissionArg('bypass')!.key).toBe('WenNova');
+    expect(parsePermissionArg('default')!.key).toBe('YAO');
+    expect(parsePermissionArg('bypass')!.key).toBe('SI');
     expect(parsePermissionArg('acceptEdits')!.mode).toBe('acceptEdits');
     expect(parsePermissionArg('plan')!.mode).toBe('plan');
   });
@@ -60,7 +60,7 @@ describe('slash /permission 展示文本', () => {
       setLanguage(lang);
       const panel = permissionTierPanel('default').join('\n');
       for (const tier of permissionTiers()) expect(panel).toContain(tier.key);
-      expect(panel).toMatch(/● HuangAura/);
+      expect(panel).toMatch(/● YAO/);
       expect(panel).not.toMatch(/● strict/);
     }
     setLanguage('zh');

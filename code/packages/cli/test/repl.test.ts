@@ -98,12 +98,12 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
     expect(stdout).toContain('Permission mode: acceptEdits');
   }, 90_000);
 
-  it('/permission switches the three-tier level directly (strict/HuangAura/WenNova)', () => {
+  it('/permission switches the three-tier level directly (strict/YAO/SI)', () => {
     const { stdout } = runRepl([
       '/permission',
-      '/permission HuangAura',
+      '/permission YAO',
       '/permission',
-      '/permission WenNova',
+      '/permission SI',
       '/permission strict',
       '/permission 不存在',
       '/exit',
@@ -111,18 +111,18 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
     // 无参数：档位速查面板（含三档）
     expect(stdout).toContain('Permission tiers (/permission <tier> switches immediately');
     expect(stdout).toContain('strict');
-    expect(stdout).toContain('WenNova');
+    expect(stdout).toContain('SI');
     // 直接切换三档
-    expect(stdout).toContain('Permission tier switched to HuangAura');
+    expect(stdout).toContain('Permission tier switched to YAO');
     expect(stdout).toContain('Permission mode: default');
-    expect(stdout).toContain('Permission tier switched to WenNova');
+    expect(stdout).toContain('Permission tier switched to SI');
     expect(stdout).toContain('Permission tier switched to strict');
     // 非法参数给出用法
-    expect(stdout).toContain('Usage: /permission [strict|HuangAura|WenNova]');
+    expect(stdout).toContain('Usage: /permission [strict|YAO|SI]');
   }, 90_000);
 
   it('!command runs read-only shell through the gate; dangerous is refused', () => {
-    const { stdout } = runRepl(['!echo syao-shell-ok', '!rm -rf /', '/exit'], { argv: ['--HuangAura'] });
+    const { stdout } = runRepl(['!echo syao-shell-ok', '!rm -rf /', '/exit'], { argv: ['--YAO'] });
     expect(stdout).toContain('syao-shell-ok');
     expect(stdout).toContain('Denied');
     expect(stdout).toContain('SY-PERM-004');
@@ -139,7 +139,7 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
     expect(stdout).toContain('workspace-writable');
   }, 90_000);
 
-  // ── three-tier permission behavior (strict / --HuangAura / --WenNova) ──
+  // ── three-tier permission behavior (strict / --YAO / --SI) ──
 
   const readScript = JSON.stringify([
     { id: 'a1', role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'read', input: { path: 'tier.txt' } }], meta: { createdAt: 0 } },
@@ -166,19 +166,19 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
     }
   }, 90_000);
 
-  it('--HuangAura: reads pass without asking, writes still ask', () => {
+  it('--YAO: reads pass without asking, writes still ask', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-tier-'));
     try {
-      fs.writeFileSync(path.join(dir, 'tier.txt'), 'huang-aura-read-ok\n');
+      fs.writeFileSync(path.join(dir, 'tier.txt'), 'YAO-read-ok\n');
       const read = runRepl(['读一下 tier.txt', '/exit'], {
-        argv: ['--HuangAura', '--cwd', dir],
+        argv: ['--YAO', '--cwd', dir],
         env: { SYAO_MOCK_SCRIPT: readScript },
       });
       expect(read.stdout).not.toContain('SY-CLI-002'); // reads never asked
-      expect(read.stdout).toContain('huang-aura-read-ok');
+      expect(read.stdout).toContain('YAO-read-ok');
 
       const write = runRepl(['写入 tier-out.txt', '/exit'], {
-        argv: ['--HuangAura', '--cwd', dir],
+        argv: ['--YAO', '--cwd', dir],
         env: { SYAO_MOCK_SCRIPT: writeScript },
       });
       expect(write.stdout).toContain('SY-CLI-002'); // writes still ask → deny headless
@@ -188,14 +188,14 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
     }
   }, 120_000);
 
-  it('--WenNova: writes execute without any asking', () => {
+  it('--SI: writes execute without any asking', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-tier-'));
     try {
       const write = runRepl(['写入 tier-out.txt', '/exit'], {
-        argv: ['--WenNova', '--cwd', dir],
+        argv: ['--SI', '--cwd', dir],
         env: { SYAO_MOCK_SCRIPT: writeScript },
       });
-      expect(write.stdout).not.toContain('SY-CLI-002'); // nothing asked under WenNova
+      expect(write.stdout).not.toContain('SY-CLI-002'); // nothing asked under SI
       expect(write.stdout).toContain('Wrote');
       expect(fs.existsSync(path.join(dir, 'tier-out.txt'))).toBe(true);
       expect(fs.readFileSync(path.join(dir, 'tier-out.txt'), 'utf8')).toBe('written');
@@ -206,13 +206,13 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
 
   it('banner shows the active permission tier', () => {
     const bare = runRepl(['/exit']);
-    expect(bare.stdout).toContain('partial (--HuangAura)');
+    expect(bare.stdout).toContain('partial (--YAO)');
     const strict = runRepl(['/exit'], { argv: ['--permission-mode', 'strict'] });
     expect(strict.stdout).toContain('strict: every action requires confirmation');
-    const nova = runRepl(['/exit'], { argv: ['--WenNova'] });
-    expect(nova.stdout).toContain('full (--WenNova)');
-    const aura = runRepl(['/exit'], { argv: ['--HuangAura'] });
-    expect(aura.stdout).toContain('partial (--HuangAura)');
+    const nova = runRepl(['/exit'], { argv: ['--SI'] });
+    expect(nova.stdout).toContain('full (--SI)');
+    const aura = runRepl(['/exit'], { argv: ['--YAO'] });
+    expect(aura.stdout).toContain('partial (--YAO)');
   }, 120_000);
 
   it('persisted language=zh switches the whole REPL to Chinese (and back)', () => {

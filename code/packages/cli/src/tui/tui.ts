@@ -1501,7 +1501,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
   }
 
   async function cmdPermissions(args: string[], invokedAs = '/permissions'): Promise<void> {
-    // ── 快路径：参数直接生效（/permission HuangAura · /permissions mode plan · allow/deny） ──
+    // ── 快路径：参数直接生效（/permission YAO · /permissions mode plan · allow/deny） ──
     if (args.length > 0) {
       if (args[0] === 'mode' && args[1] !== undefined) {
         const modeArg = args[1];
