@@ -75,6 +75,60 @@ describe('effective config (report E2/E3/E4)', () => {
   });
 });
 
+describe('policy file (report v0.2.5)', () => {
+  it('applies declared mode/rules/limits; explicit flags still win', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-policy-'));
+    const policy = path.join(tmp, 'policy.json');
+    fs.writeFileSync(
+      policy,
+      JSON.stringify({
+        permissionMode: 'plan',
+        allowedTools: ['read'],
+        rules: [{ effect: 'deny', tool: 'bash', match: { command: 'curl *' }, source: 'user' }],
+        limits: { maxTotalTokens: 99, maxTurns: 7 },
+      }),
+    );
+    const oldHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      const config = await loadCliConfig({ cwd: tmp, policy, allowedTools: [], disallowedTools: [] }, nodeRuntime());
+      expect(config.permissionMode).toBe('plan');
+      expect(config.limits.maxTotalTokens).toBe(99);
+      expect(config.limits.maxTurns).toBe(7);
+      expect(config.rules.some((r) => r.effect === 'allow' && r.tool === 'read')).toBe(true);
+      expect(config.rules.some((r) => r.effect === 'deny' && r.match?.command === 'curl *')).toBe(true);
+
+      const flagged = await loadCliConfig(
+        { cwd: tmp, policy, si: true, maxTotalTokens: 5, allowedTools: [], disallowedTools: [] },
+        nodeRuntime(),
+      );
+      expect(flagged.permissionMode).toBe('bypass');
+      expect(flagged.limits.maxTotalTokens).toBe(5);
+    } finally {
+      if (oldHome === undefined) delete process.env.HOME;
+      else process.env.HOME = oldHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects malformed policy with SY-CFG-001', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-policy-'));
+    const policy = path.join(tmp, 'policy.json');
+    fs.writeFileSync(policy, JSON.stringify({ rules: [{ effect: 'maybe', tool: 'read' }] }));
+    const oldHome = process.env.HOME;
+    process.env.HOME = tmp;
+    try {
+      await expect(
+        loadCliConfig({ cwd: tmp, policy, allowedTools: [], disallowedTools: [] }, nodeRuntime()),
+      ).rejects.toSatisfy((e) => e instanceof Error && e.message.includes('Invalid rule in policy file'));
+    } finally {
+      if (oldHome === undefined) delete process.env.HOME;
+      else process.env.HOME = oldHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('parseArgs (FR-135 subset)', () => {
   it('parses -p with prompt and output format', () => {
     const args = parseArgs(['-p', 'do it', '--output-format', 'stream-json']);
