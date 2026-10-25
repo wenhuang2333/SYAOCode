@@ -56,6 +56,11 @@ class MemoryFileSystem implements FileSystem {
   async writeFile(path: string, data: string): Promise<void> {
     this.files.set(this.norm(path), { content: data, mtimeMs: this.clock.now(), isDir: false });
   }
+  async appendFile(path: string, data: string): Promise<void> {
+    const node = this.files.get(this.norm(path));
+    if (node === undefined) this.files.set(this.norm(path), { content: data, mtimeMs: this.clock.now(), isDir: false });
+    else node.content += data;
+  }
   async stat(path: string): Promise<FileStat> {
     const node = this.files.get(this.norm(path));
     if (node === undefined) throw new Error(`ENOENT: ${path}`);
@@ -82,6 +87,9 @@ class MemoryFileSystem implements FileSystem {
   }
   async mkdir(path: string): Promise<void> {
     this.files.set(this.norm(path), { content: '', mtimeMs: this.clock.now(), isDir: true });
+  }
+  async rmdir(path: string): Promise<void> {
+    this.files.delete(this.norm(path));
   }
   async unlink(path: string): Promise<void> {
     this.files.delete(this.norm(path));

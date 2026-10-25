@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { SyaoError, nodeRuntime, userText } from '@syaocode/core';
+import { SyaoError, userText } from '@syaocode/core';
+import { nodeRuntime } from '@syaocode/node';
 import { createAnthropicProvider } from '../src/anthropic';
 import { createOpenAICompatibleProvider } from '../src/openai-compatible';
 import { startSseMock, type MockServer } from './helpers';

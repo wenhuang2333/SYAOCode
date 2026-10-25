@@ -106,8 +106,39 @@ export class FileSessionStore implements SessionStore {
     await this.runtime.fs.mkdir(this.dir(), { recursive: true });
     const line = entries.map((e) => JSON.stringify(e)).join('\n');
     const file = this.path(sessionId);
-    const prev = (await this.runtime.fs.exists(file)) ? await this.runtime.fs.readFile(file) : '';
-    await this.runtime.fs.writeFile(file, `${prev}${prev.endsWith('\n') || prev === '' ? '' : '\n'}${line}\n`);
+    await this.withLock(file, async () => {
+      await this.runtime.fs.appendFile(file, `${line}\n`);
+    });
+  }
+
+  /** Serialize writers with an atomic lock directory (SY-SES-004 on timeout). */
+  private async withLock<T>(file: string, fn: () => Promise<T>): Promise<T> {
+    const lock = `${file}.lock`;
+    const started = this.runtime.clock.now();
+    for (;;) {
+      try {
+        await this.runtime.fs.mkdir(lock);
+        break;
+      } catch {
+        if (this.runtime.clock.now() - started > 5_000) {
+          throw new SessionError({
+            code: 'SY-SES-004',
+            message: `Session log is locked by another writer: ${lock}`,
+            details: { file },
+          });
+        }
+        await this.runtime.clock.sleep(20).catch(() => undefined);
+      }
+    }
+    try {
+      return await fn();
+    } finally {
+      try {
+        await this.runtime.fs.rmdir(lock);
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
   }
 
   async load(sessionId: string): Promise<LogEntry[]> {

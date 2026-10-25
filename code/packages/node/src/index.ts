@@ -10,12 +10,14 @@ import {
   type IdGenerator,
   type Logger,
   type ProcessHandle,
+  type ReceiptStore,
   type Runtime,
   type Shell,
   type ShellSpawnOptions,
-} from './index.js';
+  type StoredOutput,
+} from '@syaocode/core';
 
-export type { HttpResponse } from './index.js';
+export type { HttpResponse } from '@syaocode/core';
 
 class NodeFileSystem implements FileSystem {
   async readFile(path: string): Promise<string> {
@@ -23,6 +25,9 @@ class NodeFileSystem implements FileSystem {
   }
   async writeFile(path: string, data: string): Promise<void> {
     await fsp.writeFile(path, data, 'utf8');
+  }
+  async appendFile(path: string, data: string): Promise<void> {
+    await fsp.appendFile(path, data, 'utf8');
   }
   async stat(path: string) {
     const s = await fsp.stat(path);
@@ -37,6 +42,9 @@ class NodeFileSystem implements FileSystem {
   }
   async mkdir(path: string, opts?: { recursive?: boolean }): Promise<void> {
     await fsp.mkdir(path, opts);
+  }
+  async rmdir(path: string): Promise<void> {
+    await fsp.rmdir(path);
   }
   async unlink(path: string): Promise<void> {
     await fsp.unlink(path);
@@ -176,8 +184,28 @@ class NodeIds implements IdGenerator {
   }
 }
 
-export function contentHash(text: string): string {
+export function sha256Hex(text: string): string {
   return createHash('sha256').update(text).digest('hex');
+}
+
+/** Content-addressed evidence store: <baseDir>/<sha256>. */
+export function createFileReceiptStore(runtime: Runtime, baseDir: string): ReceiptStore {
+  return {
+    async put(text: string): Promise<StoredOutput> {
+      const hash = sha256Hex(text);
+      const ref = `${baseDir}/${hash}`;
+      await runtime.fs.mkdir(baseDir, { recursive: true });
+      if (!(await runtime.fs.exists(ref))) await runtime.fs.writeFile(ref, text);
+      return { hash, ref };
+    },
+    async get(ref: string): Promise<string | undefined> {
+      try {
+        return await runtime.fs.readFile(ref);
+      } catch {
+        return undefined;
+      }
+    },
+  };
 }
 
 export function nodeRuntime(overrides?: { logger?: Logger }): Runtime {

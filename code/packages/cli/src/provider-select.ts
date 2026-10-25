@@ -1,4 +1,5 @@
-import { SyaoError, nodeRuntime, type Provider } from '@syaocode/core';
+import { SyaoError, type Provider } from '@syaocode/core';
+import { nodeRuntime } from '@syaocode/node';
 import { createAnthropicProvider, createOpenAICompatibleProvider } from '@syaocode/providers';
 import { MockProvider } from '@syaocode/testing';
 import type { Message } from '@syaocode/core';

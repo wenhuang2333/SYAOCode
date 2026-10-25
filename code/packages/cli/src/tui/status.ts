@@ -6,7 +6,7 @@
  * formatStatusLine 渲染为适配终端宽度的一行。
  */
 
-import type { AgentEvent } from '@syaocode/core';
+import type { AgentEventBody } from '@syaocode/core';
 import { t } from '../i18n/index.js';
 import { displayWidth } from './width.js';
 
@@ -71,7 +71,7 @@ export class StatusTracker {
   }
 
   /** nowMs 用 Date.now()（生产）或注入（测试） */
-  onEvent(ev: AgentEvent, nowMs: number): void {
+  onEvent(ev: AgentEventBody, nowMs: number): void {
     switch (ev.type) {
       case 'turn.start':
         // 每轮用户消息的 agent.run 都从 turn=1 开始（工具循环才会 2、3…）：

@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { noopLogger, type Runtime } from '../src';
 
-/** Minimal in-test runtime: memory fs, no shell/http. Keeps core tests free
- * of any @syaocode dependency (the kernel depends on nothing). */
-export function fakeRuntime(seed: Record<string, string> = {}): Runtime & { files: Map<string, string> } {
+/** Minimal in-test runtime: memory fs, optional scripted shell, no network. */
+export function fakeRuntime(
+  seed: Record<string, string> = {},
+  opts: {
+    env?: Record<string, string>;
+    shell?: (command: string) => { code: number; stdout?: string; stderr?: string };
+  } = {},
+): Runtime & { files: Map<string, string> } {
   const files = new Map(Object.entries(seed));
   const norm = (p: string) => (p.startsWith('/') ? p.replace(/\/+/g, '/') : `/${p}`);
   const ids = (() => {
@@ -21,6 +26,9 @@ export function fakeRuntime(seed: Record<string, string> = {}): Runtime & { file
       writeFile: async (p, data) => {
         files.set(norm(p), data);
       },
+      appendFile: async (p, data) => {
+        files.set(norm(p), `${files.get(norm(p)) ?? ''}${data}`);
+      },
       stat: async (p) => {
         if (!files.has(norm(p))) throw new Error(`ENOENT ${p}`);
         return { size: (files.get(norm(p)) ?? '').length, mtimeMs: 1, isFile: true, isDirectory: false };
@@ -28,14 +36,35 @@ export function fakeRuntime(seed: Record<string, string> = {}): Runtime & { file
       readdir: async () => [],
       realpath: async (p) => norm(p),
       mkdir: async () => {},
+      rmdir: async () => {},
       unlink: async (p) => {
         files.delete(norm(p));
       },
       exists: async (p) => files.has(norm(p)),
     },
     shell: {
-      spawn: () => {
-        throw new Error('shell not available in fakeRuntime');
+      spawn: (command, args) => {
+        if (opts.shell === undefined) throw new Error('shell not available in fakeRuntime');
+        const script = command === '/bin/sh' ? (args[args.length - 1] ?? '') : command;
+        const result = opts.shell(script);
+        let resolve!: (code: number) => void;
+        const exited = new Promise<number>((r) => {
+          resolve = r;
+        });
+        queueMicrotask(() => resolve(result.code));
+        const stream = (text: string): AsyncIterable<string> =>
+          (async function* () {
+            for (const line of text.split('\n')) if (line !== '') yield line;
+          })();
+        return {
+          pid: 1,
+          stdout: stream(result.stdout ?? ''),
+          stderr: stream(result.stderr ?? ''),
+          exited,
+          kill() {
+            resolve(137);
+          },
+        };
       },
     },
     http: {
@@ -43,7 +72,7 @@ export function fakeRuntime(seed: Record<string, string> = {}): Runtime & { file
     },
     clock: { now: () => 1_000, sleep: async () => {} },
     logger: noopLogger,
-    env: { get: () => undefined },
+    env: { get: (name) => opts.env?.[name] },
     ids,
   };
 }

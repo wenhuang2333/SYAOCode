@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { parseArgs, resolvePermissionTier, UsageError } from '../src/args';
 import { runDoctor } from '../src/doctor';
-import { exitCodeFor, EXIT_LIMIT, EXIT_OK, EXIT_PERM } from '../src/run';
+import {
+  exitCodeFor,
+  EXIT_LIMIT,
+  EXIT_OK,
+  EXIT_PERM,
+  EXIT_UNVERIFIED,
+  EXIT_VERIFICATION_FAILED,
+} from '../src/run';
+import { loadCliConfig } from '../src/effective-config';
+import { nodeRuntime } from '@syaocode/node';
 import type { RunSummary } from '@syaocode/core';
 
 function summary(over: Partial<RunSummary>): RunSummary {
@@ -10,10 +22,58 @@ function summary(over: Partial<RunSummary>): RunSummary {
     endReason: 'completed',
     turns: 1,
     totalUsage: { inputTokens: 0, outputTokens: 0 },
+    permissionDenied: false,
+    verdict: 'not_run',
+    claims: [],
+    toolReceipts: [],
     finalText: '',
     ...over,
   };
 }
+
+describe('exitCodeFor (BR-042)', () => {
+  it('maps limits, permission denials and verification outcomes', () => {
+    expect(exitCodeFor(summary({}))).toBe(EXIT_OK);
+    expect(exitCodeFor(summary({ permissionDenied: true }))).toBe(EXIT_PERM);
+    expect(exitCodeFor(summary({ endReason: 'max_turns' }))).toBe(EXIT_LIMIT);
+    expect(exitCodeFor(summary({ endReason: 'unverified', verdict: 'unverified' }))).toBe(EXIT_UNVERIFIED);
+    expect(exitCodeFor(summary({ endReason: 'verification_failed', verdict: 'failed' }))).toBe(EXIT_VERIFICATION_FAILED);
+  });
+});
+
+describe('effective config (report E2/E3/E4)', () => {
+  it('layers CLI default < project < env < flags', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-config-'));
+    const project = path.join(tmp, 'project');
+    fs.mkdirSync(path.join(project, '.syaocode'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.syaocode', 'config.json'), JSON.stringify({ permissionMode: 'acceptEdits' }));
+    const oldHome = process.env.HOME;
+    const oldMode = process.env.SYAO_PERMISSION_MODE;
+    process.env.HOME = tmp;
+    delete process.env.SYAO_PERMISSION_MODE;
+    try {
+      const base = await loadCliConfig({ cwd: project, allowedTools: [], disallowedTools: [] }, nodeRuntime());
+      expect(base.permissionMode).toBe('acceptEdits'); // project beats CLI default
+
+      process.env.SYAO_PERMISSION_MODE = 'plan';
+      const env = await loadCliConfig({ cwd: project, allowedTools: [], disallowedTools: [] }, nodeRuntime());
+      expect(env.permissionMode).toBe('plan'); // env beats project
+
+      const flag = await loadCliConfig(
+        { cwd: project, si: true, allowedTools: ['read'], disallowedTools: [] },
+        nodeRuntime(),
+      );
+      expect(flag.permissionMode).toBe('bypass'); // flag beats env/project
+      expect(flag.rules.some((r) => r.effect === 'allow' && r.tool === 'read')).toBe(true);
+    } finally {
+      if (oldHome === undefined) delete process.env.HOME;
+      else process.env.HOME = oldHome;
+      if (oldMode === undefined) delete process.env.SYAO_PERMISSION_MODE;
+      else process.env.SYAO_PERMISSION_MODE = oldMode;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('parseArgs (FR-135 subset)', () => {
   it('parses -p with prompt and output format', () => {

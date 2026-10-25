@@ -1,5 +1,6 @@
 import { afterAll } from 'vitest';
-import { nodeRuntime, type Message, type Provider } from '@syaocode/core';
+import { type Message, type Provider } from '@syaocode/core';
+import { nodeRuntime } from '@syaocode/node';
 import { defineProviderContract } from '@syaocode/testing/contract';
 import { createAnthropicProvider } from '../src/anthropic';
 import { createOpenAICompatibleProvider } from '../src/openai-compatible';

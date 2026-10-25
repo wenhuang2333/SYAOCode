@@ -10,7 +10,7 @@
  * - 网络重试回调 = 红色 + 重试文案；成功事件（delta/usage/tool.result）清除
  */
 
-import type { AgentEvent } from '@syaocode/core';
+import type { AgentEventBody } from '@syaocode/core';
 import { t, type MsgKey } from '../i18n/index.js';
 import { spinnerFrame } from './flight.js';
 import { asciiMode } from './terminal.js';
@@ -78,7 +78,7 @@ export class PhaseTracker {
     this.activity = { kind: 'retry', attempt: info.attempt, seconds: Math.max(1, Math.ceil(info.delayMs / 1000)) };
   }
 
-  onEvent(ev: AgentEvent): void {
+  onEvent(ev: AgentEventBody): void {
     switch (ev.type) {
       case 'tool.start': {
         this.hasTool = true;

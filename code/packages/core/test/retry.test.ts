@@ -40,6 +40,35 @@ async function drain(gen: AsyncIterable<ModelStreamEvent>): Promise<void> {
   }
 }
 
+describe('withRetry replay safety (report L2)', () => {
+  it('does not replay a stream that already emitted text deltas', async () => {
+    let calls = 0;
+    const provider: Provider = {
+      id: 'partial',
+      capabilities: () => ({
+        contextWindow: 1000,
+        maxOutputTokens: 100,
+        parallelToolCalls: false,
+        thinking: 'none',
+        promptCache: 'none',
+        vision: false,
+        structuredOutput: true,
+      }),
+      async *stream(): AsyncGenerator<ModelStreamEvent> {
+        calls += 1;
+        yield { type: 'block_start', index: 0, block: { type: 'text', text: '' } };
+        yield { type: 'block_delta', index: 0, delta: 'partial answer' };
+        throw new SyaoError({ code: 'SY-PRV-009' });
+      },
+    };
+    const wrapped = withRetry(provider, fakeRuntime(), { maxAttempts: 5, baseDelayMs: 1, maxDelayMs: 1 });
+    await expect(
+      drain(wrapped.stream({ model: 'm', messages: [userText('hi', 'u1')] }, { signal: new AbortController().signal })),
+    ).rejects.toSatisfy((e) => SyaoError.is(e) && e.code === 'SY-PRV-009');
+    expect(calls).toBe(1);
+  });
+});
+
 describe('withRetry onRetry hook', () => {
   it('每次即将重试都回调（attempt 从 1 递增、带错误码与退避时长）', async () => {
     const provider = flakyProvider(2);

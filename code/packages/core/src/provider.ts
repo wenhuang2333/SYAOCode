@@ -120,9 +120,10 @@ export function withRetry(
         } catch (e) {
           if (opts.signal.aborted) throw e;
           const wrapped = SyaoError.is(e) ? e : mapUnknown(e);
-          // A stream that already emitted content (and especially committed
-          // tool_use) cannot be safely replayed (BR-014).
-          const replayUnsafe = emittedDelta && committedToolUse;
+          // A stream that already emitted any content (text/thinking deltas or
+          // a committed tool_use) cannot be safely replayed (BR-014). Replaying
+          // a text-only response duplicates output and bills the user twice.
+          const replayUnsafe = emittedDelta || committedToolUse;
           const canRetry =
             wrapped.retryable && attempt + 1 < policy.maxAttempts && !replayUnsafe && !opts.signal.aborted;
           if (!canRetry) throw wrapped;

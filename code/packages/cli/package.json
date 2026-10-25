@@ -1,6 +1,6 @@
 {
   "name": "syaocode",
-  "version": "0.1.0",
+  "version": "0.2.0-dev",
   "description": "SYAOCode reference CLI (syao). v0.1: non-interactive -p/exec, doctor, config.",
   "type": "module",
   "license": "Apache-2.0",
@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@syaocode/core": "workspace:*",
+    "@syaocode/node": "workspace:*",
     "@syaocode/providers": "workspace:*",
     "@syaocode/testing": "workspace:*",
     "@syaocode/tools": "workspace:*",

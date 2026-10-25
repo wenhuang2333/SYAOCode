@@ -1,12 +1,22 @@
 import type { Runtime } from './runtime/index.js';
-import type { ToolRegistry } from './tool.js';
+import type { ToolRegistry, ToolResultMeta } from './tool.js';
 import type { PermissionEngine } from './permissions.js';
 import type { ToolCall, ToolResultBlock, ToolResultContent } from './types.js';
 import { SyaoError, ToolError } from './errors/syao-error.js';
+import { redactToolResultContent, type Redactor } from './redact.js';
+import {
+  parseTestStats,
+  receiptInputHash,
+  type ReceiptStore,
+  type ToolReceipt,
+} from './evidence.js';
+import { contentHash } from './hash.js';
 
 /**
  * Tool execution pipeline (DD-4, BR-025):
- * validate → permission → execute(timeout, abort) → truncate.
+ * validate → permission → execute(timeout, abort) → redact → truncate.
+ * Redaction happens *before* the result enters history or the event stream,
+ * so a secret returned by a tool never reaches the provider (report S1).
  * Every failure becomes a structured tool_result so the history stays legal
  * for any provider (BR-009). Nothing here throws outward.
  */
@@ -18,6 +28,7 @@ export interface PipelineEvents {
   onToolStart?: (callId: string, name: string, input: unknown) => void;
   onToolProgress?: (callId: string, note: string) => void;
   onToolResult?: (callId: string, name: string, content: ToolResultContent[], isError: boolean, durationMs: number) => void;
+  onToolReceipt?: (receipt: ToolReceipt) => void;
   onPermissionRequest?: (call: ToolCall, reason: string) => Promise<'allow' | 'deny'>;
 }
 
@@ -26,24 +37,91 @@ export async function executeToolCall(
   registry: ToolRegistry,
   engine: PermissionEngine,
   runtime: Runtime,
-  opts: { cwd: string; signal: AbortSignal; events?: PipelineEvents },
+  opts: {
+    cwd: string;
+    signal: AbortSignal;
+    events?: PipelineEvents;
+    redactor?: Redactor;
+    receipts?: ReceiptStore;
+  },
 ): Promise<ToolResultBlock> {
   const started = runtime.clock.now();
+  const sanitize = (content: ToolResultContent[]): ToolResultContent[] =>
+    redactToolResultContent(content, opts.redactor);
+  const progress = (note: string): void => {
+    opts.events?.onToolProgress?.(call.id, opts.redactor?.redact(note).text ?? note);
+  };
+
+  const textOf = (content: ToolResultContent[]): string =>
+    content.filter((c): c is Extract<ToolResultContent, { type: 'text' }> => c.type === 'text').map((c) => c.text).join('\n');
+
+  const finish = async (
+    toolName: string,
+    content: ToolResultContent[],
+    isError: boolean,
+    meta: ToolResultMeta = {},
+    truncated = false,
+  ): Promise<ToolResultBlock> => {
+    const fullText = textOf(content);
+    let outputHash = contentHash(fullText);
+    let outputRef: string | undefined;
+    if (opts.receipts !== undefined) {
+      try {
+        const stored = await opts.receipts.put(fullText);
+        outputHash = stored.hash;
+        outputRef = stored.ref;
+      } catch {
+        /* evidence storage is best-effort; never fail the tool call for it */
+      }
+    }
+    const command = meta.command;
+    const testStats = meta.testStats ?? (command !== undefined ? parseTestStats(fullText) : undefined);
+    const receipt: ToolReceipt = {
+      callId: call.id,
+      tool: toolName,
+      timestamp: started,
+      durationMs: runtime.clock.now() - started,
+      inputHash: receiptInputHash(call.input ?? {}),
+      outputHash,
+      ...(outputRef !== undefined ? { outputRef } : {}),
+      outputChars: fullText.length,
+      truncated,
+      isError,
+      ...(meta.exitCode !== undefined ? { exitCode: meta.exitCode } : {}),
+      ...(command !== undefined ? { command } : {}),
+      ...(meta.paths !== undefined ? { paths: meta.paths } : {}),
+      ...(testStats !== undefined ? { testStats } : {}),
+      trust: meta.trust ?? 'workspace',
+      sandbox: 'none',
+    };
+    opts.events?.onToolReceipt?.(receipt);
+    const block: ToolResultBlock = {
+      type: 'tool_result',
+      toolUseId: call.id,
+      content,
+      ...(isError ? { isError: true } : {}),
+    };
+    opts.events?.onToolResult?.(call.id, toolName, content, isError, receipt.durationMs);
+    return block;
+  };
 
   const fail = (code: string, modelMessage: string, details?: Record<string, unknown>): ToolResultBlock => ({
     type: 'tool_result',
     toolUseId: call.id,
-    content: [{ type: 'text', text: modelMessage }],
+    content: sanitize([{ type: 'text', text: modelMessage }]),
     isError: true,
   });
+  void fail;
 
   // ── validate: tool exists ──
   const tool = registry.get(call.name);
   if (tool === undefined) {
     const available = registry.list().map((t) => t.name).join(', ');
-    const r = fail('SY-TOOL-001', `Tool '${call.name}' is not registered. Available tools: ${available}.`);
-    opts.events?.onToolResult?.(call.id, call.name, r.content, true, runtime.clock.now() - started);
-    return r;
+    return finish(
+      call.name,
+      sanitize([{ type: 'text', text: `Tool '${call.name}' is not registered. Available tools: ${available}.` }]),
+      true,
+    );
   }
 
   // ── validate: args against Zod schema ──
@@ -52,22 +130,21 @@ export async function executeToolCall(
     const issues = parsed.error.issues
       .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
       .join('; ');
-    const r = fail('SY-TOOL-002', `Invalid arguments for '${call.name}'. ${issues}`);
-    opts.events?.onToolResult?.(call.id, call.name, r.content, true, runtime.clock.now() - started);
-    return r;
+    return finish(
+      call.name,
+      sanitize([{ type: 'text', text: `Invalid arguments for '${call.name}'. ${issues}` }]),
+      true,
+    );
   }
 
   // ── permission gate (the only authority — ADR-04) ──
-  const gate = await engine.check(tool, parsed.data);
+  const gate = await engine.check(tool, parsed.data, call.id);
   if (gate.outcome === 'deny') {
-    const r: ToolResultBlock = {
-      type: 'tool_result',
-      toolUseId: call.id,
-      content: [{ type: 'text', text: gate.error.modelMessage ?? gate.error.message }],
-      isError: true,
-    };
-    opts.events?.onToolResult?.(call.id, call.name, r.content, true, runtime.clock.now() - started);
-    return r;
+    return finish(
+      call.name,
+      sanitize([{ type: 'text', text: gate.error.modelMessage ?? gate.error.message }]),
+      true,
+    );
   }
 
   // ── execute with timeout + abort ──
@@ -112,16 +189,16 @@ export async function executeToolCall(
       runtime,
       cwd: opts.cwd,
       signal: timeoutSignal.signal,
-      progress: (note: string) => opts.events?.onToolProgress?.(call.id, note),
+      progress,
     };
     const result = tool.execute(parsed.data as never, ctx);
-    const runIt = async (): Promise<{ content: ToolResultContent[]; isError?: boolean }> => {
+    const runIt = async (): Promise<{ content: ToolResultContent[]; isError?: boolean; meta?: ToolResultMeta }> => {
       if (isAsyncGenerator(result)) {
         for (;;) {
           const n = await result.next();
           if (n.done) return n.value;
           if (typeof n.value?.note === 'string') {
-            opts.events?.onToolProgress?.(call.id, n.value.note);
+            progress(n.value.note);
           }
         }
       }
@@ -130,9 +207,7 @@ export async function executeToolCall(
     output = await Promise.race([runIt(), guard]);
   } catch (e) {
     const err = SyaoError.is(e) ? e : new ToolError({ code: 'SY-TOOL-003', message: String(e), cause: e, toolName: call.name });
-    const r = fail(err.code, err.modelMessage ?? err.message, err.details);
-    opts.events?.onToolResult?.(call.id, call.name, r.content, true, runtime.clock.now() - started);
-    return r;
+    return finish(call.name, sanitize([{ type: 'text', text: err.modelMessage ?? err.message }]), true);
   } finally {
     clearTimeout(timeoutHandle);
     opts.signal.removeEventListener('abort', onOuterAbort);
@@ -142,14 +217,24 @@ export async function executeToolCall(
     output = { content: [{ type: 'text' as const, text: '' }] };
   }
 
-  // ── truncate (BR-012): keep head 40% + tail 60% of budget ──
-  const { content, truncated } = truncateOutput(output.content);
+  // ── redact → truncate (BR-012 / S1): keep head 40% + tail 60% of budget ──
+  const redacted = sanitize(output.content);
+  const { content, truncated } = truncateOutput(redacted);
   const isError = output.isError === true;
   if (truncated) {
     runtime.logger.log('warn', 'tool result truncated', { tool: call.name, code: 'SY-TOOL-005' });
   }
-  opts.events?.onToolResult?.(call.id, tool.name, content, isError, runtime.clock.now() - started);
-  return { type: 'tool_result', toolUseId: call.id, content, ...(isError ? { isError: true } : {}) };
+  const subject = tool.permissionSubject?.(parsed.data as never);
+  const meta: ToolResultMeta = {
+    ...(output.meta ?? {}),
+    ...(subject?.command !== undefined && output.meta?.command === undefined ? { command: subject.command } : {}),
+    ...(subject?.path !== undefined
+      ? { paths: output.meta?.paths ?? [subject.path] }
+      : output.meta?.paths !== undefined
+        ? { paths: output.meta.paths }
+        : {}),
+  };
+  return finish(tool.name, content, isError, meta, truncated);
 }
 
 function isAsyncGenerator(

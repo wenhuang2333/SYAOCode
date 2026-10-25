@@ -1,10 +1,9 @@
 import type { Runtime } from './runtime/index.js';
-import { nodeRuntime } from './runtime/node.js';
-import { EventBus, type AgentEvent, type EndReason, type PermissionMode } from './events.js';
+import { EventBus, type AgentEvent, type AgentEventBody, type EndReason, type PermissionMode } from './events.js';
 import type { Provider, ToolDefinition } from './provider.js';
 import { DEFAULT_RETRY_POLICY, withRetry, type RetryPolicy } from './provider.js';
 import { ToolRegistry, type Tool } from './tool.js';
-import { PermissionEngine, type PermissionHandler, type PermissionRule } from './permissions.js';
+import { PermissionEngine, classifyCommand, type PermissionHandler, type PermissionRule } from './permissions.js';
 import { executeToolCall } from './pipeline.js';
 import type { ContextConfig } from './context.js';
 import { assembleSystemPrompt, estimateMessagesTokens } from './context.js';
@@ -12,6 +11,14 @@ import type { SessionStore } from './session/index.js';
 import type { ContentBlock, Message, ToolCall, ToolResultBlock, Usage } from './types.js';
 import { toolCallsOf } from './types.js';
 import { SyaoError } from './errors/syao-error.js';
+import { RedactingLogger, RedactingSessionStore, type Redactor } from './redact.js';
+import {
+  type ReceiptStore,
+  type ToolReceipt,
+  type VerificationReport,
+} from './evidence.js';
+import { lintClaims, verdictOf, type ClaimCheck, type Verdict } from './claims.js';
+import { discoverVerification, runVerification, type DiscoveredCommand, type VerificationOptions } from './verify.js';
 
 /**
  * createAgent + run loop (DD-2). The loop owns nothing global: every state
@@ -21,6 +28,10 @@ import { SyaoError } from './errors/syao-error.js';
 export interface Limits {
   maxTurns: number;
   maxBudgetUsd: number | undefined;
+  /** Price-independent hard stop: input + output + cache tokens (report L8/L3). */
+  maxTotalTokens: number | undefined;
+  /** Price-independent wall-clock stop; `timeoutMs` is kept as an alias. */
+  maxWallClockMs: number | undefined;
   timeoutMs: number | undefined;
 }
 
@@ -36,8 +47,15 @@ export interface AgentConfig {
   context?: ContextConfig;
   session?: SessionStore;
   limits?: Partial<Limits>;
-  runtime?: Runtime;
+  /** Required: the kernel never constructs a host runtime (report E1). */
+  runtime: Runtime;
   retryPolicy?: Partial<RetryPolicy>;
+  /** Redacts secrets before tool results reach history/events and before session writes. */
+  redactor?: Redactor;
+  /** Content-addressed receipts for tool outputs (Evidence MVP). */
+  receipts?: ReceiptStore;
+  /** Automatic verification after a completed run (report v0.2.5). */
+  verification?: VerificationOptions;
   /** 工具开始执行的即时回调：事件流仍按批次有序（tool.start 在批次结束后才 yield），
    *  UI 可用这个回调实时更新"正在做什么"（阶段行）。 */
   onToolStart?: (info: { callId: string; name: string; input: unknown }) => void;
@@ -56,10 +74,23 @@ export interface RunSummary {
   turns: number;
   totalUsage: Usage;
   costUsd?: number;
+  permissionDenied: boolean;
   finalText: string;
+  verdict: Verdict;
+  claims: ClaimCheck[];
+  toolReceipts: ToolReceipt[];
+  verification?: VerificationReport;
+  /** Set when verification was intentionally skipped (untrusted or dangerous command). */
+  verificationNote?: string;
 }
 
-const DEFAULT_LIMITS: Limits = { maxTurns: 100, maxBudgetUsd: undefined, timeoutMs: undefined };
+const DEFAULT_LIMITS: Limits = {
+  maxTurns: 100,
+  maxBudgetUsd: undefined,
+  maxTotalTokens: undefined,
+  maxWallClockMs: undefined,
+  timeoutMs: undefined,
+};
 
 export interface Agent {
   readonly sessionId: string;
@@ -73,28 +104,59 @@ export interface Agent {
 }
 
 export function createAgent(config: AgentConfig): Agent {
-  const runtime: Runtime = config.runtime ?? nodeRuntime();
+  const baseRuntime: Runtime = config.runtime;
+  const runtime: Runtime =
+    config.redactor !== undefined
+      ? { ...baseRuntime, logger: new RedactingLogger(baseRuntime.logger, config.redactor) }
+      : baseRuntime;
+  const session: SessionStore | undefined =
+    config.session !== undefined && config.redactor !== undefined
+      ? new RedactingSessionStore(config.session, config.redactor)
+      : config.session;
   const cwd = config.cwd ?? process.cwd();
   const registry = new ToolRegistry();
   for (const tool of config.tools ?? []) registry.register(tool);
 
+  const limits: Limits = { ...DEFAULT_LIMITS, ...config.limits };
+  const sessionId = runtime.ids.next('ses');
+  const history: Message[] = [];
+  const bus = new EventBus();
+
+  /** Set for the duration of one run(); approval callbacks use it to stamp envelopes. */
+  let activeRun:
+    | {
+        emit: (body: AgentEventBody, meta?: { causationId?: string; turnId?: string }, callId?: string) => void;
+        notePermission: (decision: 'allow' | 'deny') => void;
+      }
+    | undefined;
+  const permissionCalls = new Map<string, string>();
+
   const extraRoots = (config.extraDirs ?? []).map((d) => (d.startsWith('/') ? d : `${cwd}/${d}`));
-  const requestId = runtime.ids.next('perm');
   const engine = new PermissionEngine({
     mode: config.permissionMode ?? 'default',
     rules: config.rules ?? [],
     workspaceRoots: [cwd, ...extraRoots],
     runtime,
     ...(config.permissionHandler !== undefined ? { onRequest: config.permissionHandler } : {}),
+    onRequestStart: (req) => {
+      if (req.callId !== undefined) permissionCalls.set(req.id, req.callId);
+      activeRun?.emit(
+        { type: 'permission.request', id: req.id, request: req },
+        { causationId: req.id },
+        req.callId,
+      );
+    },
     onResult: (id, decision, by) => {
-      bus.emit({ type: 'permission.result', id, decision, by });
+      const callId = permissionCalls.get(id);
+      permissionCalls.delete(id);
+      activeRun?.emit(
+        { type: 'permission.result', id, decision, by },
+        { causationId: id },
+        callId,
+      );
+      activeRun?.notePermission(decision);
     },
   });
-
-  const limits: Limits = { ...DEFAULT_LIMITS, ...config.limits };
-  const sessionId = runtime.ids.next('ses');
-  const history: Message[] = [];
-  const bus = new EventBus();
 
   async function* run(input: string | Message[], opts: RunOptions = {}): AsyncGenerator<AgentEvent, RunSummary> {
     const signal = opts.signal ?? new AbortController().signal;
@@ -111,10 +173,51 @@ export function createAgent(config: AgentConfig): Agent {
     const capabilities = provider.capabilities(config.model);
     const pricing = capabilities.pricing;
 
+    const runId = runtime.ids.next('run');
+    let seq = 0;
+    let currentTurnId: string | undefined;
+    let permissionDenied = false;
+    const pendingByCall = new Map<string, AgentEvent[]>();
+    const buffer = (callId: string, event: AgentEvent): void => {
+      const list = pendingByCall.get(callId) ?? [];
+      list.push(event);
+      pendingByCall.set(callId, list);
+      bus.emit(event);
+    };
+    const stamp = (
+      body: AgentEventBody,
+      meta: { causationId?: string; turnId?: string } = {},
+    ): AgentEvent => {
+      seq += 1;
+      const turnId = meta.turnId ?? currentTurnId;
+      return {
+        ...body,
+        seq,
+        runId,
+        ...(turnId !== undefined ? { turnId } : {}),
+        ...(meta.causationId !== undefined ? { causationId: meta.causationId } : {}),
+      } as AgentEvent;
+    };
+    const out = (body: AgentEventBody, meta: { causationId?: string; turnId?: string } = {}): AgentEvent => {
+      const event = stamp(body, meta);
+      bus.emit(event);
+      return event;
+    };
+    activeRun = {
+      emit: (body, meta = {}, callId) => {
+        const event = stamp(body, meta);
+        if (callId !== undefined) buffer(callId, event);
+        else bus.emit(event);
+      },
+      notePermission: (decision) => {
+        if (decision === 'deny') permissionDenied = true;
+      },
+    };
+
     // ── resume ──
     let resumedSessionId = sessionId;
-    if (opts.sessionId !== undefined && config.session !== undefined) {
-      const entries = await config.session.load(opts.sessionId);
+    if (opts.sessionId !== undefined && session !== undefined) {
+      const entries = await session.load(opts.sessionId);
       for (const e of entries) {
         if (e.type === 'message') {
           const m = e.data as Message;
@@ -130,43 +233,96 @@ export function createAgent(config: AgentConfig): Agent {
         ? [{ id: runtime.ids.next('msg'), role: 'user', content: [{ type: 'text', text: input }], meta: { createdAt: runtime.clock.now() } }]
         : input;
     history.push(...seedMessages);
-    await config.session?.append(resumedSessionId, seedMessages.map(messageEntry(resumedSessionId, runtime)));
+    await session?.append(resumedSessionId, seedMessages.map(messageEntry(resumedSessionId, runtime)));
 
     const startedAt = runtime.clock.now();
     const totalUsage: Usage = { inputTokens: 0, outputTokens: 0 };
     let costUsd = 0;
-    let budgetWarned = false;
+    const budgetWarned = new Set<'cost' | 'tokens' | 'turns'>();
     let turns = 0;
     let endReason: EndReason = 'completed';
     let finalText = '';
+    const runReceipts: ToolReceipt[] = [];
+    let verificationCommands: DiscoveredCommand[] | undefined;
+    let verificationNote: string | undefined;
+    let verificationBlocked = false;
+    let baselineResults: VerificationReport['baseline'];
 
-    bus.emit({ type: 'session.start', sessionId: resumedSessionId, permissionMode: engine.mode });
+    yield out({ type: 'session.start', sessionId: resumedSessionId, permissionMode: engine.mode });
+
+    if (config.verification?.enabled === true) {
+      const discovered =
+        config.verification.commands !== undefined
+          ? config.verification.commands.map((command) => ({ command, source: 'config' as const, scope: 'full' as const }))
+          : await discoverVerification(runtime, cwd);
+      // Repository-controlled discovery is not executable until a human pins
+      // it with `syao verify init` (source=config) or the embedder opts in.
+      const eligible = discovered.filter(
+        (c) => c.source === 'config' || config.verification?.allowDiscovered === true,
+      );
+      const dangerous = eligible.filter((c) => classifyCommand(c.command) === 'dangerous');
+      verificationCommands = eligible.filter((c) => classifyCommand(c.command) !== 'dangerous');
+      verificationBlocked = dangerous.length > 0;
+      if (dangerous.length > 0) {
+        verificationNote = `verification refused dangerous command(s): ${dangerous.map((c) => c.command).join('; ')}`;
+      } else if (verificationCommands.length === 0 && discovered.length > 0) {
+        verificationNote = 'verification not run: repository-discovered commands are untrusted; run `syao verify init` to confirm them once';
+      }
+      if (config.verification.baseline === true && verificationCommands.length > 0) {
+        baselineResults = [];
+        for (let i = 0; i < verificationCommands.length; i += 1) {
+          const cmd = verificationCommands[i]!;
+          yield out({ type: 'verification.start', command: cmd.command, index: i, total: verificationCommands.length }, { turnId: 'baseline' });
+          const [result] = await runVerification(runtime, cwd, [cmd], config.receipts, {
+            ...(config.verification.timeoutMs !== undefined ? { timeoutMs: config.verification.timeoutMs } : {}),
+            ...(config.redactor !== undefined ? { redactor: config.redactor } : {}),
+            signal,
+          });
+          if (result !== undefined) {
+            baselineResults.push(result);
+            yield out({ type: 'verification.result', result }, { turnId: 'baseline' });
+          }
+        }
+      }
+    }
 
     // repeated-failure tracking (BR-011)
     const failureStreaks = new Map<string, number>();
     const failKey = (c: ToolCall) => `${c.name}::${stableStringify(c.input)}`;
 
     try {
-      loop: for (turns = 1; ; turns += 1) {
+      loop: for (;;) {
         // ── limit checks (BR-010) ──
-        if (turns > effectiveLimits.maxTurns) {
+        if (turns >= effectiveLimits.maxTurns) {
           endReason = 'max_turns';
-          yield { type: 'error', error: err('SY-LOOP-001', `maxTurns (${effectiveLimits.maxTurns}) reached`), fatal: false };
+          yield out({ type: 'error', error: err('SY-LOOP-001', `maxTurns (${effectiveLimits.maxTurns}) reached`), fatal: false });
           break loop;
         }
-        if (effectiveLimits.timeoutMs !== undefined && runtime.clock.now() - startedAt > effectiveLimits.timeoutMs) {
+        const wallClockLimit = effectiveLimits.maxWallClockMs ?? effectiveLimits.timeoutMs;
+        if (wallClockLimit !== undefined && runtime.clock.now() - startedAt > wallClockLimit) {
           endReason = 'timeout';
-          yield { type: 'error', error: err('SY-LOOP-005', 'run timeout exceeded'), fatal: false };
+          yield out({ type: 'error', error: err('SY-LOOP-005', 'run timeout exceeded'), fatal: false });
           break loop;
         }
+        const usedTokens = totalTokensOf(totalUsage);
         if (effectiveLimits.maxBudgetUsd !== undefined && costUsd >= effectiveLimits.maxBudgetUsd) {
           endReason = 'budget_exhausted';
-          yield { type: 'error', error: err('SY-LOOP-002', `cost budget $${effectiveLimits.maxBudgetUsd} exhausted`), fatal: false };
+          yield out({ type: 'error', error: err('SY-LOOP-002', `cost budget $${effectiveLimits.maxBudgetUsd} exhausted`), fatal: false });
+          break loop;
+        }
+        if (effectiveLimits.maxTotalTokens !== undefined && usedTokens >= effectiveLimits.maxTotalTokens) {
+          endReason = 'budget_exhausted';
+          yield out({
+            type: 'error',
+            error: err('SY-LOOP-002', `token budget ${effectiveLimits.maxTotalTokens} exhausted (${usedTokens} used)`),
+            fatal: false,
+          });
           break loop;
         }
 
-        bus.emit({ type: 'turn.start', turn: turns });
-        yield { type: 'turn.start', turn: turns };
+        turns += 1;
+        currentTurnId = `turn_${turns}`;
+        yield out({ type: 'turn.start', turn: turns });
 
         // ── model call ──
         const tools: ToolDefinition[] | undefined =
@@ -195,11 +351,9 @@ export function createAgent(config: AgentConfig): Agent {
             // Forward content increments for streaming UIs (ADR-02).
             if (ev.type === 'block_delta') {
               if (blockKinds.get(ev.index) === 'thinking') {
-                bus.emit({ type: 'thinking.delta', text: ev.delta });
-                yield { type: 'thinking.delta', text: ev.delta };
+                yield out({ type: 'thinking.delta', text: ev.delta });
               } else {
-                bus.emit({ type: 'text.delta', text: ev.delta });
-                yield { type: 'text.delta', text: ev.delta };
+                yield out({ type: 'text.delta', text: ev.delta });
               }
             }
             if (ev.type === 'usage') {
@@ -214,11 +368,30 @@ export function createAgent(config: AgentConfig): Agent {
               const cost = costOf(ev.usage, pricing);
               if (cost !== undefined) {
                 costUsd += cost;
-                bus.emit({ type: 'usage', usage: ev.usage, costUsd: cost });
-                yield { type: 'usage', usage: ev.usage, costUsd: cost };
+                yield out({ type: 'usage', usage: ev.usage, costUsd: cost });
               } else {
-                bus.emit({ type: 'usage', usage: ev.usage });
-                yield { type: 'usage', usage: ev.usage };
+                yield out({ type: 'usage', usage: ev.usage });
+              }
+              // ── budget 80% warnings (BR-010) ──
+              if (
+                effectiveLimits.maxBudgetUsd !== undefined &&
+                !budgetWarned.has('cost') &&
+                costUsd / effectiveLimits.maxBudgetUsd >= 0.8
+              ) {
+                budgetWarned.add('cost');
+                yield out({ type: 'budget.warning', kind: 'cost', ratio: costUsd / effectiveLimits.maxBudgetUsd });
+              }
+              if (
+                effectiveLimits.maxTotalTokens !== undefined &&
+                !budgetWarned.has('tokens') &&
+                totalTokensOf(totalUsage) / effectiveLimits.maxTotalTokens >= 0.8
+              ) {
+                budgetWarned.add('tokens');
+                yield out({
+                  type: 'budget.warning',
+                  kind: 'tokens',
+                  ratio: totalTokensOf(totalUsage) / effectiveLimits.maxTotalTokens,
+                });
               }
             }
           }
@@ -226,35 +399,26 @@ export function createAgent(config: AgentConfig): Agent {
           const le = SyaoError.is(e) ? e : SyaoError.wrap(e);
           if (signal.aborted) {
             endReason = 'aborted';
-            yield { type: 'error', error: err('SY-LOOP-003', 'run aborted by user'), fatal: false };
+            yield out({ type: 'error', error: err('SY-LOOP-003', 'run aborted by user'), fatal: false });
             break loop;
           }
           endReason = le.fatal ? 'fatal_error' : 'aborted';
-          yield { type: 'error', error: le.toJSON(), fatal: true };
+          yield out({ type: 'error', error: le.toJSON(), fatal: true });
           break loop;
         }
 
         if (assistant === undefined) {
           endReason = 'fatal_error';
-          yield { type: 'error', error: err('SY-PRV-008', 'provider stream ended without a message'), fatal: true };
+          yield out({ type: 'error', error: err('SY-PRV-008', 'provider stream ended without a message'), fatal: true });
           break loop;
         }
 
         history.push(assistant);
-        await config.session?.append(resumedSessionId, [messageEntry(resumedSessionId, runtime)(assistant)]);
-        bus.emit({ type: 'message.complete', message: assistant, stopReason: assistantStopReason });
-        yield { type: 'message.complete', message: assistant, stopReason: assistantStopReason };
-
-        // ── budget 80% warning (BR-010) ──
-        if (
-          !budgetWarned &&
-          effectiveLimits.maxBudgetUsd !== undefined &&
-          costUsd / effectiveLimits.maxBudgetUsd >= 0.8
-        ) {
-          budgetWarned = true;
-          bus.emit({ type: 'budget.warning', kind: 'cost', ratio: costUsd / effectiveLimits.maxBudgetUsd });
-          yield { type: 'budget.warning', kind: 'cost', ratio: costUsd / effectiveLimits.maxBudgetUsd };
-        }
+        await session?.append(resumedSessionId, [messageEntry(resumedSessionId, runtime)(assistant)]);
+        yield out(
+          { type: 'message.complete', message: assistant, stopReason: assistantStopReason },
+          { causationId: assistant.id },
+        );
 
         const calls = toolCallsOf(assistant);
         if (calls.length === 0) {
@@ -267,23 +431,14 @@ export function createAgent(config: AgentConfig): Agent {
         }
 
         for (const call of calls) {
-          bus.emit({ type: 'tool.proposed', call });
-          yield { type: 'tool.proposed', call };
+          yield out({ type: 'tool.proposed', call }, { causationId: call.id });
         }
 
         // ── execute calls in batches (BR-008 / BR-009) ──
-        // Events fire from inside executeToolCall (callback context), so they
-        // are buffered per call and yielded in call order after each batch —
-        // the run() consumer sees a deterministic stream.
+        // Events fire from inside executeToolCall / the permission engine, so
+        // they are buffered per call and yielded in call order after each batch.
         const results: ToolResultBlock[] = [];
         const batches = planBatches(calls, registry);
-        const pendingByCall = new Map<string, AgentEvent[]>();
-        const buffer = (callId: string) => (ev: AgentEvent) => {
-          const list = pendingByCall.get(callId) ?? [];
-          list.push(ev);
-          pendingByCall.set(callId, list);
-          bus.emit(ev);
-        };
         for (const batch of batches) {
           if (signal.aborted) break;
           const executed = await Promise.all(
@@ -291,14 +446,30 @@ export function createAgent(config: AgentConfig): Agent {
               executeToolCall(call, registry, engine, runtime, {
                 cwd,
                 signal,
+                ...(config.redactor !== undefined ? { redactor: config.redactor } : {}),
+                ...(config.receipts !== undefined ? { receipts: config.receipts } : {}),
                 events: {
                   onToolStart: (callId, name, input) => {
                     config.onToolStart?.({ callId, name, input });
-                    buffer(callId)({ type: 'tool.start', callId, name, input });
+                    buffer(callId, stamp({ type: 'tool.start', callId, name, input }, { causationId: callId }));
                   },
-                  onToolProgress: (callId, note) => buffer(callId)({ type: 'tool.progress', callId, note }),
+                  onToolProgress: (callId, note) =>
+                    buffer(callId, stamp({ type: 'tool.progress', callId, note }, { causationId: callId })),
                   onToolResult: (callId, name, content, isError, durationMs) =>
-                    buffer(callId)({ type: 'tool.result', callId, name, content, isError, durationMs }),
+                    buffer(
+                      callId,
+                      stamp(
+                        { type: 'tool.result', callId, name, content, isError, durationMs },
+                        { causationId: callId },
+                      ),
+                    ),
+                  onToolReceipt: (receipt) => {
+                    runReceipts.push(receipt);
+                    buffer(
+                      receipt.callId,
+                      stamp({ type: 'tool.receipt', receipt }, { causationId: receipt.callId }),
+                    );
+                  },
                 },
               }),
             ),
@@ -339,10 +510,10 @@ export function createAgent(config: AgentConfig): Agent {
             }
             if (streak >= 5) {
               endReason = 'repeated_failure';
-              yield { type: 'error', error: err('SY-LOOP-004', `tool '${call.name}' failed 5 consecutive times`), fatal: false };
+              yield out({ type: 'error', error: err('SY-LOOP-004', `tool '${call.name}' failed 5 consecutive times`), fatal: false });
               const resultMessage = resultMessageOf(results, runtime, resumedSessionId);
               history.push(resultMessage);
-              await config.session?.append(resumedSessionId, [messageEntry(resumedSessionId, runtime)(resultMessage)]);
+              await session?.append(resumedSessionId, [messageEntry(resumedSessionId, runtime)(resultMessage)]);
               break loop;
             }
           } else {
@@ -355,23 +526,73 @@ export function createAgent(config: AgentConfig): Agent {
 
         const resultMessage = resultMessageOf(results, runtime, resumedSessionId);
         history.push(resultMessage);
-        await config.session?.append(resumedSessionId, [messageEntry(resumedSessionId, runtime)(resultMessage)]);
+        await session?.append(resumedSessionId, [messageEntry(resumedSessionId, runtime)(resultMessage)]);
 
-        bus.emit({ type: 'turn.end', turn: turns });
-        yield { type: 'turn.end', turn: turns };
+        yield out({ type: 'turn.end', turn: turns });
+        currentTurnId = undefined;
       }
     } finally {
-      bus.emit({ type: 'session.end', reason: endReason });
-      bus.end();
+      activeRun = undefined;
     }
+
+    let claims: ClaimCheck[] = lintClaims(finalText, runReceipts, undefined);
+    let verdict: Verdict = 'not_run';
+    let verificationReport: VerificationReport | undefined;
+    if (config.verification?.enabled === true && verificationCommands !== undefined) {
+      if (verificationCommands.length === 0) {
+        // Discovery found nothing to run: report "not run" rather than a
+        // misleading pass or a hard failure.
+        claims = lintClaims(finalText, runReceipts, undefined);
+      } else {
+        const results = [];
+        for (let i = 0; i < verificationCommands.length; i += 1) {
+          const cmd = verificationCommands[i]!;
+          yield out({ type: 'verification.start', command: cmd.command, index: i, total: verificationCommands.length });
+          const [result] = await runVerification(runtime, cwd, [cmd], config.receipts, {
+            ...(config.verification.timeoutMs !== undefined ? { timeoutMs: config.verification.timeoutMs } : {}),
+            ...(config.redactor !== undefined ? { redactor: config.redactor } : {}),
+            signal,
+          });
+          if (result !== undefined) {
+            results.push(result);
+            yield out({ type: 'verification.result', result });
+          }
+        }
+        verificationReport = {
+          commands: verificationCommands.length,
+          results,
+          ...(baselineResults !== undefined ? { baseline: baselineResults } : {}),
+        };
+        claims = lintClaims(finalText, runReceipts, verificationReport);
+        verdict = verdictOf(verificationReport, claims);
+        if (verificationBlocked && verdict === 'verified') {
+          verdict = 'unverified';
+          verificationNote ??= 'verification incomplete: a dangerous command was refused';
+        }
+        if (endReason === 'completed') {
+          if (verdict === 'failed') endReason = 'verification_failed';
+          else if (verdict === 'unverified') endReason = 'unverified';
+        }
+      }
+    }
+
+    const endEvent = out({ type: 'session.end', reason: endReason });
+    bus.end();
+    yield endEvent;
 
     return {
       sessionId: resumedSessionId,
       endReason,
-      turns: turns - 1 < 0 ? 0 : turns - 1,
+      turns,
       totalUsage,
       ...(costUsd > 0 || pricing !== undefined ? { costUsd } : {}),
+      permissionDenied,
       finalText,
+      verdict,
+      claims,
+      toolReceipts: runReceipts,
+      ...(verificationReport !== undefined ? { verification: verificationReport } : {}),
+      ...(verificationNote !== undefined ? { verificationNote } : {}),
     };
   }
 
@@ -441,8 +662,7 @@ export function planBatches(calls: ToolCall[], registry: ToolRegistry): ToolCall
   return batches;
 }
 
-function costOf(usage: Usage, pricing: { inputPerMTok: number; outputPerMTok: number; cacheReadPerMTok?: number; cacheWritePerMTok?: number } | undefined): number | undefined {
-  // 网关直接上报的费用最准确（含路由/折扣），优先于本地价目表
+function costOf(usage: Usage, pricing: { inputPerMTok: number; outputPerMTok: number; cacheReadPerMTok?: number; cacheWritePerMTok?: number } | undefined): number | undefined {  // 网关直接上报的费用最准确（含路由/折扣），优先于本地价目表
   if (usage.costUsd !== undefined) return usage.costUsd;
   if (pricing === undefined) return undefined;
   let cost = 0;
@@ -459,6 +679,10 @@ function costOf(usage: Usage, pricing: { inputPerMTok: number; outputPerMTok: nu
 
 function stableStringify(value: unknown): string {
   return JSON.stringify(sortKeys(value));
+}
+
+export function totalTokensOf(usage: Usage): number {
+  return usage.inputTokens + usage.outputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
 }
 
 function sortKeys(v: unknown): unknown {

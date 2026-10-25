@@ -4,6 +4,10 @@
  * never the value (SY-SEC-001 is info-level for a reason).
  */
 
+import type { LogLevel, Logger } from './runtime/index.js';
+import type { LogEntry, SessionStore } from './session/index.js';
+import type { ToolResultContent } from './types.js';
+
 const SECRET_PATTERNS: { type: string; re: RegExp }[] = [
   { type: 'openai-key', re: /\bsk-(proj-)?[A-Za-z0-9_-]{20,}\b/g },
   { type: 'anthropic-key', re: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g },
@@ -59,5 +63,42 @@ export class Redactor {
       return v;
     };
     return { value: walk(value) as T, hits: [...hits] };
+  }
+}
+
+export function redactToolResultContent(content: ToolResultContent[], redactor?: Redactor): ToolResultContent[] {
+  if (redactor === undefined) return content;
+  return content.map((c) => (c.type === 'text' ? { ...c, text: redactor.redact(c.text).text } : c));
+}
+
+/** Logger decorator: secret values never reach the log sink. */
+export class RedactingLogger implements Logger {
+  constructor(private readonly inner: Logger, private readonly redactor: Redactor) {}
+  log(level: LogLevel, msg: string, fields?: Record<string, unknown>): void {
+    const redacted = this.redactor.redactValue({ msg, fields });
+    this.inner.log(level, redacted.value.msg, redacted.value.fields);
+  }
+}
+
+/** Session-store decorator: redact every entry before it is persisted. */
+export class RedactingSessionStore implements SessionStore {
+  constructor(private readonly inner: SessionStore, private readonly redactor: Redactor) {}
+  async append(sessionId: string, entries: LogEntry[]): Promise<void> {
+    await this.inner.append(
+      sessionId,
+      entries.map((entry) => ({ ...entry, data: this.redactor.redactValue(entry.data).value })),
+    );
+  }
+  load(sessionId: string): Promise<LogEntry[]> {
+    return this.inner.load(sessionId);
+  }
+  list(filter?: { limit?: number }) {
+    return this.inner.list(filter);
+  }
+  fork(sessionId: string, atEntryId?: string): Promise<string> {
+    return this.inner.fork(sessionId, atEntryId);
+  }
+  delete(sessionId: string): Promise<void> {
+    return this.inner.delete(sessionId);
   }
 }

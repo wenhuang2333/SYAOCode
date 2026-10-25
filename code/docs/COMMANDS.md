@@ -1,4 +1,4 @@
-# SYAOCode 指令集手册（v0.1）
+# SYAOCode 指令集手册（v0.2-dev）
 
 `syao` 终端命令与交互模式完整参考。对应需求：FR-130/134/135/137/173/174。
 
@@ -14,6 +14,7 @@
 | `syao -p "prompt"` / `syao exec "prompt"` | 非交互：执行一次、打印结果、退出（无 TTY 场景/脚本/管道） |
 | `syao doctor` | 环境与配置诊断（无需任何密钥） |
 | `syao config list \| get <key> \| path` | 查看生效配置 / 单项 / 配置文件路径 |
+| `syao verify init [--force]` | 自动发现验证命令并写入 `.syaocode/verify.json`（已存在需 `--force`） |
 | `syao --version` / `syao --help` | 版本 / 帮助 |
 
 当前目录即工作区（可用 `--cwd` 覆盖）。首次使用建议先跑 `syao doctor`，再用 `/model config` 配置模型。
@@ -32,8 +33,9 @@
 | `syao --si` | **完全权限** | 文件增、删、改、查、读全部免确认，不询问用户（危险命令库仍拒绝，见下） |
 
 - 三档互斥：`--si --yao` 同用报 `SY-CLI-001`
-- 优先级：`--permission-mode` > 档位参数 > 用户配置（`~/.syaocode/config.json` 的 `permissionMode`）> **默认档（读免确认，写/删/执行审批）**
-- **安全底线不随档位放宽**：`rm -rf /`、`mkfs`、`git push --force`、格式化磁盘等危险命令在**任何档位（含 --si）都默认拒绝**（BR-006），需要显式 `--allowed-tools` 用户级规则才可放行；`deny` 永远不能被模型提升为 `allow`
+- 优先级：`--permission-mode` > 档位参数 > 环境变量（`SYAO_PERMISSION_MODE`）> 用户配置（`~/.syaocode/config.json`）> 项目配置（`<cwd>/.syaocode/config.json`）> **默认档（读免确认，写/删/执行审批）**
+- **安全底线不随档位放宽**：`rm -rf /`、`mkfs`、`git push --force`、格式化磁盘等危险命令在**任何档位（含 --si）都默认拒绝**（BR-006）。只有 `source: "user"` 且 `match.command` 与命令**完全相等**的 allow 规则可放行；project/plugin 来源规则、用户通配 allow 一律拒绝。`deny` 永远不能被模型提升为 `allow`
+- **读路径围栏**：工作区外的 `read`/`glob`/`grep` 与只读 bash 路径参数在 default/acceptEdits/plan 下都会 ask；`~/.ssh`、`~/.aws`、`~/.syaocode/env`、工作区 `.env*` 在所有档位（含 --si）都 ask，且不可“本会话允许”
 - 档位只是免确认范围的变化；**会话内可直接用 `/permission <档位>` 切换**（如 `/permission yao` 升档、`/permission strict` 降档，仅本次会话生效），或用 `/permissions mode <m>` 精确设置
 
 ### 其他参数
@@ -45,14 +47,17 @@
 | `--allowed-tools` | 工具名/通配符（空格分隔） | 预授权，如 `--allowed-tools read grep`；在严格档下可放行读取 |
 | `--disallowed-tools` | 工具名/通配符 | 显式拒绝；不可放宽内置硬拒绝 |
 | `--max-turns` | 正整数 | 轮次上限，触发出码 4 |
-| `--max-budget-usd` | 金额 | 费用上限，触发出码 4 |
+| `--max-budget-usd` | 金额 | 费用上限，触发出码 4（仅当 provider/网关上报费用或存在定价时生效） |
+| `--max-total-tokens` | 正整数 | 不依赖定价的 token 硬上限（输入+输出+缓存），触发出码 4 |
+| `--max-wall-clock-ms` | 正整数 | 不依赖定价的墙钟硬上限，触发出码 4 |
+| `--verify` / `--no-verify` | — | 是否在完成后自动运行验证命令（`-p`/`exec` 默认开启；交互模式默认关闭）。只有 `.syaocode/verify.json` 固化（`syao verify init`）或 embedder 显式允许的命令会执行；危险命令始终拒绝 |
 | `--cwd` | 路径 | 工作区目录 |
 | `--no-boot` | — | 跳过 TUI 启动动画（终端 < 40 列或 < 12 行时自动跳过） |
 | `--agents` | 群名 | 启动时激活已保存的 agent 群（common 角色成为执行模型，配合 /set-agents 使用） |
 | `--output-format` | `text` / `json` / `stream-json` | 仅 `-p` 模式：结果格式 |
 | `--verbose` | — | 诊断信息走 stderr |
 
-优先级：命令行参数 > 环境变量（`SYAO_MODEL`、`SYAO_PERMISSION_MODE`）> 用户配置 > 默认。
+优先级：命令行参数 > 环境变量（`SYAO_MODEL`、`SYAO_PERMISSION_MODE`）> 用户配置 > 项目配置 > 内置默认（CLI 默认档）。项目级配置可收紧/放宽普通规则，但不能启用 bypass，也不能放宽用户级 deny（BR-002/BR-024）。
 
 ## 3. TUI 常驻界面（TTY 终端）
 
@@ -353,7 +358,9 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 - `--output-format stream-json`：每行一个事件 `{schemaVersion, sessionId, ts, type, event}`
 - stdout 只承载协议数据，诊断/进度走 stderr（FR-174）；无人值守时 ask 一律按拒绝（BR-042）
 
-**退出码（BR-042）**：`0` 完成；`1` 一般错误；`2` 用法/配置错误；`3` 权限拒绝未完成；`4` 轮次/预算/时长上限；`130` 用户中断。
+**退出码（BR-042）**：`0` 完成；`1` 一般错误；`2` 用法/配置错误；`3` 权限拒绝未完成（含 `-p` 下审批被拒绝）；`4` 轮次/预算/时长上限；`5` `unverified`（有声明缺回执/验证未通过但不属于失败）；`6` `verification_failed`（验证命令失败）；`130` 用户中断。
+
+`-p --output-format json` 的 `schemaVersion: 2` 额外输出：`verdict`（`verified`/`unverified`/`failed`/`not_run`）、`claims`、`unsupportedClaims`、`staleClaims`、`verification`（命令、退出码、输出引用、测试统计）。工具输出原文存放在 `~/.syaocode/evidence/<sha256>`，回执的 `outputRef` 可回查。
 
 ## 7. 配置与密钥文件
 

@@ -1,6 +1,6 @@
 {
   "name": "@syaocode/providers",
-  "version": "0.1.0",
+  "version": "0.2.0-dev",
   "description": "SYAOCode provider adapters: OpenAI-compatible (DeepSeek etc.) and native Anthropic Messages",
   "type": "module",
   "license": "Apache-2.0",
@@ -20,6 +20,7 @@
     "@syaocode/core": "workspace:*"
   },
   "devDependencies": {
+    "@syaocode/node": "workspace:*",
     "@syaocode/testing": "workspace:*",
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0",
