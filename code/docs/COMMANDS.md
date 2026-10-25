@@ -51,13 +51,28 @@
 | `--max-total-tokens` | 正整数 | 不依赖定价的 token 硬上限（输入+输出+缓存），触发出码 4 |
 | `--max-wall-clock-ms` | 正整数 | 不依赖定价的墙钟硬上限，触发出码 4 |
 | `--verify` / `--no-verify` | — | 是否在完成后自动运行验证命令（`-p`/`exec` 默认开启；交互模式默认关闭）。只有 `.syaocode/verify.json` 固化（`syao verify init`）或 embedder 显式允许的命令会执行；危险命令始终拒绝 |
+| `--policy` | 路径 | CI 策略文件：`permissionMode`、`allowedTools`、`disallowedTools`、`rules`、`limits`；命令行参数可覆盖。示例见下方 |
 | `--cwd` | 路径 | 工作区目录 |
 | `--no-boot` | — | 跳过 TUI 启动动画（终端 < 40 列或 < 12 行时自动跳过） |
 | `--agents` | 群名 | 启动时激活已保存的 agent 群（common 角色成为执行模型，配合 /set-agents 使用） |
 | `--output-format` | `text` / `json` / `stream-json` | 仅 `-p` 模式：结果格式 |
 | `--verbose` | — | 诊断信息走 stderr |
 
-优先级：命令行参数 > 环境变量（`SYAO_MODEL`、`SYAO_PERMISSION_MODE`）> 用户配置 > 项目配置 > 内置默认（CLI 默认档）。项目级配置可收紧/放宽普通规则，但不能启用 bypass，也不能放宽用户级 deny（BR-002/BR-024）。
+优先级：命令行参数 > 环境变量（`SYAO_MODEL`、`SYAO_PERMISSION_MODE`）> 用户配置 > 项目配置 > 内置默认（CLI 默认档）。项目级配置可收紧/放宽普通规则，但不能启用 bypass，也不能放宽用户级 deny（BR-002/BR-024）。`--policy` 属于 CLI 代码层：策略文件覆盖项目/用户/环境层，命令行参数再覆盖策略文件。
+
+CI 策略文件示例：
+
+```json
+{
+  "permissionMode": "default",
+  "allowedTools": ["read", "glob", "grep"],
+  "disallowedTools": ["bash"],
+  "rules": [
+    { "effect": "allow", "tool": "bash", "source": "user", "match": { "command": "pnpm test" } }
+  ],
+  "limits": { "maxTurns": 30, "maxTotalTokens": 200000, "maxWallClockMs": 600000 }
+}
+```
 
 ## 3. TUI 常驻界面（TTY 终端）
 

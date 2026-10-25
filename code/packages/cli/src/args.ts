@@ -18,6 +18,8 @@ export interface CliArgs {
   maxBudgetUsd?: number;
   maxTotalTokens?: number;
   maxWallClockMs?: number;
+  /** JSON policy file for non-interactive/CI runs (v0.2.5). */
+  policy?: string;
   /** Auto-run discovered verification after a completed run (default: on for -p/exec). */
   verify?: boolean;
   cwd?: string;
@@ -173,6 +175,9 @@ export function parseArgs(argv: string[]): CliArgs {
         break;
       case '--max-wall-clock-ms':
         args.maxWallClockMs = Number(next(a));
+        break;
+      case '--policy':
+        args.policy = next(a);
         break;
       case '--verify':
         args.verify = true;

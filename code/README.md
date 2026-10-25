@@ -13,7 +13,7 @@ TypeScript coding-agent harness library + reference CLI. Model-neutral, embeddab
 | `@syaocode/providers` | OpenAI Chat Completions adapter (DeepSeek-compatible) + native Anthropic Messages adapter; SSE streaming, normalized events, error mapping |
 | `@syaocode/tools` | read / write / edit / glob / grep / bash with read-before-write fencing (BR-004), unique-match edits (BR-005), .gitignore-aware search, restricted shell, bash exit-code metadata |
 | `@syaocode/testing` | MemoryRuntime (fully in-memory), MockProvider (scripted), provider contract suite (G2: same suite over all providers) |
-| `syaocode` (CLI) | Three permission tiers, in-conversation hot switching, pure-ANSI TUI + readline REPL, `-p`/`exec`, `doctor`/`config`/`verify init`, automatic verification in print mode (after `verify init` pins the commands; `--no-verify` to opt out), JSON schemaVersion 2 with `verdict`/`claims`, exit codes 0/1/2/3/4/5/6/130 |
+| `syaocode` (CLI) | Three permission tiers, in-conversation hot switching, pure-ANSI TUI + readline REPL, `-p`/`exec`, `doctor`/`config`/`verify init`, `--policy` for CI, automatic verification in print mode (after `verify init` pins the commands; `--no-verify` to opt out), JSON schemaVersion 2 with `verdict`/`claims`, exit codes 0/1/2/3/4/5/6/130 |
 
 **开箱默认**：不配任何东西即可 `syao` 直接对话（内置 mock 离线跑通全链路）；配好模型后**交互与 `-p`/`exec` 使用同一套解析顺序**（`--model` > `SYAO_MODEL` > `~/.syaocode/config.json` > mock）。默认权限档为**默认档**（读免确认，写/删/执行仍审批，规范 FR-041 的 default），`--permission-mode strict` 可回到逐条确认；系统提示自动注入工作目录/平台/日期/运行载体/**当前模型身份**，模型能如实回答"你是什么模型"；`/setup` 会按模型名与请求地址自动预填档案名、协议与认证字段，回车即接受。
 
