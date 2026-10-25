@@ -117,7 +117,7 @@ export const zh: Record<MsgKey, string> = {
   'permission.prompt': '  允许执行？[y]本次 / [s]本次会话 / [n]拒绝（默认 n）：',
   'permission.hotHint': '  提示：可直接输入 /permission <档位>（如 /permission si）修改权限设置，待批请求会立即重新评估。',
   'permission.hotApplied': '✔ 已在审批过程中更新设置，正在重新评估……',
-  'permission.hotUsage': '  无法识别的设置指令。可用 /permission <strict|yao|si>、/permissions mode <模式>、/permissions allow|deny <工具>。',
+  'permission.hotUsage': '  无法识别的设置指令。可用 /permission <strict|yao|si> 或 /permissions mode <模式>（规则请在非审批状态用 /permissions 设置）。',
   'permission.inputClosed': '输入已关闭，无法审批，按拒绝处理。',
   'permission.deniedByUser': '用户拒绝了该操作。',
   'permission.subject.command': '{tool} 执行 {command}（{risk}）',
