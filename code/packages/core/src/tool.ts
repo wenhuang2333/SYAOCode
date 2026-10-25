@@ -12,6 +12,16 @@ export interface ToolProgress {
 export interface ToolOutput {
   content: ToolResultContent[];
   isError?: boolean;
+  /** Execution facts used to build evidence receipts. */
+  meta?: ToolResultMeta;
+}
+
+export interface ToolResultMeta {
+  exitCode?: number;
+  command?: string;
+  paths?: string[];
+  testStats?: { total: number; passed: number; failed: number; skipped: number };
+  trust?: 'trusted' | 'workspace' | 'untrusted';
 }
 
 export interface PromptContext {

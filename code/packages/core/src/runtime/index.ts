@@ -21,10 +21,14 @@ export interface DirEntry {
 export interface FileSystem {
   readFile(path: string, opts?: { encoding?: 'utf8' }): Promise<string>;
   writeFile(path: string, data: string): Promise<void>;
+  /** Atomic-ish append; used for the JSONL session log (no read-rewrite). */
+  appendFile(path: string, data: string): Promise<void>;
   stat(path: string): Promise<FileStat>;
   readdir(path: string): Promise<DirEntry[]>;
   realpath(path: string): Promise<string>;
   mkdir(path: string, opts?: { recursive?: boolean }): Promise<void>;
+  /** Remove an empty directory (session lock release). */
+  rmdir(path: string): Promise<void>;
   unlink(path: string): Promise<void>;
   exists(path: string): Promise<boolean>;
 }

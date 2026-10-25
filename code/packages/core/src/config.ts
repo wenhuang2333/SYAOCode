@@ -39,6 +39,9 @@ export const configSchema = z.object({
     .object({
       maxTurns: z.number().int().min(1).max(1000).default(100),
       maxBudgetUsd: z.number().positive().optional(),
+      maxTotalTokens: z.number().int().positive().optional(),
+      maxWallClockMs: z.number().int().positive().optional(),
+      /** Legacy alias for maxWallClockMs. */
       timeoutMs: z.number().int().positive().optional(),
     })
     .default({}),
@@ -51,6 +54,8 @@ export interface LoadConfigOptions {
   userPath?: string;
   projectPath?: string;
   env?: Record<string, string | undefined>;
+  /** Lowest layer above built-in defaults (e.g. the CLI's `default` mode). */
+  base?: Partial<SyaoConfig>;
   code?: Partial<SyaoConfig>;
   runtime: Runtime;
 }
@@ -85,7 +90,7 @@ async function readJsonIfExists(path: string, runtime: Runtime): Promise<Record<
 export async function loadConfig(opts: LoadConfigOptions): Promise<SyaoConfig> {
   const errors: { path: string; message: string }[] = [];
   const warn = (msg: string) => opts.runtime.logger.log('warn', 'config', { msg });
-  let config: SyaoConfig = DEFAULTS;
+  let config: SyaoConfig = opts.base !== undefined ? mergeLayer(DEFAULTS, opts.base) : DEFAULTS;
 
   const userRaw = await readJsonIfExists(opts.userPath ?? `${opts.runtime.env.get('HOME') ?? ''}/.syaocode/config.json`, opts.runtime);
   if (userRaw !== undefined) config = mergeLayer(config, validateLayer(userRaw, 'user', errors));
@@ -110,15 +115,19 @@ export async function loadConfig(opts: LoadConfigOptions): Promise<SyaoConfig> {
   }
 
   const env = opts.env ?? {};
-  const envLayer: Partial<SyaoConfig> = {};
-  if (env.SYAO_MODEL !== undefined) {
-    const [provider, name] = env.SYAO_MODEL.split(':');
-    if (provider !== undefined && name !== undefined) envLayer.model = { provider, name };
+  const envRaw: Record<string, unknown> = {};
+  if (env.SYAO_MODEL !== undefined && env.SYAO_MODEL !== '') {
+    const idx = env.SYAO_MODEL.indexOf(':');
+    if (idx > 0) {
+      envRaw.model = { provider: env.SYAO_MODEL.slice(0, idx), name: env.SYAO_MODEL.slice(idx + 1) };
+    }
   }
-  if (env.SYAO_PERMISSION_MODE !== undefined) {
-    envLayer.permissionMode = env.SYAO_PERMISSION_MODE as PermissionMode;
+  if (env.SYAO_PERMISSION_MODE !== undefined && env.SYAO_PERMISSION_MODE !== '') {
+    envRaw.permissionMode = env.SYAO_PERMISSION_MODE as PermissionMode;
   }
-  config = mergeLayer(config, envLayer);
+  if (Object.keys(envRaw).length > 0) {
+    config = mergeLayer(config, validateLayer(envRaw, 'env', errors));
+  }
 
   if (opts.code !== undefined) config = mergeLayer(config, opts.code);
 

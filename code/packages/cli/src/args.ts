@@ -16,14 +16,21 @@ export interface CliArgs {
   disallowedTools: string[];
   maxTurns?: number;
   maxBudgetUsd?: number;
+  maxTotalTokens?: number;
+  maxWallClockMs?: number;
+  /** Auto-run discovered verification after a completed run (default: on for -p/exec). */
+  verify?: boolean;
   cwd?: string;
   verbose: boolean;
   /** Skip the TUI boot animation (FR-137 / TUI). */
   noBoot: boolean;
   /** Activate a saved agent group at startup (its common role drives the session). */
   agents?: string;
-  command?: 'exec' | 'doctor' | 'config' | 'version' | 'help';
+  command?: 'exec' | 'doctor' | 'config' | 'verify' | 'version' | 'help';
   configSub?: 'list' | 'get' | 'path';
+  verifySub?: 'init';
+  /** Overwrite an existing .syaocode/verify.json (syao verify init). */
+  force?: boolean;
 }
 
 export type PermissionTier = 'strict' | 'yao' | 'si' | 'acceptEdits' | 'plan';
@@ -111,6 +118,9 @@ export function parseArgs(argv: string[]): CliArgs {
       case 'config':
         args.command = 'config';
         break;
+      case 'verify':
+        args.command = 'verify';
+        break;
       case '--version':
         args.command = 'version';
         break;
@@ -158,6 +168,18 @@ export function parseArgs(argv: string[]): CliArgs {
       case '--max-budget-usd':
         args.maxBudgetUsd = Number(next(a));
         break;
+      case '--max-total-tokens':
+        args.maxTotalTokens = Number(next(a));
+        break;
+      case '--max-wall-clock-ms':
+        args.maxWallClockMs = Number(next(a));
+        break;
+      case '--verify':
+        args.verify = true;
+        break;
+      case '--no-verify':
+        args.verify = false;
+        break;
       case '--cwd':
         args.cwd = next(a);
         break;
@@ -169,6 +191,9 @@ export function parseArgs(argv: string[]): CliArgs {
         break;
       case '--agents':
         args.agents = next(a);
+        break;
+      case '--force':
+        args.force = true;
         break;
       default:
         if (a.startsWith('-')) {
@@ -184,6 +209,12 @@ export function parseArgs(argv: string[]): CliArgs {
       throw new UsageError(`config subcommand must be list | get | path (SY-CLI-001)`);
     }
     args.configSub = sub;
+  }
+  if (args.command === 'verify') {
+    if (args.positional[0] !== 'init') {
+      throw new UsageError(`verify subcommand must be init (SY-CLI-001)`);
+    }
+    args.verifySub = 'init';
   }
   return args;
 }

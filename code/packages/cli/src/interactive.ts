@@ -5,9 +5,9 @@ import {
   estimateMessagesTokens,
   FileSessionStore,
   SyaoError,
-  nodeRuntime,
   projectHashOf,
   Redactor,
+  rulesFromConfig,
   trimOldToolResults,
   type Agent,
   type AgentEvent,
@@ -17,6 +17,8 @@ import {
   type PermissionRule,
   type Provider,
 } from '@syaocode/core';
+import { nodeRuntime } from '@syaocode/node';
+import { createFileReceiptStore } from '@syaocode/node';
 import { createBuiltinTools } from '@syaocode/tools';
 import type { CliArgs } from './args.js';
 import { resolvePermissionTier } from './args.js';
@@ -53,6 +55,7 @@ import { costDataOf, costPanel } from './views.js';
 import { readWorkspaceUsage, recordUsage, usageFilePath } from './usage-store.js';
 import { getLanguage, isLang, languageName, t, type Lang } from './i18n/index.js';
 import { userErrorMessage, userErrorText, userEventErrorText } from './error-text.js';
+import { cliModelSpec, createCliRedactor, loadCliConfig } from './effective-config.js';
 
 /**
  * Interactive REPL (FR-130 / FR-137 subset). Readline-based: streaming
@@ -86,7 +89,9 @@ interface UsageTotals {
 export async function runInteractive(opts: InteractiveOptions): Promise<number> {
   const cwd = opts.args.cwd ?? process.cwd();
   const runtime = nodeRuntime();
-  const redactor = new Redactor();
+  const config = await loadCliConfig(opts.args, runtime);
+  const redactor = createCliRedactor();
+  const receipts = createFileReceiptStore(runtime, `${syaoHome()}/evidence`);
   const sessionStore = new FileSessionStore(runtime, `${syaoHome()}/sessions`, String(projectHashOf(cwd)));
   const { tools } = createBuiltinTools();
   const usageTotals: UsageTotals = {
@@ -101,17 +106,11 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
   let workspaceUsage = readWorkspaceUsage(cwd);
   let usagePersistWarned = false;
 
-  let spec: ProviderSpec = (() => {
-    const resolved = resolveDefaultModel(opts.args.model);
-    return { provider: resolved.provider, model: resolved.name };
-  })();
-  const tier = resolvePermissionTier(opts.args, readUserConfig().permissionMode);
-  let permissionMode: PermissionMode = tier.mode;
+  let spec: ProviderSpec = cliModelSpec(opts.args, config);
+  const tier = resolvePermissionTier(opts.args, config.permissionMode);
+  let permissionMode: PermissionMode = config.permissionMode;
   let pendingResume: string | undefined;
-  const sessionRules: PermissionRule[] = [
-    ...opts.args.allowedTools.map((tool) => ({ effect: 'allow' as const, tool, source: 'user' as const })),
-    ...opts.args.disallowedTools.map((tool) => ({ effect: 'deny' as const, tool, source: 'user' as const })),
-  ];
+  const sessionRules: PermissionRule[] = rulesFromConfig(config);
 
   const rl = readline.createInterface({ input, output, prompt: promptOf() });
   const isTTY = input.isTTY === true;
@@ -132,9 +131,6 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
 
   function createCurrentAgent(resumeSessionId?: string): Agent {
     const provider: Provider & { model: string } = buildProvider(spec);
-    redactor.register(process.env.DEEPSEEK_API_KEY ?? '', 'deepseek-key');
-    redactor.register(process.env.ANTHROPIC_API_KEY ?? '', 'anthropic-key');
-    redactor.register(process.env.OPENAI_API_KEY ?? '', 'openai-key');
     const created = createAgent({
       provider,
       model: provider.model,
@@ -146,10 +142,10 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
       permissionHandler: terminalPermissionHandler,
       session: sessionStore,
       runtime,
-      limits: {
-        ...(opts.args.maxTurns !== undefined ? { maxTurns: opts.args.maxTurns } : {}),
-        ...(opts.args.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.args.maxBudgetUsd } : {}),
-      },
+      redactor,
+      receipts,
+      ...(opts.args.verify === true ? { verification: { enabled: true } } : {}),
+      limits: config.limits,
     });
     if (resumeSessionId !== undefined) {
       pendingResume = resumeSessionId;

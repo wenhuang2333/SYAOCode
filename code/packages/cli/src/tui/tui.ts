@@ -25,9 +25,9 @@ import {
   estimateMessagesTokens,
   FileSessionStore,
   SyaoError,
-  nodeRuntime,
   projectHashOf,
   Redactor,
+  rulesFromConfig,
   trimOldToolResults,
   type Agent,
   type AgentEvent,
@@ -37,12 +37,15 @@ import {
   type PermissionRule,
   type Provider,
 } from '@syaocode/core';
+import { nodeRuntime } from '@syaocode/node';
+import { createFileReceiptStore } from '@syaocode/node';
 import { createBuiltinTools } from '@syaocode/tools';
 import type { CliArgs } from '../args.js';
 import { resolvePermissionTier } from '../args.js';
 import { buildProvider, type ProviderSpec } from '../provider-select.js';
 import { buildCliContext } from '../context.js';
 import { PhaseTracker, phaseLine } from './phase.js';
+import { cliModelSpec, createCliRedactor, loadCliConfig } from '../effective-config.js';
 import { getLanguage, isLang, languageName, t, type Lang } from '../i18n/index.js';
 import { userErrorMessage, userEventErrorText } from '../error-text.js';
 import {
@@ -224,11 +227,13 @@ class ExitTui extends Error {}
 export async function runTui(opts: TuiOptions): Promise<number> {
   const cwd = opts.args.cwd ?? process.cwd();
   const runtime = nodeRuntime();
-  const redactor = new Redactor();
+  const config = await loadCliConfig(opts.args, runtime);
+  const redactor = createCliRedactor();
+  const receipts = createFileReceiptStore(runtime, `${syaoHome()}/evidence`);
   const sessionStore = new FileSessionStore(runtime, `${syaoHome()}/sessions`, String(projectHashOf(cwd)));
   const { tools } = createBuiltinTools();
   // FR-051/FR-083：工作目录 + AGENTS.md/CLAUDE.md 项目指令；模型身份随 spec 变化
-  const HARNESS = 'SYAOCode v0.1.0';
+  const HARNESS = 'SYAOCode v0.2.0-dev';
   const usageTotals: UsageTotals = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, requests: 0 };
   // 当前工作区的跨会话累计账本（~/.syaocode/usage/<hash>.json），/cost 的数据源
   let workspaceUsage: WorkspaceUsage = readWorkspaceUsage(cwd);
@@ -236,17 +241,11 @@ export async function runTui(opts: TuiOptions): Promise<number> {
 
   await playBoot(opts.args.noBoot === true);
 
-  let spec: ProviderSpec = (() => {
-    const resolved = resolveDefaultModel(opts.args.model);
-    return { provider: resolved.provider, model: resolved.name };
-  })();
-  const tier = resolvePermissionTier(opts.args, readUserConfig().permissionMode);
-  let permissionMode: PermissionMode = tier.mode;
+  let spec: ProviderSpec = cliModelSpec(opts.args, config);
+  const tier = resolvePermissionTier(opts.args, config.permissionMode);
+  let permissionMode: PermissionMode = config.permissionMode;
   let pendingResume: string | undefined;
-  const sessionRules: PermissionRule[] = [
-    ...opts.args.allowedTools.map((tool) => ({ effect: 'allow' as const, tool, source: 'user' as const })),
-    ...opts.args.disallowedTools.map((tool) => ({ effect: 'deny' as const, tool, source: 'user' as const })),
-  ];
+  const sessionRules: PermissionRule[] = rulesFromConfig(config);
 
   input.setRawMode(true);
   input.resume();
@@ -323,9 +322,6 @@ export async function runTui(opts: TuiOptions): Promise<number> {
 
   function createCurrentAgent(resumeSessionId?: string): Agent {
     const provider: Provider & { model: string } = buildProvider(spec);
-    redactor.register(process.env.DEEPSEEK_API_KEY ?? '', 'deepseek-key');
-    redactor.register(process.env.ANTHROPIC_API_KEY ?? '', 'anthropic-key');
-    redactor.register(process.env.OPENAI_API_KEY ?? '', 'openai-key');
     const created = createAgent({
       provider,
       model: provider.model,
@@ -337,6 +333,9 @@ export async function runTui(opts: TuiOptions): Promise<number> {
       permissionHandler: tuiPermissionHandler,
       session: sessionStore,
       runtime,
+      redactor,
+      receipts,
+      ...(opts.args.verify === true ? { verification: { enabled: true } } : {}),
       retryPolicy: {
         onRetry: (info) => {
           phaseTracker.onRetry(info);
@@ -348,10 +347,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
         phaseTracker.onEvent({ type: 'tool.start', callId: info.callId, name: info.name, input: info.input });
         redraw();
       },
-      limits: {
-        ...(opts.args.maxTurns !== undefined ? { maxTurns: opts.args.maxTurns } : {}),
-        ...(opts.args.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.args.maxBudgetUsd } : {}),
-      },
+      limits: config.limits,
     });
     if (resumeSessionId !== undefined) {
       pendingResume = resumeSessionId;

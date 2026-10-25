@@ -17,10 +17,10 @@ export { textOf, toolCallsOf, userText, assistantText } from './types.js';
 // runtime
 export type { Clock, DirEntry, Env, FileStat, FileSystem, HttpClient, HttpResponse, IdGenerator, LogLevel, Logger, ProcessHandle, Runtime, Shell, ShellSpawnOptions } from './runtime/index.js';
 export { MemoryLogger, noopLogger } from './runtime/index.js';
-export { nodeRuntime, contentHash } from './runtime/node.js';
+export { contentHash } from './hash.js';
 
 // events
-export type { AgentEvent, EndReason, PermissionMode, UsageEvent } from './events.js';
+export type { AgentEvent, AgentEventBody, EndReason, EventEnvelope, PermissionMode, UsageEvent } from './events.js';
 export { EventBus } from './events.js';
 
 // provider
@@ -28,12 +28,12 @@ export type { Capabilities, ModelRequest, ModelStreamEvent, Pricing, Provider, R
 export { withRetry, DEFAULT_RETRY_POLICY, mapHttpStatus } from './provider.js';
 
 // tool
-export type { PermissionSubject, PromptContext, Tool, ToolContext, ToolOutput, ToolProgress, ToolRisk } from './tool.js';
+export type { PermissionSubject, PromptContext, Tool, ToolContext, ToolOutput, ToolProgress, ToolResultMeta, ToolRisk } from './tool.js';
 export { ToolRegistry, zodToJsonSchema, textContent } from './tool.js';
 
 // permissions
 export type { EngineOutcome, EngineOptions, PermissionDecision, PermissionHandler, PermissionRequest, PermissionRule, PolicyVerdict, CommandClass } from './permissions.js';
-export { PermissionEngine, classifyCommand, globMatch } from './permissions.js';
+export { PermissionEngine, classifyCommand, commandPathCandidates, globMatch } from './permissions.js';
 
 // pipeline
 export { executeToolCall, truncateOutput, TRUNCATION_MAX_CHARS, TRUNCATION_MAX_LINES } from './pipeline.js';
@@ -52,8 +52,16 @@ export type { LogEntry, SessionFilter, SessionInfo, SessionStore } from './sessi
 export { MemorySessionStore, FileSessionStore, projectHashOf } from './session/index.js';
 
 // redact
-export { Redactor } from './redact.js';
+export { Redactor, RedactingLogger, RedactingSessionStore, redactToolResultContent } from './redact.js';
+
+// evidence / verification / claims
+export type { ReceiptStore, StoredOutput, TestStats, ToolReceipt, TrustLevel, VerificationReport, VerificationResult } from './evidence.js';
+export { MemoryReceiptStore, parseTestStats, receiptInputHash, stableStringify } from './evidence.js';
+export type { DiscoveredCommand, VerificationOptions } from './verify.js';
+export { discoverVerification, runVerification, verificationPassed } from './verify.js';
+export type { ClaimCheck, ClaimKind, ClaimStatus, Verdict } from './claims.js';
+export { lintClaims, verdictOf } from './claims.js';
 
 // agent
 export type { Agent, AgentConfig, Limits, RunOptions, RunSummary } from './agent.js';
-export { createAgent, planBatches } from './agent.js';
+export { createAgent, planBatches, totalTokensOf } from './agent.js';

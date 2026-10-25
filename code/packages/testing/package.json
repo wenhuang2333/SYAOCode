@@ -1,6 +1,6 @@
 {
   "name": "@syaocode/testing",
-  "version": "0.1.0",
+  "version": "0.2.0-dev",
   "description": "SYAOCode test fixtures: MemoryRuntime, MockProvider, provider contract suite",
   "type": "module",
   "license": "Apache-2.0",

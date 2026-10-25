@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { loadConfig, nodeRuntime, SyaoError } from '@syaocode/core';
+import { SyaoError } from '@syaocode/core';
+import { nodeRuntime } from '@syaocode/node';
 import { usageText, parseArgs, UsageError } from './args.js';
 import { EXIT_OK, EXIT_USAGE, runPrint } from './run.js';
 import { formatDoctor, runDoctor } from './doctor.js';
@@ -7,8 +8,10 @@ import { runInteractive } from './interactive.js';
 import { runTui } from './tui/tui.js';
 import { activateAgentGroup, loadSecretsIntoEnv, savedLanguage } from './model-config.js';
 import { setLanguage, t } from './i18n/index.js';
+import { loadCliConfig } from './effective-config.js';
+import { runVerifyInit } from './verify-command.js';
 
-export const VERSION = 'syao v0.1.0 (SYAOCode internal, M0+M1)';
+export const VERSION = 'syao v0.2.0-dev (SYAOCode trusted foundation + Evidence MVP)';
 
 async function main(argv: string[]): Promise<number> {
   // Merge ~/.syaocode/env (0600) into process env first — never overrides
@@ -41,10 +44,12 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(`${formatDoctor(checks)}\n`);
     return checks.some((c) => c.status === 'fail') ? EXIT_USAGE : EXIT_OK;
   }
+  if (args.command === 'verify') {
+    return runVerifyInit(args);
+  }
   if (args.command === 'config') {
     const runtime = nodeRuntime();
-    const config = await loadConfig({ runtime });
-    if (args.configSub === 'path') {
+    const config = await loadCliConfig(args, runtime);    if (args.configSub === 'path') {
       process.stdout.write(`user:    ${process.env.HOME ?? ''}/.syaocode/config.json\n`);
       process.stdout.write(`project: ${args.cwd ?? process.cwd()}/.syaocode/config.json\n`);
       return EXIT_OK;

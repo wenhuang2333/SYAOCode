@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AgentEvent } from '@syaocode/core';
+import type { AgentEvent, AgentEventBody } from '@syaocode/core';
 import { setLanguage } from '../src/i18n/index';
 import { PhaseTracker, activityText, phaseLine } from '../src/tui/phase';
 import {
@@ -14,8 +14,8 @@ import {
   type Canvas,
 } from '../src/tui/flight';
 
-function ev(e: AgentEvent): AgentEvent {
-  return e;
+function ev(e: AgentEventBody): AgentEvent {
+  return { ...e, seq: 1, runId: 'test' } as AgentEvent;
 }
 
 describe('flight：欢迎面板飞行场景', () => {

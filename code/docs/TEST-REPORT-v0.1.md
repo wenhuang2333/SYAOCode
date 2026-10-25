@@ -1,5 +1,7 @@
 # SYAOCode v0.1 测试报告
 
+> **历史报告（v0.1 基线，211 项）**。v0.2-dev 新增的安全/事件/Evidence 测试与当前 334 项基线见 `V0.2-REPORT-ALIGNMENT.md`；本文件保留当时的原始记录，不再更新计数。
+
 - **版本**：v0.1.0（内部版，对应 WBS M0+M1，未发布；含交互式 CLI、权限三档与 TUI 渲染稳定性增量）
 - **日期**：2026-10-16（权限三档增量更新；TUI 渲染稳定性与 /permission 增量）
 - **环境**：macOS (darwin 25.5.0, arm64) / Node v24.15.0 / pnpm 12.11.2 / TypeScript 5.7 / Vitest 3.2

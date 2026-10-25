@@ -63,6 +63,7 @@ export function createBashTool(opts: { defaultTimeoutMs?: number } = {}) {
       return {
         content: [{ type: 'text', text: `exit=${code}\n${result}` }],
         ...(code !== 0 ? { isError: true } : {}),
+        meta: { exitCode: code, command: input.command },
       };
     },
   };

@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AgentEvent, Usage } from '@syaocode/core';
+import type { AgentEventBody, Usage } from '@syaocode/core';
 import { StatusTracker, estimateTokensOfText, formatStatusLine, formatTokens } from '../src/tui/status';
 import { setLanguage } from '../src/i18n/index';
 import { displayWidth } from '../src/tui/width';
 
-function usageEv(u: Partial<Usage>): AgentEvent {
+function usageEv(u: Partial<Usage>): AgentEventBody {
   return { type: 'usage', usage: { inputTokens: 0, outputTokens: 0, ...u } };
 }
 

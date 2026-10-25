@@ -1,0 +1,47 @@
+{
+  "name": "@syaocode/node",
+  "version": "0.2.0-dev",
+  "description": "SYAOCode Node.js host: filesystem, shell, HTTP, clock and id runtime",
+  "type": "module",
+  "license": "Apache-2.0",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm run typecheck && pnpm run build"
+  },
+  "dependencies": {
+    "@syaocode/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wenhuang2333/SYAOCode.git"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  }
+}
