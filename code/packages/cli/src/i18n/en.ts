@@ -119,7 +119,7 @@ export const en = {
   'permission.prompt': '  Allow? [y]once / [s]session / [n]deny (default n): ',
   'permission.hotHint': '  Tip: type /permission <tier> (e.g. /permission si) to change policy now; the pending request is re-evaluated immediately.',
   'permission.hotApplied': '✔ Policy updated while the request was pending; re-evaluating…',
-  'permission.hotUsage': '  Unrecognized setting. Use /permission <strict|yao|si>, /permissions mode <m>, or /permissions allow|deny <tool>.',
+  'permission.hotUsage': '  Unrecognized setting. Use /permission <strict|yao|si> or /permissions mode <m> (rules: use /permissions outside a prompt).',
   'permission.inputClosed': 'Input is closed; denying the request.',
   'permission.deniedByUser': 'The user denied this operation.',
   'permission.subject.command': '{tool} run {command} ({risk})',

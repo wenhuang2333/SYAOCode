@@ -135,36 +135,39 @@ export function parseSlash(line: string): SlashCommand | null {
 // 模型无需再问一次。
 
 /** 一次热改设置的效果描述（纯数据，由各前端应用） */
-export type InlinePermissionChange =
-  | { kind: 'mode'; mode: PermissionMode; key: string }
-  | { kind: 'rule'; effect: 'allow' | 'deny'; tool: string };
-
-const PERMISSION_MODES: readonly PermissionMode[] = ['strict', 'default', 'acceptEdits', 'plan', 'bypass'];
+export type InlinePermissionChange = { kind: 'mode'; mode: PermissionMode; key: string };
 
 /**
- * 解析可热改的权限设置指令。仅接受带参数的**内联**形式，避免在审批模态中
- * 触发 `/permission` 的逐项问答引导。
- * 支持：`/permission <档位>`、`/permissions <档位>`、
- *       `/permissions mode <模式>`、`/permissions allow|deny <工具>`。
+ * 解析可热改的权限设置指令。仅接受**内联**的档位/模式形式，避免在审批模态
+ * 中触发 `/permission` 的逐项问答引导。
+ * 支持：`/permission <档位|模式>`、`/permissions <档位|模式>`、`/permissions mode <模式>`
+ * （档位名与 `default`/`bypass` 别名大小写不敏感，与 `/permission` 一致）。
+ *
+ * 刻意**不支持** `allow|deny <工具>`：审批挂起时那条路径并不能解决本次请求
+ * （`ask` 规则优先级高于 `allow`），且会新增一条无 matcher 的放行规则，
+ * 反而绕过危险命令的默认拒绝。需要规则时用正常的 `/permissions` 指令。
  */
 export function parseInlinePermissionSetting(raw: string): InlinePermissionChange | null {
   const cmd = parseSlash(raw);
   if (cmd === null) return null;
-  if (cmd.name !== '/permission' && cmd.name !== '/permissions') return null;
-  const first = cmd.args[0];
-  if (first === undefined) return null; // 无参数＝引导流程，不适合内联
+  const name = cmd.name.toLowerCase();
+  if (name !== '/permission' && name !== '/permissions') return null;
+  if (cmd.args.length === 0) return null; // 无参数＝引导流程，不适合内联
 
-  if (first === 'mode') {
+  const first = cmd.args[0]!;
+  if (first.toLowerCase() === 'mode') {
     const mode = cmd.args[1];
-    if (mode === undefined || !(PERMISSION_MODES as readonly string[]).includes(mode)) return null;
-    return { kind: 'mode', mode: mode as PermissionMode, key: mode };
+    if (mode === undefined || cmd.args.length > 2) return null;
+    return toModeChange(mode);
   }
-  if ((first === 'allow' || first === 'deny') && cmd.args[1] !== undefined) {
-    return { kind: 'rule', effect: first, tool: cmd.args[1] };
-  }
-  const tier = parsePermissionArg(first);
-  if (tier === null) return null;
-  return { kind: 'mode', mode: tier.mode, key: tier.key };
+  // 形如 `/permission si`：只允许单个参数，多余参数视为无法识别（不静默忽略）
+  if (cmd.args.length > 1) return null;
+  return toModeChange(first);
+}
+
+function toModeChange(raw: string): InlinePermissionChange | null {
+  const tier = parsePermissionArg(raw);
+  return tier === null ? null : { kind: 'mode', mode: tier.mode, key: tier.key };
 }
 
 /** 审批提示下的一次输入如何理解 */

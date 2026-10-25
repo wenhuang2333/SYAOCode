@@ -77,28 +77,33 @@ describe('slash /permission 展示文本', () => {
   });
 });
 
-// 审批挂起时的热改设置：输入 `/permission si` 之类的指令改设置并立即重新评估，
-// 而不是被当成 allow/deny 的答复。
+// 审批挂起时的热改设置：输入 `/permission si` 之类的指令改档位并立即重新评估，
+// 而不是被当成 allow/deny 的答复。热改只接受档位/模式——`allow|deny` 规则在审批
+// 挂起时既无法解决本次请求（ask 优先于 allow），又会新增无 matcher 的放行规则。
 describe('审批中的热改设置解析', () => {
-  it('parseInlinePermissionSetting 接受档位与模式', () => {
+  it('接受档位与模式（大小写不敏感）', () => {
     expect(parseInlinePermissionSetting('/permission si')).toEqual({ kind: 'mode', mode: 'bypass', key: 'si' });
     expect(parseInlinePermissionSetting('/permission yao')).toEqual({ kind: 'mode', mode: 'default', key: 'yao' });
     expect(parseInlinePermissionSetting('/permissions strict')).toEqual({ kind: 'mode', mode: 'strict', key: 'strict' });
     expect(parseInlinePermissionSetting('/permission Si')).toEqual({ kind: 'mode', mode: 'bypass', key: 'si' });
+    expect(parseInlinePermissionSetting('/Permission si')).toEqual({ kind: 'mode', mode: 'bypass', key: 'si' });
     expect(parseInlinePermissionSetting('/permissions mode plan')).toEqual({ kind: 'mode', mode: 'plan', key: 'plan' });
+    expect(parseInlinePermissionSetting('/permissions mode acceptEdits')).toEqual({ kind: 'mode', mode: 'acceptEdits', key: 'acceptEdits' });
+    expect(parseInlinePermissionSetting('/permission bypass')).toEqual({ kind: 'mode', mode: 'bypass', key: 'si' }); // 别名归一到档位名
   });
 
-  it('parseInlinePermissionSetting 接受会话规则', () => {
-    expect(parseInlinePermissionSetting('/permissions allow bash')).toEqual({ kind: 'rule', effect: 'allow', tool: 'bash' });
-    expect(parseInlinePermissionSetting('/permissions deny write')).toEqual({ kind: 'rule', effect: 'deny', tool: 'write' });
+  it('拒绝 allow|deny 规则（审批中不提供，避免无效或绕过危险命令拒绝）', () => {
+    expect(parseInlinePermissionSetting('/permissions allow bash')).toBeNull();
+    expect(parseInlinePermissionSetting('/permissions deny write')).toBeNull();
   });
 
-  it('parseInlinePermissionSetting 拒绝无参数/非法/无关指令（避免触发引导流程）', () => {
+  it('拒绝无参数/非法/多余参数/无关指令（避免触发引导流程或静默忽略输入）', () => {
     expect(parseInlinePermissionSetting('/permission')).toBeNull();
     expect(parseInlinePermissionSetting('/permissions')).toBeNull();
     expect(parseInlinePermissionSetting('/permission bogus')).toBeNull();
     expect(parseInlinePermissionSetting('/permissions mode bogus')).toBeNull();
-    expect(parseInlinePermissionSetting('/permissions allow')).toBeNull();
+    expect(parseInlinePermissionSetting('/permission si please')).toBeNull();
+    expect(parseInlinePermissionSetting('/permissions mode plan extra')).toBeNull();
     expect(parseInlinePermissionSetting('/help')).toBeNull();
     expect(parseInlinePermissionSetting('si')).toBeNull();
   });
@@ -116,6 +121,7 @@ describe('审批中的热改设置解析', () => {
     });
     // 无法识别的设置指令 → unknown（调用方应重新提示，而非当成拒绝）
     expect(parsePermissionAnswer('/permission')).toEqual({ kind: 'unknown' });
+    expect(parsePermissionAnswer('/permissions allow bash')).toEqual({ kind: 'unknown' });
     expect(parsePermissionAnswer('/bogus')).toEqual({ kind: 'unknown' });
   });
 });

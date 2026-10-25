@@ -279,7 +279,14 @@ export async function runTui(opts: TuiOptions): Promise<number> {
   /** 问答引导进行中：提前到达的 Enter 先入队，避免下一问尚未就绪时输入走失 */
   let guidedDepth = 0;
   const queuedAnswers: string[] = [];
-  type EditorMode = { kind: 'input' } | { kind: 'permission'; resolve: (a: string) => void } | { kind: 'prompt'; resolve: (a: string) => void };
+  /** 审批重评估期间的输入：留给下一次 ask() 立即消费，不进入聊天队列 */
+  const pendingApprovalAnswers: string[] = [];
+  type EditorMode =
+    | { kind: 'input' }
+    | { kind: 'permission'; resolve: (a: string) => void }
+    /** 审批中已提交设置、引擎正按新策略重评估：此间输入先缓冲，避免误入聊天队列 */
+    | { kind: 'permissionWait' }
+    | { kind: 'prompt'; resolve: (a: string) => void };
   let mode: EditorMode = { kind: 'input' };
   let lastSigint = 0;
   let activeAbort: AbortController | undefined;
@@ -401,7 +408,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
 
   function boxTitle(): string {
     const model = modelSpecLabel(spec);
-    if (mode.kind === 'permission') return t('box.permissionTitle');
+    if (mode.kind === 'permission' || mode.kind === 'permissionWait') return t('box.permissionTitle');
     if (mode.kind === 'prompt') return ANSI.bold(promptQuestion);
     if (wizard !== null) return ANSI.bold(wizardQuestion(wizard));
     if (groupWizard !== null) return ANSI.bold(groupQuestion(groupWizard));
@@ -621,44 +628,46 @@ export async function runTui(opts: TuiOptions): Promise<number> {
 
   /** 应用一次内联权限设置（热改）。立即写入引擎，故同回合后续判定即生效。 */
   function applyInlinePermissionChange(change: InlinePermissionChange): void {
-    if (change.kind === 'mode') {
-      agent.engine.setMode(change.mode);
-      permissionMode = change.mode;
-      printAbove(
-        `${ANSI.green(t('tier.switched', { key: change.key, label: permissionModeShort(change.mode) }))}${ANSI.dim(t('permission.hotApplied'))}\n`,
-      );
-      return;
-    }
-    addSessionRule(change.effect, change.tool);
-    printAbove(`${ANSI.dim(t('permission.hotApplied'))}\n`);
+    agent.engine.setMode(change.mode);
+    permissionMode = change.mode;
+    printAbove(
+      `${ANSI.green(t('tier.switched', { key: change.key, label: permissionModeShort(change.mode) }))} ${ANSI.dim(t('tier.sessionOnly'))}\n` +
+        `${ANSI.dim(t('permission.hotApplied'))}\n`,
+    );
   }
 
   function tuiPermissionHandler(req: PermissionRequest): Promise<PermissionDecision> {
     return new Promise<PermissionDecision>((resolve) => {
+      const answer = (raw: string): void => {
+        const parsed = parsePermissionAnswer(raw);
+        if (parsed.kind === 'setting') {
+          // 热改设置：应用后交回引擎重新评估同一请求（升档即放行，不再追问）
+          applyInlinePermissionChange(parsed.change);
+          // 重评估期间保持审批态，此间输入先缓冲，避免被当成聊天输入发出去
+          mode = { kind: 'permissionWait' };
+          resolve({ recheck: true });
+          return;
+        }
+        if (parsed.kind === 'unknown') {
+          printAbove(`${ANSI.yellow(t('permission.hotUsage'))}\n`);
+          ask(); // 重新提示，不把无法识别的指令当成拒绝
+          return;
+        }
+        if (parsed.kind === 'allow') return resolve({ decision: 'allow' });
+        if (parsed.kind === 'allowSession') return resolve({ decision: 'allow', remember: 'session' });
+        resolve({ decision: 'deny', message: t('permission.deniedByUser') });
+      };
       const ask = (): void => {
+        // 重评估期间已到达的输入：立即消费，用户无需重新输入
+        const buffered = pendingApprovalAnswers.shift();
+        if (buffered !== undefined) {
+          answer(buffered);
+          return;
+        }
         printAbove(
           `\n${ANSI.yellow(t('permission.request'))} ${previewOfRequest(req)}\n${ANSI.dim(t('permission.hotHint'))}\n`,
         );
-        mode = {
-          kind: 'permission',
-          resolve: (answer) => {
-            const parsed = parsePermissionAnswer(answer);
-            if (parsed.kind === 'setting') {
-              // 热改设置：应用后交回引擎重新评估同一请求（升档即放行，不再追问）
-              applyInlinePermissionChange(parsed.change);
-              resolve({ recheck: true });
-              return;
-            }
-            if (parsed.kind === 'unknown') {
-              printAbove(`${ANSI.yellow(t('permission.hotUsage'))}\n`);
-              ask(); // 重新提示，不把无法识别的指令当成拒绝
-              return;
-            }
-            if (parsed.kind === 'allow') return resolve({ decision: 'allow' });
-            if (parsed.kind === 'allowSession') return resolve({ decision: 'allow', remember: 'session' });
-            resolve({ decision: 'deny', message: t('permission.deniedByUser') });
-          },
-        };
+        mode = { kind: 'permission', resolve: answer };
         editor.clear();
         redraw();
       };
@@ -997,8 +1006,16 @@ export async function runTui(opts: TuiOptions): Promise<number> {
   function handleSubmit(text: string): void {
     if (mode.kind === 'permission') {
       const resolve = mode.resolve;
-      mode = { kind: 'input' };
+      // 设置指令会触发引擎重评估：此间保持审批态，避免输入落到聊天队列
+      mode = parsePermissionAnswer(text).kind === 'setting' ? { kind: 'permissionWait' } : { kind: 'input' };
       resolve(text);
+      editor.clear();
+      redraw();
+      return;
+    }
+    if (mode.kind === 'permissionWait') {
+      // 引擎正在按新策略重评估：缓冲输入，下一次提示就绪后立即消费
+      if (pendingApprovalAnswers.length < 16) pendingApprovalAnswers.push(text);
       editor.clear();
       redraw();
       return;
@@ -1572,7 +1589,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
         agent.engine.setMode(tier.mode);
         permissionMode = tier.mode;
         printAbove(
-          `${ANSI.green(t('tier.switched', { key: tier.key, label: permissionModeShort(tier.mode) }))}${ANSI.dim(t('tier.sessionOnly'))}\n`,
+          `${ANSI.green(t('tier.switched', { key: tier.key, label: permissionModeShort(tier.mode) }))} ${ANSI.dim(t('tier.sessionOnly'))}\n`,
         );
         return;
       }

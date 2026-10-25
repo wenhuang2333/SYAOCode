@@ -159,21 +159,12 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
 
   /** 应用一次内联权限设置（热改）。立即写入引擎，故同回合后续判定即生效。 */
   function applyInlinePermissionChange(change: InlinePermissionChange): void {
-    if (change.kind === 'mode') {
-      agent.engine.setMode(change.mode);
-      permissionMode = change.mode;
-      output.write(
-        ANSI.green(t('tier.switched', { key: change.key, label: permissionModeShort(change.mode) })) +
-          ANSI.dim(`${t('permission.hotApplied')}\n`),
-      );
-      return;
-    }
-    const rule: PermissionRule = { effect: change.effect, tool: change.tool, source: 'user' };
-    sessionRules.push(rule);
-    agent.engine.addRules([rule]);
+    agent.engine.setMode(change.mode);
+    permissionMode = change.mode;
     output.write(
-      ANSI.green(`${t('config.ruleAdded', { effect: change.effect, tool: change.tool })}\n`) +
-        ANSI.dim(`${t('permission.hotApplied')}\n`),
+      ANSI.green(t('tier.switched', { key: change.key, label: permissionModeShort(change.mode) })) +
+        ` ${ANSI.dim(t('tier.sessionOnly'))}\n` +
+        `${ANSI.dim(t('permission.hotApplied'))}\n`,
     );
   }
 
@@ -605,7 +596,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
       permissionMode = tier.mode;
       output.write(
         ANSI.green(t('tier.switched', { key: tier.key, label: permissionModeShort(tier.mode) })) +
-          ANSI.dim(`${t('tier.sessionOnly')}\n`),
+          ` ${ANSI.dim(t('tier.sessionOnly'))}\n`,
       );
       return;
     }
