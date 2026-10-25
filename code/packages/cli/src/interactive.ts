@@ -21,7 +21,15 @@ import { createBuiltinTools } from '@syaocode/tools';
 import type { CliArgs } from './args.js';
 import { resolvePermissionTier } from './args.js';
 import { buildProvider, type ProviderSpec } from './provider-select.js';
-import { helpText, parsePermissionArg, parseSlash, permissionModeShort, permissionTierPanel } from './slash.js';
+import {
+  helpText,
+  parsePermissionAnswer,
+  parsePermissionArg,
+  parseSlash,
+  permissionModeShort,
+  permissionTierPanel,
+  type InlinePermissionChange,
+} from './slash.js';
 import {
   catalogEntry,
   envFilePath,
@@ -149,6 +157,26 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
     return created;
   }
 
+  /** 应用一次内联权限设置（热改）。立即写入引擎，故同回合后续判定即生效。 */
+  function applyInlinePermissionChange(change: InlinePermissionChange): void {
+    if (change.kind === 'mode') {
+      agent.engine.setMode(change.mode);
+      permissionMode = change.mode;
+      output.write(
+        ANSI.green(t('tier.switched', { key: change.key, label: permissionModeShort(change.mode) })) +
+          ANSI.dim(`${t('permission.hotApplied')}\n`),
+      );
+      return;
+    }
+    const rule: PermissionRule = { effect: change.effect, tool: change.tool, source: 'user' };
+    sessionRules.push(rule);
+    agent.engine.addRules([rule]);
+    output.write(
+      ANSI.green(`${t('config.ruleAdded', { effect: change.effect, tool: change.tool })}\n`) +
+        ANSI.dim(`${t('permission.hotApplied')}\n`),
+    );
+  }
+
   async function terminalPermissionHandler(req: PermissionRequest): Promise<PermissionDecision> {
     const preview = previewOfRequest(req);
     if (!isTTY) {
@@ -156,14 +184,26 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
       output.write(ANSI.yellow(`${t('permission.headless', { preview })}\n`));
       return { decision: 'deny', message: 'Non-interactive session: approval unavailable (SY-CLI-002). Pre-approve via /permissions allow or --allowed-tools.' };
     }
-    output.write(`\n${ANSI.yellow(t('permission.request'))} ${preview}\n`);
-    rl.resume();
-    if (rlClosed) return { decision: 'deny', message: t('permission.inputClosed') };
-    const answer = (await rl.question(t('permission.prompt'))).trim().toLowerCase();
-    rl.pause();
-    if (answer === 'y') return { decision: 'allow' };
-    if (answer === 's') return { decision: 'allow', remember: 'session' };
-    return { decision: 'deny', message: t('permission.deniedByUser') };
+    output.write(`\n${ANSI.yellow(t('permission.request'))} ${preview}\n${ANSI.dim(t('permission.hotHint'))}\n`);
+    for (;;) {
+      rl.resume();
+      if (rlClosed) return { decision: 'deny', message: t('permission.inputClosed') };
+      const raw = await rl.question(t('permission.prompt'));
+      rl.pause();
+      const parsed = parsePermissionAnswer(raw);
+      if (parsed.kind === 'setting') {
+        // 热改设置：应用后交回引擎重新评估同一请求（升档即放行，不再追问）
+        applyInlinePermissionChange(parsed.change);
+        return { recheck: true };
+      }
+      if (parsed.kind === 'unknown') {
+        output.write(ANSI.yellow(`${t('permission.hotUsage')}\n`));
+        continue; // 重新提示，不把无法识别的指令当成拒绝
+      }
+      if (parsed.kind === 'allow') return { decision: 'allow' };
+      if (parsed.kind === 'allowSession') return { decision: 'allow', remember: 'session' };
+      return { decision: 'deny', message: t('permission.deniedByUser') };
+    }
   }
 
   function previewOfRequest(req: PermissionRequest): string {

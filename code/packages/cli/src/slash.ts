@@ -128,6 +128,70 @@ export function parseSlash(line: string): SlashCommand | null {
   return { name: `/${parts[0]}`, args: parts.slice(1), raw: trimmed };
 }
 
+// ── 会话内热改设置（可在权限审批挂起时使用，立即生效）────────────────────
+//
+// 审批挂起时用户输入 `/permission si` 这类设置指令，不应被当成 allow/deny
+// 的答复，而应改完设置后**重新评估同一个待批请求**：升档后即可直接放行，
+// 模型无需再问一次。
+
+/** 一次热改设置的效果描述（纯数据，由各前端应用） */
+export type InlinePermissionChange =
+  | { kind: 'mode'; mode: PermissionMode; key: string }
+  | { kind: 'rule'; effect: 'allow' | 'deny'; tool: string };
+
+const PERMISSION_MODES: readonly PermissionMode[] = ['strict', 'default', 'acceptEdits', 'plan', 'bypass'];
+
+/**
+ * 解析可热改的权限设置指令。仅接受带参数的**内联**形式，避免在审批模态中
+ * 触发 `/permission` 的逐项问答引导。
+ * 支持：`/permission <档位>`、`/permissions <档位>`、
+ *       `/permissions mode <模式>`、`/permissions allow|deny <工具>`。
+ */
+export function parseInlinePermissionSetting(raw: string): InlinePermissionChange | null {
+  const cmd = parseSlash(raw);
+  if (cmd === null) return null;
+  if (cmd.name !== '/permission' && cmd.name !== '/permissions') return null;
+  const first = cmd.args[0];
+  if (first === undefined) return null; // 无参数＝引导流程，不适合内联
+
+  if (first === 'mode') {
+    const mode = cmd.args[1];
+    if (mode === undefined || !(PERMISSION_MODES as readonly string[]).includes(mode)) return null;
+    return { kind: 'mode', mode: mode as PermissionMode, key: mode };
+  }
+  if ((first === 'allow' || first === 'deny') && cmd.args[1] !== undefined) {
+    return { kind: 'rule', effect: first, tool: cmd.args[1] };
+  }
+  const tier = parsePermissionArg(first);
+  if (tier === null) return null;
+  return { kind: 'mode', mode: tier.mode, key: tier.key };
+}
+
+/** 审批提示下的一次输入如何理解 */
+export type PermissionAnswer =
+  | { kind: 'allow' }
+  | { kind: 'allowSession' }
+  | { kind: 'deny' }
+  | { kind: 'setting'; change: InlinePermissionChange }
+  | { kind: 'unknown' };
+
+/**
+ * 解析审批提示的输入：`y` 本次允许 / `s` 本会话允许 / 其他＝拒绝（保持既有
+ * 默认拒绝语义）；以 `/` 开头则视为热改设置；无法识别的设置指令返回
+ * `unknown`，调用方应重新提示而不是误判为拒绝。
+ */
+export function parsePermissionAnswer(raw: string): PermissionAnswer {
+  const a = raw.trim();
+  const lower = a.toLowerCase();
+  if (lower === 'y') return { kind: 'allow' };
+  if (lower === 's') return { kind: 'allowSession' };
+  if (a.startsWith('/')) {
+    const change = parseInlinePermissionSetting(a);
+    return change === null ? { kind: 'unknown' } : { kind: 'setting', change };
+  }
+  return { kind: 'deny' };
+}
+
 export function helpText(filter?: string): string {
   const docs = commandDocs();
   const available = docs.filter((c) => c.since === 'v0.1');

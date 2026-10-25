@@ -294,6 +294,33 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 高级模式 `acceptEdits`/`plan` 也可直接作为参数。**切换仅本次会话生效**——启动默认仍由命令行档位参数
 或配置 `permissionMode` 决定；切换后输入框标题的档位标识即时更新。
 
+### 对话中热改设置（立即生效）
+
+权限设置可以在**模型运行中**或**权限审批挂起时**修改，改完立刻生效：
+
+- **审批挂起时**：审批提示下除了 `y`/`s`/`n`，还可直接输入设置指令。此时该请求不会被当成拒绝，
+  而是**按新策略重新评估同一个待批请求**——升档后立即放行，模型无需再问一次。
+
+  ```
+  ⚠ 权限请求 write 写入 hot.txt（write）
+    Tip: type /permission <tier> (e.g. /permission si) to change policy now; ...
+    允许执行？[y]本次 / [s]本次会话 / [n]拒绝（默认 n）：/permission si
+  ✔ Permission tier switched to si (full: no confirmations).
+  ✔ Policy updated while the request was pending; re-evaluating…
+  ⚙ write {"path":"hot.txt", ...}          ← 直接执行，没有再问
+  ```
+
+  可用形式：`/permission <strict|yao|si>`、`/permissions mode <模式>`、`/permissions allow|deny <工具>`。
+  若改完后策略**仍然要求审批**，会带着新理由再次提示；若指令无法识别，会提示用法并**重新提示**
+  （不会被误判为拒绝）。
+
+- **模型运行中**：直接输入上述设置指令，立即写入引擎、不进入输入队列，因此**同一回合后续的权限判定**
+  就用新设置，无需等本轮结束。
+
+安全边界不变：**危险命令永远先被拒绝**，根本不会进入审批，因此任何档位、任何热改都无法放行它
+（`rm -rf /`、`mkfs`、`git push --force` 等，BR-006）；`deny` 规则同样无法被升档覆盖。
+引擎对单个请求的审批轮次设有上限（8 轮），避免设置指令反复提交导致无限循环。
+
 **`/permissions`（进阶，两个命令名参数完全互通）**：
 
 | 用法 | 说明 |

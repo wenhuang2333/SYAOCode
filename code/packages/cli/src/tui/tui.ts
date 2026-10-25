@@ -45,7 +45,17 @@ import { buildCliContext } from '../context.js';
 import { PhaseTracker, phaseLine } from './phase.js';
 import { getLanguage, isLang, languageName, t, type Lang } from '../i18n/index.js';
 import { userErrorMessage, userEventErrorText } from '../error-text.js';
-import { commandDocs, helpText, parsePermissionArg, parseSlash, permissionModeShort, permissionTierPanel } from '../slash.js';
+import {
+  commandDocs,
+  helpText,
+  parseInlinePermissionSetting,
+  parsePermissionAnswer,
+  parsePermissionArg,
+  parseSlash,
+  permissionModeShort,
+  permissionTierPanel,
+  type InlinePermissionChange,
+} from '../slash.js';
 import {
   catalogEntry,
   envFilePath,
@@ -609,20 +619,50 @@ export async function runTui(opts: TuiOptions): Promise<number> {
 
   // ── 权限审批（复用编辑器） ───────────────────────────────────────────
 
+  /** 应用一次内联权限设置（热改）。立即写入引擎，故同回合后续判定即生效。 */
+  function applyInlinePermissionChange(change: InlinePermissionChange): void {
+    if (change.kind === 'mode') {
+      agent.engine.setMode(change.mode);
+      permissionMode = change.mode;
+      printAbove(
+        `${ANSI.green(t('tier.switched', { key: change.key, label: permissionModeShort(change.mode) }))}${ANSI.dim(t('permission.hotApplied'))}\n`,
+      );
+      return;
+    }
+    addSessionRule(change.effect, change.tool);
+    printAbove(`${ANSI.dim(t('permission.hotApplied'))}\n`);
+  }
+
   function tuiPermissionHandler(req: PermissionRequest): Promise<PermissionDecision> {
-    printAbove(`\n${ANSI.yellow(t('permission.request'))} ${previewOfRequest(req)}\n`);
     return new Promise<PermissionDecision>((resolve) => {
-      mode = {
-        kind: 'permission',
-        resolve: (answer) => {
-          const a = answer.trim().toLowerCase();
-          if (a === 'y') resolve({ decision: 'allow' });
-          else if (a === 's') resolve({ decision: 'allow', remember: 'session' });
-          else resolve({ decision: 'deny', message: t('permission.deniedByUser') });
-        },
+      const ask = (): void => {
+        printAbove(
+          `\n${ANSI.yellow(t('permission.request'))} ${previewOfRequest(req)}\n${ANSI.dim(t('permission.hotHint'))}\n`,
+        );
+        mode = {
+          kind: 'permission',
+          resolve: (answer) => {
+            const parsed = parsePermissionAnswer(answer);
+            if (parsed.kind === 'setting') {
+              // 热改设置：应用后交回引擎重新评估同一请求（升档即放行，不再追问）
+              applyInlinePermissionChange(parsed.change);
+              resolve({ recheck: true });
+              return;
+            }
+            if (parsed.kind === 'unknown') {
+              printAbove(`${ANSI.yellow(t('permission.hotUsage'))}\n`);
+              ask(); // 重新提示，不把无法识别的指令当成拒绝
+              return;
+            }
+            if (parsed.kind === 'allow') return resolve({ decision: 'allow' });
+            if (parsed.kind === 'allowSession') return resolve({ decision: 'allow', remember: 'session' });
+            resolve({ decision: 'deny', message: t('permission.deniedByUser') });
+          },
+        };
+        editor.clear();
+        redraw();
       };
-      editor.clear();
-      redraw();
+      ask();
     });
   }
 
@@ -990,6 +1030,15 @@ export async function runTui(opts: TuiOptions): Promise<number> {
     }
     // 主输入
     if (busy) {
+      // 运行中的权限热改：立即生效（不排队），使同一回合后续权限判定就用新设置
+      const change = parseInlinePermissionSetting(text);
+      if (change !== null) {
+        printAbove(`${ANSI.cyan('❯')} ${text}\n`);
+        applyInlinePermissionChange(change);
+        editor.clear();
+        redraw();
+        return;
+      }
       if (queuedInputs.length < 16) queuedInputs.push(text);
       redraw();
       return;

@@ -179,3 +179,79 @@ describe('glob rules', () => {
     expect(denied.outcome).toBe('deny');
   });
 });
+
+// 审批挂起时的热改设置（recheck）：用户改权限后重新评估同一请求，
+// 升档即放行、无需再次询问；硬拒绝与 deny 规则不受升档影响。
+describe('hot policy change during approval (recheck)', () => {
+  it('policyVerdict reports ask without invoking the approval handler', async () => {
+    let calls = 0;
+    const e = engine({
+      mode: 'default',
+      onRequest: async () => {
+        calls += 1;
+        return { decision: 'allow' };
+      },
+    });
+    const v = await e.policyVerdict('write', 'write', { path: '/ws/a.txt' });
+    expect(v.outcome).toBe('ask');
+    if (v.outcome === 'ask') expect(v.reason).toContain('write');
+    expect(calls).toBe(0);
+  });
+
+  it('upgrading the tier mid-approval allows the pending request without a second prompt', async () => {
+    let e!: PermissionEngine;
+    let calls = 0;
+    e = engine({
+      mode: 'default',
+      onRequest: async () => {
+        calls += 1;
+        e.setMode('bypass'); // 用户在审批界面输入 /permission si
+        return { recheck: true };
+      },
+    });
+    const out = await e.checkSubject('write', 'write', { path: '/ws/a.txt' });
+    expect(out.outcome).toBe('allow');
+    expect(calls).toBe(1); // 只问了一次
+  });
+
+  it('prompts again when the new policy still requires approval', async () => {
+    let calls = 0;
+    const e = engine({
+      mode: 'default',
+      onRequest: async () => {
+        calls += 1;
+        return calls === 1 ? { recheck: true } : { decision: 'allow' };
+      },
+    });
+    const out = await e.checkSubject('write', 'write', { path: '/ws/a.txt' });
+    expect(out.outcome).toBe('allow');
+    expect(calls).toBe(2);
+  });
+
+  it('recheck can turn an ask into a deny (downgrade to plan)', async () => {
+    let e!: PermissionEngine;
+    e = engine({
+      mode: 'default',
+      onRequest: async () => {
+        e.setMode('plan');
+        return { recheck: true };
+      },
+    });
+    const out = await e.checkSubject('write', 'write', { path: '/ws/a.txt' });
+    expect(out.outcome).toBe('deny');
+    if (out.outcome === 'deny') expect(out.error.code).toBe('SY-PERM-001');
+  });
+
+  it('dangerous commands stay denied even in bypass (BR-006)', async () => {
+    const v = await engine({ mode: 'bypass' }).policyVerdict('bash', 'exec', { command: 'rm -rf /' });
+    expect(v.outcome).toBe('deny');
+    if (v.outcome === 'deny') expect(v.error.code).toBe('SY-PERM-004');
+  });
+
+  it('bounds endless rechecks and denies (SY-PERM-002)', async () => {
+    const e = engine({ mode: 'default', onRequest: async () => ({ recheck: true }) });
+    const out = await e.checkSubject('write', 'write', { path: '/ws/a.txt' });
+    expect(out.outcome).toBe('deny');
+    if (out.outcome === 'deny') expect(out.error.code).toBe('SY-PERM-002');
+  });
+});

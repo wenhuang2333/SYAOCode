@@ -32,7 +32,7 @@ export type { PermissionSubject, PromptContext, Tool, ToolContext, ToolOutput, T
 export { ToolRegistry, zodToJsonSchema, textContent } from './tool.js';
 
 // permissions
-export type { EngineOutcome, EngineOptions, PermissionDecision, PermissionHandler, PermissionRequest, PermissionRule, CommandClass } from './permissions.js';
+export type { EngineOutcome, EngineOptions, PermissionDecision, PermissionHandler, PermissionRequest, PermissionRule, PolicyVerdict, CommandClass } from './permissions.js';
 export { PermissionEngine, classifyCommand, globMatch } from './permissions.js';
 
 // pipeline
