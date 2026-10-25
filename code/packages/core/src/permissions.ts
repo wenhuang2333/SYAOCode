@@ -25,11 +25,24 @@ export interface PermissionRequest {
   reason: string;
 }
 
-export interface PermissionDecision {
-  decision: 'allow' | 'deny';
-  remember?: 'once' | 'session' | 'project';
-  message?: string;
-}
+/**
+ * Outcome of one approval round.
+ *
+ * `recheck` lets the approver change session policy *while the request is
+ * pending* (hot setting change, e.g. `/permission si`) instead of answering
+ * allow/deny: the engine re-evaluates the same request under the new mode and
+ * rules, so an upgraded tier resolves the request without asking again.
+ */
+export type PermissionDecision =
+  | { decision: 'allow'; remember?: 'once' | 'session' | 'project'; message?: string }
+  | { decision: 'deny'; remember?: 'once' | 'session' | 'project'; message?: string }
+  | { recheck: true };
+
+/** Verdict of the deterministic policy, before any approval handler runs. */
+export type PolicyVerdict =
+  | { outcome: 'allow' }
+  | { outcome: 'deny'; error: PermissionError }
+  | { outcome: 'ask'; reason: string; risk: ToolRisk };
 
 export type PermissionHandler = (req: PermissionRequest) => Promise<PermissionDecision>;
 
@@ -223,6 +236,19 @@ export class PermissionEngine {
   }
 
   async checkSubject(toolName: string, risk: ToolRisk, subject: PermissionSubject): Promise<EngineOutcome> {
+    const verdict = await this.policyVerdict(toolName, risk, subject);
+    if (verdict.outcome === 'ask') {
+      return this.resolveAsk(toolName, verdict.risk, subject, verdict.reason);
+    }
+    return verdict;
+  }
+
+  /**
+   * Deterministic policy only: never calls the approval handler. `ask` is
+   * returned as a verdict so callers can re-evaluate after a hot setting
+   * change without recursing into another prompt.
+   */
+  async policyVerdict(toolName: string, risk: ToolRisk, subject: PermissionSubject): Promise<PolicyVerdict> {
     // Exec risk with a concrete command is refined by classification (FR-043):
     // all-read-only segments count as read; dangerous never gets here (below).
     const effRisk: ToolRisk =
@@ -246,7 +272,7 @@ export class PermissionEngine {
         if (effect === 'deny') {
           return deny('SY-PERM-001', `Denied by ${rule.source} rule for tool '${toolName}'.`);
         }
-        return await this.resolveAsk(toolName, effRisk, subject, `Rule (${rule.source}) set this tool to ask.`);
+        return { outcome: 'ask', risk: effRisk, reason: `Rule (${rule.source}) set this tool to ask.` };
       }
     }
 
@@ -259,14 +285,14 @@ export class PermissionEngine {
         return deny('SY-PERM-001', 'Plan mode only permits read-only tools.');
       case 'strict':
         // Strictest tier: even reads ask (CLI default when launched bare).
-        return await this.resolveAsk(
-          toolName,
-          effRisk,
-          subject,
-          effRisk === 'read'
-            ? 'Strict mode confirms every operation, including reads.'
-            : `Strict mode: tool '${toolName}' is a ${effRisk}-level operation.`,
-        );
+        return {
+          outcome: 'ask',
+          risk: effRisk,
+          reason:
+            effRisk === 'read'
+              ? 'Strict mode confirms every operation, including reads.'
+              : `Strict mode: tool '${toolName}' is a ${effRisk}-level operation.`,
+        };
       case 'acceptEdits': {
         if (effRisk === 'read') return { outcome: 'allow' };
         if (effRisk === 'write' && subject.path !== undefined) {
@@ -274,7 +300,7 @@ export class PermissionEngine {
           if (inside) return { outcome: 'allow' };
           return deny('SY-PERM-003', 'Path is outside the workspace; acceptEdits does not cover it (BR-003).');
         }
-        return await this.resolveAsk(toolName, effRisk, subject, 'acceptEdits only auto-accepts workspace edits.');
+        return { outcome: 'ask', risk: effRisk, reason: 'acceptEdits only auto-accepts workspace edits.' };
       }
       case 'default':
       default:
@@ -283,9 +309,12 @@ export class PermissionEngine {
         if (subject.path !== undefined && !(await this.insideWorkspace(subject.path))) {
           return deny('SY-PERM-003', 'Path is outside the workspace and has not been approved (BR-003).');
         }
-        return await this.resolveAsk(toolName, effRisk, subject, `Tool '${toolName}' is a ${effRisk}-level operation.`);
+        return { outcome: 'ask', risk: effRisk, reason: `Tool '${toolName}' is a ${effRisk}-level operation.` };
     }
   }
+
+  /** Approval rounds allowed for one request; bounds hot-policy-change loops. */
+  static readonly MAX_APPROVAL_ROUNDS = 8;
 
   private async resolveAsk(
     toolName: string,
@@ -293,22 +322,53 @@ export class PermissionEngine {
     subject: PermissionSubject,
     reason: string,
   ): Promise<EngineOutcome> {
-    const req: PermissionRequest = { tool: toolName, risk, subject, reason };
     const handler = this.opts.onRequest ?? this.opts.handler;
     if (handler === undefined) {
       // ask without a handler is a deny (SY-PERM-005). Headless CLI relies on this.
       return deny('SY-PERM-005', `Operation needs approval but no permission handler is configured; treated as deny. (${reason})`);
     }
-    const decision = await handler(req);
-    const by = decision.decision === 'allow' ? 'user' : 'user-deny';
-    this.opts.onResult?.(req.tool, decision.decision, by);
-    if (decision.decision === 'allow') {
-      if (decision.remember === 'project' || decision.remember === 'session') {
-        this.remember(toolName, subject, decision.remember);
+
+    let currentRisk = risk;
+    let currentReason = reason;
+    for (let round = 0; round < PermissionEngine.MAX_APPROVAL_ROUNDS; round += 1) {
+      const req: PermissionRequest = { tool: toolName, risk: currentRisk, subject, reason: currentReason };
+      const decision = await handler(req);
+
+      // Hot setting change: re-evaluate under the *new* policy instead of
+      // answering. Upgrading the tier can therefore settle the pending request
+      // without a second prompt.
+      if ('recheck' in decision) {
+        const now = await this.policyVerdict(toolName, currentRisk, subject);
+        if (now.outcome === 'allow') {
+          this.opts.onResult?.(toolName, 'allow', 'user');
+          return { outcome: 'allow' };
+        }
+        if (now.outcome === 'deny') {
+          this.opts.onResult?.(toolName, 'deny', 'user');
+          return now;
+        }
+        // Still ask under the new policy: prompt again with the updated reason.
+        currentRisk = now.risk;
+        currentReason = now.reason;
+        continue;
       }
-      return { outcome: 'allow' };
+
+      const by = decision.decision === 'allow' ? 'user' : 'user-deny';
+      this.opts.onResult?.(toolName, decision.decision, by);
+      if (decision.decision === 'allow') {
+        if (decision.remember === 'project' || decision.remember === 'session') {
+          this.remember(toolName, subject, decision.remember);
+        }
+        return { outcome: 'allow' };
+      }
+      return deny('SY-PERM-002', decision.message ?? 'The user denied this operation.');
     }
-    return deny('SY-PERM-002', decision.message ?? 'The user denied this operation.');
+
+    // Guard against an approver that never settles the request.
+    return deny(
+      'SY-PERM-002',
+      `Approval did not settle after ${PermissionEngine.MAX_APPROVAL_ROUNDS} rounds of policy changes; treated as deny.`,
+    );
   }
 
   private remember(toolName: string, subject: PermissionSubject, scope: 'session' | 'project'): void {
