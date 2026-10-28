@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createCliFabric, disposeCliFabric, hasCliFabric, type CliFabric } from '../src/arf';
-import { splitCommand, protocolsAvailable } from '../src/edges';
+import { splitCommand, protocolsAvailable, mcpServerExecutor, reverseGateway } from '../src/edges';
 import { decodeFramesForTest, messageIds } from '../src/serve';
 import { listPeers, savePeer } from '../src/peers';
 import { setLanguage } from '../src/i18n/index';
@@ -149,5 +149,103 @@ describe('built-in tools as governed capabilities', () => {
     const c = cli({ tools: false });
     expect(c.tools).toBeUndefined();
     expect(await c.fabric.discover()).toEqual([]);
+  });
+});
+
+// ── inbound calls carry their real protocol (C-6) ─────────────────────────
+//
+// Inbound MCP/ACP calls were dispatched with `protocol: 'native'`, so the
+// receipt recorded the wrong protocol and any `protocols:['mcp']` rule could
+// never match inbound traffic. The tenant was not passed either, which skipped
+// the dispatcher's I1 check on exactly the traffic that comes from outside.
+
+describe('inbound invocations record the edge protocol and the tenant', () => {
+  it('an MCP server call is dispatched as protocol "mcp"', async () => {
+    const c = cli({ permissionMode: 'bypass' });
+    const opts = {
+      runtime: c.runtime,
+      fabric: c.fabric,
+      principal: c.principal,
+      cwd: c.cwd,
+      workspaceRoots: c.workspaceRoots,
+      tenantId: c.tenantId,
+      // The real serve path supplies this: an inbound call arrives before any
+      // CLI call, so the session (and its budget account) must exist first.
+      ensureSession: async () => {
+        const session = await c.ensureSession();
+        return { id: session.id, budgetId: session.budgetId };
+      },
+    };
+    const executor = mcpServerExecutor(opts);
+    const result = await executor.execute({
+      capabilityId: 'local://tools/read',
+      toolName: 'read',
+      input: { path: 'package.json' },
+      correlationId: 'c1',
+    });
+    // The outcome depends on the tier; the protocol label does not.
+    expect(['succeeded', 'failed']).toContain(result.outcome);
+    const receipts = await c.fabric.stores.receipts.listByTask(
+      // the executor creates its own task; find the newest receipt instead
+      (await c.fabric.tasks.list({})).at(-1)?.id ?? 'missing',
+      c.tenantId,
+    );
+    // The receipt exists and names the MCP edge, not "native".
+    const all = await Promise.all(
+      (await c.fabric.tasks.list({})).map((t) => c.fabric.stores.receipts.listByTask(t.id, c.tenantId)),
+    );
+    const flat = all.flat().concat(receipts);
+    expect(flat.length).toBeGreaterThan(0);
+    expect(flat.every((r) => r.protocol === 'mcp')).toBe(true);
+  });
+
+  it('an ACP reverse call is dispatched as protocol "acp" with direction reverse', async () => {
+    const c = cli({ permissionMode: 'bypass' });
+    const gateway = reverseGateway({
+      runtime: c.runtime,
+      fabric: c.fabric,
+      principal: c.principal,
+      cwd: c.cwd,
+      workspaceRoots: c.workspaceRoots,
+      tenantId: c.tenantId,
+      ensureSession: async () => {
+        const session = await c.ensureSession();
+        return { id: session.id, budgetId: session.budgetId };
+      },
+    });
+    await gateway.invoke({ capabilityId: 'local://tools/read', input: { path: 'package.json' } });
+    const tasks = await c.fabric.tasks.list({});
+    const receipts = (await Promise.all(tasks.map((t) => c.fabric.stores.receipts.listByTask(t.id, c.tenantId)))).flat();
+    expect(receipts.length).toBeGreaterThan(0);
+    expect(receipts.every((r) => r.protocol === 'acp')).toBe(true);
+  });
+
+  it('rejects an inbound call whose tenant does not match the host (I1)', async () => {
+    const c = cli({ permissionMode: 'bypass' });
+    const opts = {
+      runtime: c.runtime,
+      fabric: c.fabric,
+      // A foreign principal with the host's capabilities: the dispatcher must
+      // refuse it now that the tenant is actually passed down.
+      principal: { ...c.principal, tenantId: 'tenant-victim' },
+      cwd: c.cwd,
+      workspaceRoots: c.workspaceRoots,
+      tenantId: c.tenantId,
+      // The real serve path supplies this: an inbound call arrives before any
+      // CLI call, so the session (and its budget account) must exist first.
+      ensureSession: async () => {
+        const session = await c.ensureSession();
+        return { id: session.id, budgetId: session.budgetId };
+      },
+    };
+    const executor = mcpServerExecutor(opts);
+    await expect(
+      executor.execute({
+        capabilityId: 'local://tools/read',
+        toolName: 'read',
+        input: { path: 'package.json' },
+        correlationId: 'c2',
+      }),
+    ).rejects.toBeDefined();
   });
 });

@@ -20,7 +20,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { contentHash, MemoryLogger, Redactor, type Logger, type Runtime } from '@syaocode/core';
+import { contentHash, MemoryLogger, Redactor, sha256Hex, type Logger, type Runtime } from '@syaocode/core';
+import { CanonicalError, createFabric, RulePolicyEngine, withRevision, type Fabric } from '@syaocode/rpc';
 import type {
   AdapterContext,
   Protocol,
@@ -35,10 +36,21 @@ import type {
   Capability,
   DiscoveredCapability,
   Effect,
+  InvocationState,
   InvokeResultPayload,
   ProtocolAdapter,
+  PolicyRule,
 } from '@syaocode/rpc';
 import type { FakePeer, FakePeerNotification } from './fake-peer.js';
+
+/**
+ * The tenant every contract run is attributed to.
+ *
+ * It MUST match the tenant the rig's invocation carries (`ten_test`): the
+ * dispatcher's I1 check refuses a principal from another tenant, so a
+ * mismatch would deny every call and the contract would assert nothing.
+ */
+const TENANT = 'ten_test';
 
 // ── peer view ─────────────────────────────────────────────────────────────
 
@@ -130,14 +142,17 @@ export interface ContractReceipt {
 }
 
 export interface ContractRun {
-  outcome: InvokeResultPayload['outcome'];
+  /** The kernel's invocation state; `denied` is a real outcome here. */
+  outcome: InvocationState;
   error?: CanonicalErrorShape;
   lossy: string[];
   receipt: ContractReceipt;
   /** True when the result came from the fake idempotency store. */
   replayed: boolean;
-  /** Peer invocation calls observed after the run. */
+  /** Peer invocation calls observed DURING the run. */
   peerCalls: number;
+  /** Every peer call observed during the run (any method). */
+  peerCallsTotal: number;
 }
 
 export interface GovernedOptions {
@@ -151,31 +166,123 @@ export interface GovernedOptions {
   deferApproval?: boolean;
 }
 
+/** Map a canonical failure kind onto the kernel's invocation outcome. */
+function outcomeOf(kind: CanonicalErrorShape['kind']): InvocationState {
+  switch (kind) {
+    case 'denied':
+    case 'unauthorized':
+    case 'unauthenticated':
+      return 'denied';
+    case 'timed_out':
+      return 'timed_out';
+    case 'cancelled':
+      return 'cancelled';
+    case 'indeterminate':
+      return 'indeterminate';
+    default:
+      return 'failed';
+  }
+}
+
 export class GovernedHarness {
   readonly idempotency = new Map<string, ContractRun>();
   approvalsRequested = 0;
 
-  private pendingApproval: ((state: ApprovalOutcome['state']) => void) | undefined;
-  private issued: (() => void) | undefined;
   private issuedPromise: Promise<void> = Promise.resolve();
+  private issued: (() => void) | undefined;
+  /** Set by the deferred-approval presenter; answers the kernel's approval. */
+  private release: ((state: ApprovalOutcome['state']) => void) | undefined;
+  /** The kernel, built once: the rig's adapter is single-use. */
+  private fabric: Fabric | undefined;
+  /** Options of the run in flight, read by the approval presenter. */
+  private current: GovernedOptions | undefined;
 
   constructor(
     private readonly rig: ContractRig,
     private readonly invocationMethod: string,
   ) {}
 
-  /** Resolves as soon as the harness asks for an approval. */
+  /** Resolves as soon as the kernel actually asks for an approval. */
   waitForApproval(): Promise<void> {
     return this.issuedPromise;
   }
 
   /** Answer a deferred approval. */
   releaseApproval(state: ApprovalOutcome['state']): void {
-    const resolve = this.pendingApproval;
-    this.pendingApproval = undefined;
-    resolve?.(state);
+    this.release?.(state);
+    this.release = undefined;
   }
 
+  /** Wake `waitForApproval()` once the kernel asks. */
+  private signalApprovalRequested(): void {
+    this.issued?.();
+  }
+
+  /**
+   * Build the kernel once and mount the adapter.
+   *
+   * One fabric per harness mirrors reality (one kernel per process) and is
+   * required here because an adapter's channel cannot be mounted twice.
+   */
+  private async kernel(): Promise<Fabric> {
+    if (this.fabric !== undefined) return this.fabric;
+    const rig = this.rig;
+    const fabric = createFabric({
+      runtime: rig.runtime,
+      tenantId: TENANT,
+      workspaceRoots: ['/work'],
+      // The bundle is re-stamped per run; this default denies.
+      policy: { defaultEffect: 'deny', rules: [] },
+      // Nothing answers within this window unless a presenter decides, which is
+      // exactly the fail-closed behaviour the contract pins.
+      approvalTimeoutMs: 300,
+      presentApproval: (record: ApprovalRecord) => {
+        this.approvalsRequested += 1;
+        const options = this.current;
+        if (options?.deferApproval === true) {
+          this.signalApprovalRequested();
+          this.release = (state) => {
+            void fabric.approvals.decide(record.id, state === 'allowed' ? 'allow_once' : 'deny_once', 'contract');
+          };
+          return;
+        }
+        const state = options?.approval ?? 'allowed';
+        void fabric.approvals.decide(record.id, state === 'allowed' ? 'allow_once' : 'deny_once', 'contract');
+      },
+    });
+    await fabric.mount(rig.adapter, { providerId: 'contract', risk: 'read' });
+    this.fabric = fabric;
+    return fabric;
+  }
+
+  /** Point the kernel's policy at the effect this run asks for. */
+  private applyPolicy(fabric: Fabric, capabilityId: string, effect: Effect): void {
+    const engine = fabric.policy;
+    if (!(engine instanceof RulePolicyEngine)) return;
+    engine.setBundle(
+      withRevision(
+        { sha256: (text: string) => sha256Hex(text) },
+        {
+          schemaVersion: 1,
+          tenantId: TENANT,
+          defaultEffect: effect === 'allow' ? 'allow' : 'deny',
+          rules: [
+            { id: 'contract-rule', priority: 10, effect, match: { capabilities: [capabilityId] }, source: 'org' },
+          ],
+        },
+      ),
+    );
+  }
+
+  /**
+   * Run ONE invocation through the REAL governance kernel.
+   *
+   * The previous implementation reimplemented policy, idempotency and approval
+   * inside this helper, so the "universal contract properties" passed even if
+   * the kernel were deleted (05 §10.1 C-6). This drives the real
+   * `createFabric` + `dispatcher.invoke` with the real adapter mounted, so a
+   * kernel regression fails here.
+   */
   async run(options: GovernedOptions): Promise<ContractRun> {
     const rig = this.rig;
     const invocation = rig.invocation({
@@ -183,84 +290,103 @@ export class GovernedHarness {
       ...(options.input !== undefined ? { input: options.input } : {}),
       ...(options.idempotencyKey !== undefined ? { idempotencyKey: options.idempotencyKey } : {}),
     });
-    const inputHash = hashInput(invocation.input);
+    const capabilityId = invocation.capability.id;
+    this.current = options;
+    // Arm the approval latch BEFORE the call: `waitForApproval()` must not
+    // resolve until the kernel actually asks, or a test's release would race
+    // ahead of the presenter and the approval would time out to `denied`.
+    this.issuedPromise = new Promise<void>((resolve) => {
+      this.issued = resolve;
+    });
+
+    const fabric = await this.kernel();
+    this.applyPolicy(fabric, capabilityId, options.policy);
+    // Mounting itself calls `discover()` (server/discover + tools/list), so the
+    // baselines are taken AFTER it: an absolute zero would measure discovery,
+    // not the denied invocation.
+    const before = rig.peer.calls(this.invocationMethod);
+    const beforeTotal = rig.peer.calls();
+
     const base = {
       protocol: rig.adapter.protocol,
-      capabilityId: invocation.capability.id,
-      inputHash,
+      capabilityId,
+      inputHash: hashInput(invocation.input),
       invocationId: invocation.invocationId,
       taskId: invocation.taskId,
       policyEffect: options.policy,
       approvals: 0,
     };
 
-    // ── step: authorize ────────────────────────────────────────────────────
-    if (options.policy === 'deny') {
-      return {
-        outcome: 'failed',
-        error: { kind: 'denied', message: 'policy denied', retryable: false },
-        lossy: [],
-        receipt: { ...base, outcome: 'denied', lossy: [] },
-        replayed: false,
-        peerCalls: rig.peer.calls(this.invocationMethod),
-      };
-    }
-
-    // ── step: idempotency (before authorize, per 02 §4) ───────────────────
-    const key = options.idempotencyKey;
-    if (key !== undefined) {
-      const prior = this.idempotency.get(key);
-      if (prior !== undefined && prior.receipt.inputHash === inputHash) return { ...prior, replayed: true };
-    }
-
-    // ── step: approve ─────────────────────────────────────────────────────
+    // The kernel creates its OWN task; on the error path there is no result to
+    // read it from, so capture the task set before the call and diff it.
+    const tasksBefore = new Set((await fabric.tasks.list({})).map((t) => t.id));
+    let outcome: InvocationState = 'failed';
+    let error: CanonicalErrorShape | undefined;
+    let lossy: string[] = [];
+    let replayed = false;
     let approvals = 0;
-    if (options.policy === 'ask') {
-      approvals = 1;
-      this.approvalsRequested += 1;
-      const state = options.deferApproval === true ? await this.defer() : (options.approval ?? 'allowed');
-      if (state !== 'allowed') {
-        const run: ContractRun = {
-          outcome: 'failed',
-          error: { kind: 'denied', message: `approval ${state}`, retryable: false },
-          lossy: [],
-          receipt: { ...base, outcome: 'denied', lossy: [], approvals },
-          replayed: false,
-          peerCalls: rig.peer.calls(this.invocationMethod),
-        };
-        if (key !== undefined) this.idempotency.set(key, run);
-        return run;
-      }
+    let taskId = invocation.taskId;
+    try {
+      const result = await fabric.call({
+        capabilityId,
+        input: invocation.input,
+        ...(options.idempotencyKey !== undefined ? { idempotencyKey: options.idempotencyKey } : {}),
+        // The deadline is the ADAPTER's to honour: the kernel only forwards it.
+        ...(options.deadlineMs !== undefined
+          ? { deadlineAt: new Date(rig.runtime.clock.now() + options.deadlineMs).toISOString() }
+          : {}),
+      });
+      outcome = result.outcome;
+      replayed = result.replayed === true;
+      approvals = result.approvalIds.length;
+      lossy = result.lossy ?? [];
+      taskId = result.taskId;
+      if (result.error !== undefined) error = result.error;
+    } catch (e) {
+      const canonical = CanonicalError.from(e);
+      error = canonical.toShape();
+      outcome = outcomeOf(canonical.kind);
     }
+    this.current = undefined;
+    const peerCalls = rig.peer.calls(this.invocationMethod) - before;
+    const peerCallsTotal = rig.peer.calls() - beforeTotal;
+    if (taskId === invocation.taskId) {
+      const created = (await fabric.tasks.list({})).find((t) => !tasksBefore.has(t.id));
+      if (created !== undefined) taskId = created.id;
+    }
+    // The receipt is the kernel's own, read back from its store.
+    const receipt = await fabric.stores.receipts
+      .listByTask(taskId, TENANT)
+      .then((rows) => rows.at(-1))
+      .catch(() => undefined);
+    // The approval count comes from the kernel's receipt: a denial throws, so
+    // there is no InvokeResult to read it from.
+    if (receipt !== undefined) approvals = receipt.approvals.length;
 
-    // ── step: dispatch ────────────────────────────────────────────────────
-    const payload = await rig.adapter.invoke(invocation, rig.ctx({ ...(options.deadlineMs !== undefined ? { deadlineMs: options.deadlineMs } : {}) }));
-    const lossy = payload.lossy ?? [];
-    const run: ContractRun = {
-      outcome: payload.outcome,
-      ...(payload.error !== undefined ? { error: payload.error } : {}),
+    return {
+      outcome,
+      ...(error !== undefined ? { error } : {}),
       lossy,
-      receipt: { ...base, outcome: payload.outcome, lossy, approvals },
-      replayed: false,
-      peerCalls: rig.peer.calls(this.invocationMethod),
+      replayed,
+      peerCalls,
+      peerCallsTotal,
+      receipt: {
+        ...base,
+        taskId,
+        approvals,
+        outcome: (receipt?.outcome ?? outcome) as ContractReceipt['outcome'],
+        lossy,
+        ...(receipt !== undefined ? { kernelReceiptId: receipt.id } : {}),
+      },
     };
-    if (key !== undefined) this.idempotency.set(key, run);
-    return run;
   }
 
-  private defer(): Promise<ApprovalOutcome['state']> {
-    let signal: () => void = () => undefined;
-    this.issuedPromise = new Promise<void>((resolve) => {
-      signal = resolve;
-    });
-    const promise = new Promise<ApprovalOutcome['state']>((resolve) => {
-      this.pendingApproval = resolve;
-      signal();
-    });
-    return promise;
+  /** Release the kernel (one per harness). */
+  async dispose(): Promise<void> {
+    await this.fabric?.close();
+    this.fabric = undefined;
   }
 }
-
 // ── context / invocation builders ─────────────────────────────────────────
 
 export interface BuildContextOptions {
@@ -409,10 +535,13 @@ export function defineAdapterContract(fixture: ContractFixture): void {
       try {
         const harness = new GovernedHarness(rig, fixture.invocationMethod);
         const run = await harness.run({ policy: 'deny' });
-        expect(run.outcome).toBe('failed');
+        // The kernel records a refusal as its own outcome, not as a failure.
+        expect(run.outcome).toBe('denied');
         expect(run.error?.kind).toBe('denied');
-        expect(rig.peer.calls(fixture.invocationMethod)).toBe(0);
-        expect(rig.peer.calls()).toBe(0);
+        expect(run.peerCalls).toBe(0);
+        // No traffic of ANY kind during the denied call (discovery happened
+        // during mount, before the baseline).
+        expect(run.peerCallsTotal).toBe(0);
         expect(run.receipt.policyEffect).toBe('deny');
       } finally {
         await rig.dispose();
@@ -444,8 +573,8 @@ export function defineAdapterContract(fixture: ContractFixture): void {
         const run = await harness.run({ policy: 'ask', approval: 'denied' });
         expect(run.error?.kind).toBe('denied');
         expect(run.receipt.approvals).toBe(1);
-        expect(rig.peer.calls(fixture.invocationMethod)).toBe(0);
-        expect(rig.peer.calls()).toBe(0);
+        expect(run.peerCalls).toBe(0);
+        expect(run.peerCallsTotal).toBe(0);
       } finally {
         await rig.dispose();
       }
