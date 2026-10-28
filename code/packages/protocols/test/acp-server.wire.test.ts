@@ -503,3 +503,21 @@ describe('acp server · reverse fs is governed (P-H7)', () => {
     await pair.close();
   });
 });
+
+// ── authenticate must not fake success (C-6) ─────────────────────────────
+//
+// The edge answered `{authenticated: true}` unconditionally, asserting a
+// completed authentication that never happened — the same "fake success" the
+// audit flagged for the A2A edge.
+
+describe('acp server · authenticate', () => {
+  it('refuses when the agent advertises no auth method', async () => {
+    const r = await rig();
+    const code = await r.client
+      .request('authenticate', { methodId: 'anything' })
+      .then(() => undefined)
+      .catch((e: { code?: number }) => e.code);
+    expect(code).toBe(-32602);
+    await r.dispose();
+  });
+});

@@ -19,7 +19,13 @@
  */
 
 import type { Logger, Runtime } from '@syaocode/core';
-import { acpCapabilityId, type CanonicalErrorShape, type DiscoveredCapability, type InvokeResultPayload } from '@syaocode/rpc';
+import {
+  ACP_ERROR_CODES,
+  acpCapabilityId,
+  type CanonicalErrorShape,
+  type DiscoveredCapability,
+  type InvokeResultPayload,
+} from '@syaocode/rpc';
 import { AdapterBase, type DuplexChannel } from '../shared/index.js';
 import { JsonRpcConnection, type JsonRpcHandlerResult, type JsonRpcId } from '../shared/jsonrpc.js';
 import type { ReverseInvokeGateway } from '../shared/gateway.js';
@@ -110,6 +116,11 @@ export interface AcpServerOptions {
   agentInfo: { name: string; version: string };
   agentCapabilities?: Partial<AcpAgentCapabilities>;
   authMethods?: { id: string; name?: string; description?: string }[];
+  /**
+   * Verify an `authenticate` request. Returning false rejects it; omitting it
+   * accepts the method as satisfied (the host has no secret to check).
+   */
+  verifyAuthenticate?: (params: Record<string, unknown>) => boolean | undefined;
   /** Registry-assigned id of the connected editor. */
   clientId: string;
   /** Governed reverse calls (fs/terminal) — required for a real agent. */
@@ -180,6 +191,41 @@ export class AcpServer extends AdapterBase {
     await super.close();
   }
 
+  /**
+   * `authenticate` must not claim success it cannot back.
+   *
+   * The agent advertises its auth methods in `initialize`; a client may only
+   * call `authenticate` for an advertised method. Answering `{authenticated:
+   * true}` unconditionally asserted a completed authentication that never
+   * happened — the same "fake success" the audit flagged for the A2A edge.
+   */
+  private authenticate(record: Record<string, unknown>): JsonRpcHandlerResult {
+    const methods = this.options.authMethods ?? [];
+    if (methods.length === 0) {
+      throw {
+        code: ACP_ERROR_CODES.invalidParams,
+        message: 'this agent advertises no auth methods, so there is nothing to authenticate',
+      };
+    }
+    const methodId = typeof record.methodId === 'string' ? record.methodId : undefined;
+    if (methodId === undefined || !methods.some((m) => m.id === methodId)) {
+      throw {
+        code: ACP_ERROR_CODES.invalidParams,
+        message: `unknown auth method '${methodId ?? '(none)'}'; this agent advertises: ${methods.map((m) => m.id).join(', ')}`,
+      };
+    }
+    // The host decides whether the presented secret is acceptable; without a
+    // verifier we cannot claim the authentication succeeded.
+    const verified = this.options.verifyAuthenticate?.(record);
+    if (verified === false) {
+      throw {
+        code: ACP_ERROR_CODES.authRequired,
+        message: `authentication for '${methodId}' was rejected`,
+      };
+    }
+    return { authenticated: true };
+  }
+
   // ── routing ─────────────────────────────────────────────────────────────
 
   private async handleRequest(method: string, params: unknown, id: JsonRpcId): Promise<JsonRpcHandlerResult> {
@@ -189,7 +235,7 @@ export class AcpServer extends AdapterBase {
       case 'initialize':
         return this.initialize(record);
       case 'authenticate':
-        return { authenticated: true };
+        return this.authenticate(record);
       case 'session/new':
         return this.newSession(record);
       case 'session/load':
