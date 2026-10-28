@@ -36,8 +36,10 @@ import {
   RulePolicyEngine,
   computeRevision,
   createFabric,
+  createFileStores,
   emptyBundle,
   layerBundles,
+  sha256Hasher,
   type ApprovalRecord,
   type BudgetEstimate,
   type Fabric,
@@ -116,6 +118,14 @@ export interface CliFabricOptions {
   tools?: ToolRegistry | false;
   /** FileStateTracker backing the built-in read/write/edit tools. */
   fileState?: FileStateTracker;
+  /**
+   * Persist governance records (tasks, receipts, audit chain, budget,
+   * approvals, idempotency, events) under `~/.syaocode/arf/`.
+   *
+   * Defaults to ON for the real CLI so `syao rpc audit` can see what a previous
+   * `syao -p` run did (audit C-4). Tests pass `false` to stay hermetic.
+   */
+  persist?: boolean;
 }
 
 export interface CliFabric {
@@ -340,6 +350,23 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
           return registry;
         })());
 
+  // ── durable stores (audit C-4) ────────────────────────────────────────
+  // Governance records outlive the process: without this, every `syao -p`
+  // run's receipts and audit chain vanished on exit and `syao rpc audit`
+  // reported "0 checked" forever.
+  const persist = opts.persist !== false;
+  const arfHome = opts.home ?? runtime.env.get('HOME') ?? '';
+  const storeDir = `${arfHome}/.syaocode/arf/${tenantId}`;
+  const fileStores = persist
+    ? createFileStores({
+        runtime,
+        dir: storeDir,
+        ids: runtime.ids,
+        now: () => new Date(runtime.clock.now()).toISOString(),
+        hash: sha256Hasher,
+      })
+    : undefined;
+
   const fabric = createFabric({
     runtime,
     principal,
@@ -379,17 +406,15 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
     },
     ...(opts.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: opts.approvalTimeoutMs } : {}),
     ...(opts.onStep !== undefined ? { onStep: opts.onStep } : {}),
-    // PERSISTENCE SEAM ────────────────────────────────────────────────────
-    // Everything above uses the kernel's in-memory store bundle, so tasks,
-    // receipts, approvals, the audit chain and idempotency keys live for one
-    // CLI process only. A durable host swaps the whole bundle here — the file
-    // stores land in @syaocode/node (createFileTaskStore / createFileAuditStore
-    // / createFileBudgetStore / createFileIdempotencyStore) and are passed
-    // through `opts.stores`. No file-store implementation belongs in the CLI:
-    // this is the single line where persistence plugs in, and `createFabric`
-    // already accepts a partial `FabricStores` override.
-    ...(opts.stores !== undefined ? { stores: opts.stores } : {}),
-    // ──────────────────────────────────────────────────────────────────────
+    // Durability: by default every record lives under
+    // ~/.syaocode/arf/<tenant>/ as JSONL, so a later process (and `syao rpc
+    // audit`) reads the same chain. `opts.stores` still wins when a host wants
+    // a different backend; `persist: false` keeps tests hermetic.
+    ...(opts.stores !== undefined
+      ? { stores: opts.stores }
+      : fileStores !== undefined
+        ? { stores: fileStores }
+        : {}),
   });
 
   // ── registered protocol edges ─────────────────────────────────────────

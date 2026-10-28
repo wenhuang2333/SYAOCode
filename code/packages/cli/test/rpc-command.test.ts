@@ -306,7 +306,7 @@ describe('JSON envelope', () => {
 describe('rpcView — lazily mounts registered peers', () => {
   it('explains the policy for a registered (but not yet mounted) peer capability', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-rpcview-'));
-    const cli: CliFabric = createCliFabric({ cwd: home, permissionMode: 'default', home });
+    const cli: CliFabric = createCliFabric({ cwd: home, permissionMode: 'default', home, persist: false });
     try {
       savePeer('demo', { protocol: 'mcp', target: 'node noop.mjs', addedAt: Date.now() }, home);
       // The edge cannot really be spawned here, so stub the mount with a fake

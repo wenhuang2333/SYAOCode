@@ -73,6 +73,23 @@ export class MemoryAuditStore implements AuditStore {
     this.checkpointEvery = opts.checkpointEvery ?? DEFAULT_CHECKPOINT_EVERY;
   }
 
+  /** Load a persisted chain, verifying each link as it is restored. */
+  hydrate(events: readonly AuditEvent[]): void {
+    for (const event of events) {
+      const chain = this.byTenant.get(event.tenantId) ?? [];
+      const expectedPrev = chain.length > 0 ? chain[chain.length - 1]!.hash : '';
+      if (event.prevHash !== expectedPrev) {
+        throw new Error(`audit chain for tenant ${event.tenantId} is broken at ${event.id}`);
+      }
+      chain.push(deepClone(event));
+      this.byTenant.set(event.tenantId, chain);
+    }
+  }
+
+  dump(): AuditEvent[] {
+    return [...this.byTenant.values()].flat().map((event) => deepClone(event));
+  }
+
   async append(event: Omit<AuditEvent, 'prevHash' | 'hash' | 'id'> & { id?: string }): Promise<AuditEvent> {
     const chain = this.byTenant.get(event.tenantId) ?? [];
     const prevHash = chain.length > 0 ? chain[chain.length - 1]!.hash : '';

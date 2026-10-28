@@ -299,6 +299,21 @@ export {
 } from './runtime/stores.js';
 
 export { MemoryEventLog } from './runtime/eventlog.js';
+
+// Durable (file-backed) store bundle — the host owns durability, the kernel
+// keeps ownership of the contracts and the hash chains.
+export {
+  createFileApprovalStore,
+  createFileAuditStore,
+  createFileBudgetStore,
+  createFileEventLog,
+  createFileIdempotencyStore,
+  createFileReceiptStore,
+  createFileSessionStore,
+  createFileStores,
+  createFileTaskStore,
+} from './runtime/file-stores.js';
+export type { FileStoreOptions, FileStoresOptions } from './runtime/file-stores.js';
 export type { EventDraft, EventLogOptions } from './runtime/eventlog.js';
 
 export { applyEvent, projectTask } from './runtime/projection.js';

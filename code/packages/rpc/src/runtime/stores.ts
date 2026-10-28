@@ -67,6 +67,16 @@ function byCreatedAtThenId<T extends { createdAt: string; id: string }>(a: T, b:
 export class MemoryTaskStore implements TaskStore {
   private readonly rows = new Map<string, Task>();
 
+  /** Load persisted rows without re-validating (see `createFileStores`). */
+  hydrate(tasks: readonly Task[]): void {
+    for (const task of tasks) this.rows.set(task.id, deepClone(task));
+  }
+
+  /** Every row, for a persistence layer to snapshot. */
+  dump(): Task[] {
+    return [...this.rows.values()].map((task) => deepClone(task));
+  }
+
   async create(task: Task): Promise<void> {
     if (this.rows.has(task.id)) throw new Error(`task ${task.id} already exists`);
     this.rows.set(task.id, deepClone(task));
@@ -113,6 +123,14 @@ export class MemoryTaskStore implements TaskStore {
 export class MemorySessionStore implements SessionStore {
   private readonly rows = new Map<string, Session>();
 
+  hydrate(sessions: readonly Session[]): void {
+    for (const session of sessions) this.rows.set(session.id, deepClone(session));
+  }
+
+  dump(): Session[] {
+    return [...this.rows.values()].map((session) => deepClone(session));
+  }
+
   async create(session: Session): Promise<void> {
     if (this.rows.has(session.id)) throw new Error(`session ${session.id} already exists`);
     this.rows.set(session.id, deepClone(session));
@@ -144,6 +162,14 @@ export class MemorySessionStore implements SessionStore {
 
 export class MemoryApprovalStore implements ApprovalStore {
   private readonly rows = new Map<string, ApprovalRecord>();
+
+  hydrate(records: readonly ApprovalRecord[]): void {
+    for (const record of records) this.rows.set(record.id, deepClone(record));
+  }
+
+  dump(): ApprovalRecord[] {
+    return [...this.rows.values()].map((record) => deepClone(record));
+  }
 
   async insert(record: ApprovalRecord): Promise<void> {
     if (this.rows.has(record.id)) throw new Error(`approval ${record.id} already exists`);
@@ -205,6 +231,18 @@ export class MemoryApprovalStore implements ApprovalStore {
 export class MemoryBudgetStore implements BudgetStore {
   private readonly accounts = new Map<string, BudgetAccount>();
   private readonly reservations = new Map<string, BudgetReservation>();
+
+  hydrate(state: { accounts?: readonly BudgetAccount[]; reservations?: readonly BudgetReservation[] }): void {
+    for (const account of state.accounts ?? []) this.accounts.set(account.id, deepClone(account));
+    for (const reservation of state.reservations ?? []) this.reservations.set(reservation.id, deepClone(reservation));
+  }
+
+  dump(): { accounts: BudgetAccount[]; reservations: BudgetReservation[] } {
+    return {
+      accounts: [...this.accounts.values()].map((account) => deepClone(account)),
+      reservations: [...this.reservations.values()].map((reservation) => deepClone(reservation)),
+    };
+  }
 
   async get(id: string, tenantId?: string): Promise<BudgetAccount | undefined> {
     const account = this.accounts.get(id);
