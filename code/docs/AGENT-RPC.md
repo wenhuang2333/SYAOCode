@@ -167,7 +167,7 @@
 | P-H8 MCP OAuth/PRM | 已明确标注不支持 | `mcp-oauth-prm-unsupported` 进 `lossy`；401/403 对端 → `unauthenticated` fail-closed，不半实现 |
 | 两个 server 零测试 | 已修 | 新增 3 个 wire 套件共 **57 项**：`mcp-server.wire`（22）、`a2a-server.wire`（20）、`acp-server.wire`（15） |
 | drift 基线自指 | **已修（关键）** | 新增 `fixtures/mcp-wire-snapshot.json`，由 `scripts/gen-wire-fixture.ts` **从官方 tarball `@modelcontextprotocol/server@2.4.0` 生成**（非本项目常量）；`test/drift-external.test.ts` 比对实现与外部快照，并强制"已声明的 gap 必须仍是真的"。**该外部基线立刻发现了两处实现缺口**：`subscriptions/listen` 与 `notifications/message`（已作为 `knownGaps` 显式登记） |
-| 与官方 SDK 真实互通 | **已达成（MCP）** | `scripts/interop-mcp-official.mjs` 用官方 `@modelcontextprotocol/client@2.4.0` 驱动 `syao serve --mcp --http`：**8/8 通过**（modern era 协商、`server/discover`、缓存提示、`tools/list`、`inputSchema`、`tools/call` 真实内容） |
+| 与官方 SDK 真实互通 | **已达成（MCP / A2A / ACP 三协议）** | `scripts/interop-mcp-official.mjs`（官方 `@modelcontextprotocol/client@2.4.0` → **8/8**）、`scripts/interop-a2a-official.mjs`（官方 `@a2a-js/sdk@1.3.0` → **5/5**：AgentCard 发现、版本 1.0 协商、`SendMessage` 被诚实拒绝）、`scripts/interop-acp-official.mjs`（官方 `@agentclientprotocol/sdk@2.0.2` → **6/6**：initialize、session/new、`session/prompt` → `end_turn`、6 条 `session/update`） |
 
 > **真实互通发现并修掉的 4 个 MUST 级缺陷**（自指测试全部漏过）：
 > 1. HTTP 响应体写成 stdio `Content-Length` 帧 → 任何真实 peer 解析失败（`SyntaxError: Unexpected token 'C'`）；
@@ -177,16 +177,20 @@
 >
 > 这 4 项均已补 wire 回归测试。
 
-> 仍未完成（**不要在对外材料中宣称**）：A2A/ACP 与各自官方 SDK 的真实互通测试（仅 MCP 完成）、A2A/ACP 的 `subscriptions`/`authenticate` 等中危项、主 agent 路径接入 ARF（进行中）。
+> 真实互通合计发现并修掉 **6 个**自指测试漏过的缺陷：MCP 的 HTTP 体写了 stdio 帧、列表缺 `resultType`、列表缺 `ttlMs`/`cacheScope` 与工具缺 `inputSchema`、内置工具被 TTL 判死；A2A 的**完全没有 AgentCard**（官方客户端无法发现边缘）、`A2A-Version` 走 HTTP 头却从 body 读（把每个真实客户端当成版本不支持）。
+>
+> 仍未完成（**不要在对外材料中宣称**）：MCP `subscriptions/listen` 与 `notifications/message`（已登记 `knownGaps`）、A2A 保留键覆盖、ACP `session/update` 其余 9 类变体、审计留存策略（retention/轮转/多进程并发）、`detailHash`、吞吐未测。
 
 ### 5.2 对外口径（截至本版本）
 
 | 现在可以说 | 现在不能说 |
 | --- | --- |
-| ARF 内核骨架与三边缘已落地，门禁全绿，治理开销 p95 < 1ms | "协议合规"、"与 MCP/A2A/ACP 生态互通" |
+| ARF 内核骨架与三边缘已落地，门禁全绿，治理开销 p95 < 1ms | "协议完全合规"、"可用于生产" |
 | 十步流水线、审批 CAS、SHA-256 审计链、回执链已实现并通过单元/红队/P0 回归测试 | "生产级可治理底座" |
 | 单机/单租户场景下策略、审批、预算、回执可用（P0 已修） | "跨组织联邦治理" |
-| **实验性预览（experimental preview）** | "已通过外部互通验证" |
+| 三协议均与**官方 SDK** 实测互通（8/8、5/5、6/6） | "已通过第三方认证/一致性测试套件"、"吞吐达标"（只测了延迟） |
+| 主 agent 路径（`syao -p` / TUI / ACP `session/prompt`）已接入 ARF；治理记录跨进程可读 | "企业级审计留存"（本地文件、无 retention/轮转） |
+| **实验性预览（experimental preview）** | "已通过外部互通验证"（互通是自测探针，非第三方认证） |
 
 ---
 
