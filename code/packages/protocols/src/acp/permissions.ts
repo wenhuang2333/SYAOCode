@@ -174,11 +174,22 @@ export class AcpApprovalChannel {
     private readonly timeoutMs?: number,
   ) {}
 
-  async requestPermission(request: AcpPermissionRequest, opts?: { signal?: AbortSignal }): Promise<AcpPermissionOutcome> {
+  async requestPermission(
+    request: AcpPermissionRequest,
+    opts?: { signal?: AbortSignal; register?: (cancel: () => void) => void },
+  ): Promise<AcpPermissionOutcome> {
     const params = { sessionId: request.sessionId, toolCall: request.toolCall, options: request.options };
     const callOpts: { timeoutMs?: number; signal?: AbortSignal } = {};
     if (this.timeoutMs !== undefined) callOpts.timeoutMs = this.timeoutMs;
-    if (opts?.signal !== undefined) callOpts.signal = opts.signal;
+    // A cancelled session must answer this request `cancelled` immediately, even
+    // if the client never replies. `register` lets the session wire that up.
+    const abort = new AbortController();
+    if (opts?.signal !== undefined) {
+      if (opts.signal.aborted) abort.abort();
+      else opts.signal.addEventListener('abort', () => abort.abort(), { once: true });
+    }
+    callOpts.signal = abort.signal;
+    opts?.register?.(() => abort.abort());
     try {
       const raw = (await this.request('session/request_permission', params, callOpts)) as AcpPermissionOutcome | null;
       return normalizeOutcome(raw, request.options);

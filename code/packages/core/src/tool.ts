@@ -1,7 +1,7 @@
 import type { z } from 'zod';
-import type { ContentBlock, ToolResultContent } from './types.js';
+import type { ContentBlock, ToolCall, ToolResultContent } from './types.js';
 import type { Runtime } from './runtime/index.js';
-import type { SandboxLevel, TrustLevel } from './evidence.js';
+import type { ToolGovernanceRef, SandboxLevel, TrustLevel } from './evidence.js';
 
 /** Tool contract (DD-4). Zod is the single schema source (ADR-07). */
 export type ToolRisk = 'read' | 'write' | 'exec' | 'network' | 'meta';
@@ -26,10 +26,52 @@ export interface ToolResultMeta {
   trust?: TrustLevel;
   /** Isolation the tool actually ran under; defaults to 'none' (C4). */
   sandbox?: SandboxLevel;
+  /** Kernel link to copy onto the receipt (set by a ToolGovernor host). */
+  governance?: ToolGovernanceRef;
 }
 
 /** Provenance ladder for tool results (mirrors evidence.TrustLevel). */
-export type { SandboxLevel, TrustLevel };
+export type { SandboxLevel, TrustLevel, ToolGovernanceRef };
+
+/**
+ * One tool call handed to a `ToolGovernor`.
+ *
+ * The input is ALREADY schema-validated by the pipeline, so a governor may
+ * forward it to an executor as-is.
+ */
+export interface GovernedToolCall {
+  /** The model-proposed call (id, name, raw input). */
+  call: ToolCall;
+  /** The resolved tool. */
+  tool: Tool;
+  /** Schema-validated arguments. */
+  input: unknown;
+  /** Workspace root of the run. */
+  cwd: string;
+  /** Aborted when the run is cancelled or the tool times out. */
+  signal: AbortSignal;
+  /** Progress sink (tool.progress events). */
+  progress(note: string): void;
+  /**
+   * Call once the kernel has authorized the call and is about to run it.
+   * The pipeline uses it to emit `tool.start` at the same moment the local
+   * gate would have: a denied call must not emit a start event.
+   */
+  onAuthorized?(): void;
+}
+
+/**
+ * Host-supplied execution authority (ARF).
+ *
+ * When a governor is configured, the pipeline no longer consults the
+ * permission engine and no longer calls `tool.execute` itself: the governor
+ * authorizes AND executes the call. Everything else in the pipeline
+ * (validation, timeout, redaction, truncation, receipts, events) is unchanged,
+ * so an embedder that does not configure a governor sees identical behaviour.
+ */
+export interface ToolGovernor {
+  execute(request: GovernedToolCall): Promise<ToolOutput>;
+}
 
 export interface PromptContext {
   cwd: string;

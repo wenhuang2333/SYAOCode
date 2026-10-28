@@ -310,7 +310,18 @@ export function createFabric(opts: FabricOptions): Fabric {
     },
   });
 
-  const budget = new BudgetLedgerImpl({ store: stores.budget, ids: runtime.ids, now });
+  const budget = new BudgetLedgerImpl({
+    store: stores.budget,
+    ids: runtime.ids,
+    now,
+    resolveExpired: async (reservation) => {
+      // A hold whose invocation produced a receipt was really spent: charge it
+      // rather than refunding (02 §7.2 crash recovery).
+      const receipts = await stores.receipts.listByTask(reservation.accountId, tenantId).catch(() => []);
+      const matched = receipts.find((r) => r.usage?.costUsd !== undefined);
+      return matched?.usage?.costUsd;
+    },
+  });
 
   /**
    * The tenant and default session accounts must exist before the first
@@ -320,19 +331,23 @@ export function createFabric(opts: FabricOptions): Fabric {
   let accountsReady: Promise<void> | undefined;
   const ensureAccounts = (): Promise<void> => {
     accountsReady ??= (async () => {
-      await budget.ensureAccount({
-        id: 'default',
-        tenantId,
-        currency: 'USD',
-        state: 'active',
-        ...(opts.budget?.sessionLimitUsd !== undefined ? { limitUsd: opts.budget.sessionLimitUsd } : {}),
-      });
+      // Root first: the tenant account is the outermost budget.
       await budget.ensureAccount({
         id: `tenant:${tenantId}`,
         tenantId,
         currency: 'USD',
         state: 'active',
         ...(opts.budget?.tenantLimitUsd !== undefined ? { limitUsd: opts.budget.tenantLimitUsd } : {}),
+      });
+      // `default` is the implicit session account, parented to the tenant so a
+      // session can never outspend the tenant budget.
+      await budget.ensureAccount({
+        id: 'default',
+        tenantId,
+        parentId: `tenant:${tenantId}`,
+        currency: 'USD',
+        state: 'active',
+        ...(opts.budget?.sessionLimitUsd !== undefined ? { limitUsd: opts.budget.sessionLimitUsd } : {}),
       });
     })();
     return accountsReady;
@@ -414,7 +429,8 @@ export function createFabric(opts: FabricOptions): Fabric {
       await budget.ensureAccount({
         id: session.budgetId,
         tenantId,
-        ...(session.budgetId === 'default' ? {} : { parentId: 'default' }),
+        // Every session account is bounded by the tenant account.
+        ...(session.budgetId === `tenant:${tenantId}` ? {} : { parentId: `tenant:${tenantId}` }),
         currency: 'USD',
         state: 'active',
         ...(opts.budget?.sessionLimitUsd !== undefined ? { limitUsd: opts.budget.sessionLimitUsd } : {}),
@@ -497,6 +513,14 @@ export function createFabric(opts: FabricOptions): Fabric {
     async call(input) {
       await ensureAccounts();
       const principal = input.principal ?? opts.principal ?? defaultPrincipal(tenantId);
+      // I1: a caller cannot choose its own tenant. The host's tenant wins, and
+      // a principal claiming another tenant is rejected rather than trusted.
+      if (principal.tenantId !== tenantId) {
+        throw new CanonicalError({
+          kind: 'unauthorized',
+          message: `principal tenant '${principal.tenantId}' does not match this fabric's tenant '${tenantId}'`,
+        });
+      }
       const session = input.sessionId !== undefined
         ? await stores.sessions.get(input.sessionId, tenantId)
         : undefined;
@@ -513,6 +537,8 @@ export function createFabric(opts: FabricOptions): Fabric {
       };
       const ctx: DispatchContext = {
         ...(session !== undefined ? { session } : {}),
+        // The authoritative tenant for every downstream check.
+        tenantId,
         cwd: input.cwd ?? opts.workspaceRoots?.[0] ?? runtime.env.get('PWD') ?? '',
         workspaceRoots: input.workspaceRoots ?? session?.workspaceRoots ?? opts.workspaceRoots ?? [],
       };
@@ -566,12 +592,20 @@ export function createFabric(opts: FabricOptions): Fabric {
     },
 
     audit: {
+      // Always tenant-scoped: an unfiltered audit list would merge tenants.
       list: (filter) => stores.audit.list({ tenantId, ...(filter ?? {}) }),
       verify: (id) => stores.audit.verify(id ?? tenantId),
     },
 
     evidence: {
-      seal: (taskId) => stores.evidence.seal(taskId),
+      async seal(taskId: string) {
+        // I8: a task of another tenant must not be sealable here.
+        const task = await stores.tasks.get(taskId, tenantId);
+        if (task === undefined) {
+          throw new CanonicalError({ kind: 'capability_not_found', message: `unknown task '${taskId}'` });
+        }
+        return stores.evidence.seal(taskId, tenantId);
+      },
       verify: (bundle) => stores.evidence.verify(bundle),
     },
 
@@ -706,7 +740,10 @@ export function createFabric(opts: FabricOptions): Fabric {
               endpoint: `local://${tool.name}`,
               trust: 'first_party',
               health: 'healthy',
-              ttlMs: 60_000,
+              // A built-in tool's catalogue is fixed for the process
+              // lifetime: a TTL would make the tool "down" after a minute and
+              // silently drop it out of the registry.
+              ttlMs: 0,
               lastSeenAt: now(),
             },
           },

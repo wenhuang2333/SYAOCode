@@ -66,12 +66,79 @@ const KIND_TO_MESSAGE: Record<CanonicalErrorKind, string> = {
   internal: 'Internal governance error.',
 };
 
+/**
+ * The numeric code a protocol should use for a canonical kind.
+ *
+ * Adapters used to throw `toShape()` (no numeric code) and the JSON-RPC layer
+ * answered `-32603` for everything, so an A2A `TaskNotFoundError` reached the
+ * peer as "internal error". Deriving a default here makes the wire code part
+ * of the error object itself, so no adapter can forget it.
+ */
+export function defaultWireCode(protocol: Protocol, kind: CanonicalErrorKind): number | undefined {
+  if (protocol === 'a2a') {
+    switch (kind) {
+      case 'capability_not_found':
+        return A2A_ERROR_CODES.taskNotFound;
+      case 'invalid_request':
+      case 'cancelled':
+      case 'unauthorized':
+      case 'unauthenticated':
+        return A2A_ERROR_CODES.taskNotCancelable;
+      case 'unsupported_capability':
+      case 'unsupported_obligation':
+        return A2A_ERROR_CODES.unsupportedOperation;
+      case 'version_mismatch':
+        return A2A_ERROR_CODES.versionNotSupported;
+      default:
+        return -32603;
+    }
+  }
+  if (protocol === 'mcp') {
+    switch (kind) {
+      case 'invalid_request':
+      case 'idempotency_conflict':
+        return MCP_ERROR_CODES.invalidParams;
+      case 'version_mismatch':
+        return MCP_ERROR_CODES.unsupportedProtocolVersion;
+      case 'unsupported_capability':
+      case 'unsupported_obligation':
+        return MCP_ERROR_CODES.missingRequiredClientCapability;
+      case 'denied':
+      case 'unauthorized':
+      case 'unauthenticated':
+        return -32002;
+      default:
+        return MCP_ERROR_CODES.internalError;
+    }
+  }
+  if (protocol === 'acp') {
+    switch (kind) {
+      case 'invalid_request':
+      case 'idempotency_conflict':
+        return ACP_ERROR_CODES.invalidParams;
+      case 'unauthorized':
+      case 'unauthenticated':
+        return ACP_ERROR_CODES.authRequired;
+      case 'capability_not_found':
+        return ACP_ERROR_CODES.resourceNotFound;
+      case 'unsupported_capability':
+      case 'unsupported_obligation':
+        return ACP_ERROR_CODES.methodNotFound;
+      default:
+        return ACP_ERROR_CODES.internalError;
+    }
+  }
+  return undefined;
+}
+
 export interface CanonicalErrorInit {
   kind: CanonicalErrorKind;
   message?: string;
   /** Registry code (`SY-*`) when one applies; must exist in the registry. */
   code?: string;
   retryable?: boolean;
+  /** Numeric JSON-RPC code to emit on the wire (see CanonicalErrorShape). */
+  wireCode?: number;
   protocol?: Protocol;
   protocolError?: unknown;
   details?: Record<string, unknown>;
@@ -82,6 +149,7 @@ export class CanonicalError extends Error {
   override readonly name = 'CanonicalError';
   readonly kind: CanonicalErrorKind;
   readonly code?: string;
+  readonly wireCode?: number;
   readonly retryable: boolean;
   readonly protocol?: Protocol;
   readonly protocolError?: unknown;
@@ -92,6 +160,13 @@ export class CanonicalError extends Error {
     super(init.message ?? KIND_TO_MESSAGE[init.kind], { cause: init.cause });
     this.kind = init.kind;
     if (init.code !== undefined) this.code = init.code;
+    if (init.wireCode !== undefined) this.wireCode = init.wireCode;
+    else {
+      // Derive the protocol default so a caller cannot forget it and silently
+      // degrade every failure to -32603.
+      const derived = init.protocol !== undefined ? defaultWireCode(init.protocol, init.kind) : undefined;
+      if (derived !== undefined) this.wireCode = derived;
+    }
     this.retryable = init.retryable ?? RETRYABLE_KINDS.has(init.kind);
     if (init.protocol !== undefined) this.protocol = init.protocol;
     if (init.protocolError !== undefined) this.protocolError = init.protocolError;
@@ -110,6 +185,7 @@ export class CanonicalError extends Error {
       retryable: this.retryable,
     };
     if (this.code !== undefined) out.code = this.code;
+    if (this.wireCode !== undefined) out.wireCode = this.wireCode;
     if (this.protocolError !== undefined) out.protocolError = this.protocolError;
     if (this.details !== undefined) out.details = this.details;
     return out;
@@ -132,6 +208,7 @@ export class CanonicalError extends Error {
       message: shape.message,
       retryable: shape.retryable,
       ...(shape.code !== undefined ? { code: shape.code } : {}),
+      ...(shape.wireCode !== undefined ? { wireCode: shape.wireCode } : {}),
       ...(shape.protocolError !== undefined ? { protocolError: shape.protocolError } : {}),
       ...(shape.details !== undefined ? { details: shape.details } : {}),
     });
@@ -203,11 +280,22 @@ function jsonRpcKind(protocol: Protocol, code: number | undefined): CanonicalErr
       return 'unsupported_capability';
     case -32004:
       return 'unsupported_capability';
+    case -32010:
+      // MRTR: the peer wants input before the call can complete.
+      return 'invalid_request';
+    case -32011:
+      // MRTR: requestState missing/stale/tampered -> fail closed.
+      return 'unsupported_capability';
     case -32020:
+      // HeaderMismatch (MCP): the request as sent cannot be honoured.
       return 'invalid_request';
     case -32021:
+      // MissingRequiredClientCapability (MCP).
       return 'unsupported_capability';
     case -32022:
+      return 'version_mismatch';
+    case -32009:
+      // A2A VersionNotSupportedError (04 A16).
       return 'version_mismatch';
     case -32800:
       return 'cancelled';
@@ -216,27 +304,48 @@ function jsonRpcKind(protocol: Protocol, code: number | undefined): CanonicalErr
   }
 }
 
-/** MCP error codes ↔ CanonicalError (01 §5.2 / G10). */
+/**
+ * MCP error codes ↔ CanonicalError (01 §5.2 / 04 M18).
+ *
+ * M18: `-32000..-32019` are implementation-defined, `-32020..-32099` are
+ * reserved for MCP. The reserved three are HeaderMismatch, MissingRequired
+ * ClientCapability and UnsupportedProtocolVersion — they are *not* the MRTR
+ * codes, which live in the implementation-defined range.
+ */
 export const MCP_ERROR_CODES = {
   parseError: -32700,
   invalidRequest: -32600,
   methodNotFound: -32601,
   invalidParams: -32602,
   internalError: -32603,
-  /** MRTR: the client must supply input and retry with the same requestState. */
-  inputRequired: -32020,
-  /** requestState was missing, stale or tampered with → fail closed. */
-  requestStateInvalid: -32021,
+  /**
+   * MRTR: the client must supply input and retry with the same requestState.
+   * Lives in the implementation-defined range so the reserved -32020.. is not
+   * borrowed for MRTR semantics (04 M18).
+   */
+  inputRequired: -32010,
+  /** MRTR: requestState was missing, stale or tampered with → fail closed. */
+  requestStateInvalid: -32011,
+  /** 04 M18: request header does not match the body. */
+  headerMismatch: -32020,
+  /** 04 M18: the client lacks a capability the call requires. */
+  missingRequiredClientCapability: -32021,
+  /** 04 M13/M18 + M5: unsupported protocol version (HTTP 400 + this code). */
+  unsupportedProtocolVersion: -32022,
+  /** Kept as an alias: older call sites read `versionNegotiationFailed`. */
   versionNegotiationFailed: -32022,
 } as const;
 
-/** A2A error codes (01 §5.3). */
+/** A2A error codes (01 §5.3 / 04 A16: `-32001 TaskNotFound` … `-32009 VersionNotSupported`). */
 export const A2A_ERROR_CODES = {
   taskNotFound: -32001,
   taskNotCancelable: -32002,
   pushNotificationNotSupported: -32003,
   unsupportedOperation: -32004,
-  versionNotSupported: -32022,
+  contentTypeNotSupported: -32005,
+  invalidAgentResponse: -32006,
+  /** 04 A16: version negotiation failure is -32009, *not* MCP's -32022. */
+  versionNotSupported: -32009,
 } as const;
 
 /** ACP error codes (01 §5.4). */

@@ -85,6 +85,16 @@ export interface McpClientOptions {
   allowLegacyFallback?: boolean;
   requestTimeoutMs?: number;
   logger?: Logger;
+  /**
+   * The transport binding. `http` adds the mandatory Streamable-HTTP headers
+   * (04 M13) and declares OAuth 2.1 / RFC 9728 PRM as unsupported (04 M20).
+   */
+  transport?: 'stdio' | 'http';
+  /**
+   * How to answer an OAuth-protected peer. We do not implement OAuth 2.1 /
+   * PRM, so the only supported policy is `deny` (fail closed).
+   */
+  oauthPolicy?: 'deny';
 }
 
 export interface McpCallOptions {
@@ -142,7 +152,12 @@ export class McpClient {
 
   /** Lossy markers observed so far (legacy fallback, missing task extension…). */
   get lossy(): string[] {
-    return this.eraValue === 'legacy' ? [MCP_LOSSY.legacy] : [];
+    const out: string[] = [];
+    if (this.eraValue === 'legacy') out.push(MCP_LOSSY.legacy);
+    // OAuth 2.1 + RFC 9728 PRM is not implemented: an HTTP peer that demands
+    // it is refused, never half-authenticated (04 M20).
+    if (this.options.transport === 'http') out.push(MCP_LOSSY.oauthUnsupported);
+    return out;
   }
 
   private meta(extra?: Record<string, unknown>): Record<string, unknown> {
@@ -426,11 +441,13 @@ export interface McpAdapterOptions extends McpClientOptions {
 export class McpAdapter extends AdapterBase {
   readonly client: McpClient;
   private readonly extraLossy: string[];
+  private readonly transport: 'stdio' | 'http';
 
   constructor(options: McpAdapterOptions) {
     super('mcp', MCP_PROTOCOL_VERSION, options.runtime, options.logger);
     this.client = new McpClient(options);
     this.extraLossy = options.lossy ?? [];
+    this.transport = options.transport ?? 'stdio';
   }
 
   capabilities(): import('@syaocode/rpc').AdapterCapabilities {
@@ -578,6 +595,24 @@ export class McpAdapter extends AdapterBase {
   }
 
   private failurePayload(error: unknown): import('@syaocode/rpc').InvokeResultPayload {
+    // An OAuth-protected HTTP peer: we do not implement OAuth 2.1 / PRM, so we
+    // fail closed with an honest error instead of pretending to be authorized.
+    if (this.transport === 'http') {
+      const status = httpStatusOf(error);
+      if (status === 401 || status === 403) {
+        return {
+          outcome: 'failed',
+          error: new CanonicalError({
+            kind: 'unauthenticated',
+            message: `the MCP peer requires OAuth 2.1 / RFC 9728 PRM, which this edge does not implement (HTTP ${status})`,
+            protocol: 'mcp',
+            retryable: false,
+            details: { status, lossy: [MCP_LOSSY.oauthUnsupported] },
+          }).toShape(),
+          lossy: mergeLossy(this.adapterLossy(), [MCP_LOSSY.oauthUnsupported]),
+        };
+      }
+    }
     if (error instanceof JsonRpcTimeoutError) {
       const canonical = wireError('mcp', error);
       return {
@@ -595,6 +630,24 @@ export class McpAdapter extends AdapterBase {
   private adapterLossy(): string[] {
     return mergeLossy(this.client.lossy, this.extraLossy);
   }
+}
+
+/**
+ * The HTTP status carried by a transport error, when there is one.
+ *
+ * `createHttpChannel` reports it on `protocolError`; a caller-supplied error
+ * may put it in `details`. Both are checked so the OAuth fail-closed path can
+ * never be missed because of where the status was recorded.
+ */
+function httpStatusOf(error: unknown): number | undefined {
+  if (error === null || typeof error !== 'object') return undefined;
+  const record = error as { details?: unknown; protocolError?: unknown };
+  for (const source of [record.protocolError, record.details]) {
+    if (source === null || typeof source !== 'object') continue;
+    const status = (source as { status?: unknown }).status;
+    if (typeof status === 'number') return status;
+  }
+  return undefined;
 }
 
 /** `mcp://<server>/tool/<name>` → `<name>` (undefined for malformed ids). */

@@ -44,7 +44,7 @@ export {
   A2A_TASK_NOT_FOUND,
   A2A_UNSUPPORTED_OPERATION,
   A2A_VERSION_NOT_SUPPORTED,
-  a2aCodeFor,
+  A2A_FALLBACK_CODE,
   a2aError,
   a2aErrorShape,
   a2aPushUnsupported,
@@ -52,6 +52,7 @@ export {
   a2aTaskNotFound,
   a2aUnsupportedOperation,
   a2aVersionNotSupported,
+  a2aWireCode,
   canonicalToA2aError,
 } from './errors.js';
 

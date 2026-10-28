@@ -165,6 +165,7 @@ export const canonicalErrorShapeSchema = z.object({
   code: z.string().optional(),
   message: z.string(),
   retryable: z.boolean(),
+  wireCode: z.number().int().optional(),
   protocolError: z.unknown().optional(),
   details: z.record(z.unknown()).optional(),
 });
@@ -220,6 +221,8 @@ export const approvalRecordSchema = z.object({
   tenantId: z.string().min(1),
   taskId: z.string().min(1),
   invocationId: z.string().optional(),
+  capabilityId: z.string().optional(),
+  inputHash: z.string().optional(),
   subject: approvalSubjectSchema,
   options: z.array(approvalOptionSchema),
   authority: z.enum(['local', 'delegated', 'chain']),
@@ -337,6 +340,9 @@ export const idempotencyRecordSchema = z.object({
   resultRef: z.string().optional(),
   result: z.unknown().optional(),
   error: canonicalErrorShapeSchema.optional(),
+  retryable: z.boolean().optional(),
+  sideEffect: sideEffectSchema.optional(),
+  outcome: z.string().optional(),
   createdAt: z.string().min(1),
   expiresAt: z.string().min(1),
 });

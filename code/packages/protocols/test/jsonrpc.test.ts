@@ -144,38 +144,75 @@ describe('jsonrpc · connection', () => {
     await editor.close();
   });
 
-  it('routes stream events to a pending stream by id', async () => {
+  it('streams a request over the text/event-stream binding', async () => {
     const pair = createLoopbackPair();
-    const events: unknown[] = [];
-    let seenId: string | number | undefined;
     const server = new JsonRpcConnection({
       channel: pair.b,
       handlers: {
-        request: async (_method, _params, ctx) => {
-          await server.notifyStream(ctx.id, { step: 1 });
-          await server.notifyStream(ctx.id, { step: 2 });
-          return { done: true };
+        stream: async (_method, _params, _ctx, sink) => {
+          await sink.event({ step: 1 });
+          await sink.event({ step: 2 });
+          await sink.event({ step: 3, final: true });
+          return NO_RESPONSE;
         },
       },
     });
     server.start();
-    const client = new JsonRpcConnection({
-      channel: pair.a,
-      requestTimeoutMs: 500,
+    const client = new JsonRpcConnection({ channel: pair.a, requestTimeoutMs: 500 });
+    client.start();
+
+    const events: unknown[] = [];
+    for await (const frame of client.requestStream('SendStreamingMessage', {})) {
+      if (!isJsonRpcResponse(frame) || 'error' in frame) continue;
+      events.push(frame.result);
+    }
+    expect(events).toEqual([{ step: 1 }, { step: 2 }, { step: 3, final: true }]);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('frames stream events as real SSE `data:` lines', async () => {
+    const pair = createLoopbackPair();
+    const server = new JsonRpcConnection({
+      channel: pair.b,
       handlers: {
-        streamEvent: (id, event) => {
-          seenId = id;
-          events.push(event);
-          return true;
+        stream: async (_method, _params, ctx, sink) => {
+          void ctx;
+          await sink.event({ kind: 'task', id: 't1', final: true });
+          return NO_RESPONSE;
         },
       },
     });
+    server.start();
+    const client = new JsonRpcConnection({ channel: pair.a, requestTimeoutMs: 500 });
     client.start();
 
-    const result = await client.request('stream');
-    expect(result).toEqual({ done: true });
-    expect(seenId).toBeDefined();
-    expect(events).toEqual([{ step: 1 }, { step: 2 }]);
+    const frames: unknown[] = [];
+    for await (const frame of client.requestStream('SubscribeToTask', {})) frames.push(frame);
+    expect(frames).toHaveLength(1);
+
+    await client.close();
+    await server.close();
+  });
+
+  it('reports a stream error frame as a JsonRpcRemoteError', async () => {
+    const pair = createLoopbackPair();
+    const server = new JsonRpcConnection({
+      channel: pair.b,
+      handlers: {
+        stream: () => {
+          throw { code: -32001, message: 'TaskNotFoundError' };
+        },
+      },
+    });
+    server.start();
+    const client = new JsonRpcConnection({ channel: pair.a, requestTimeoutMs: 500 });
+    client.start();
+
+    await expect(async () => {
+      for await (const frame of client.requestStream('SubscribeToTask', {})) void frame;
+    }).rejects.toMatchObject({ code: -32001 });
 
     await client.close();
     await server.close();

@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ToolRegistry } from '@syaocode/core';
+import { PermissionEngine, ToolRegistry } from '@syaocode/core';
 import { createFabric } from '../src/runtime/fabric.js';
 import { CanonicalError } from '../src/ir/errors.js';
 import type { AdapterCapabilities, AdapterContext, AuthorizedInvocation, InvokeResultPayload, ProtocolAdapter } from '../src/governance/contracts.js';
@@ -243,5 +243,77 @@ describe('red team 02 §14.3', () => {
     const seen = JSON.stringify(calls[0]?.input ?? {});
     expect(seen).not.toContain('sk-super-secret-value-123456');
     expect(seen).toContain('[REDACTED:api-key]');
+  });
+});
+
+// ── C-1 (third-round audit): the local safety floor is protocol-independent ──
+//
+// The policy engine consulted core's PermissionEngine — the BR-006 dangerous
+// command library, the BR-003 workspace path fence and the sensitive-path rule
+// — ONLY for `local://` capabilities. A single ordinary `mcp://**` allow rule
+// therefore disabled all of it on every protocol edge: `rm -rf /`,
+// `/etc/passwd` and `~/.ssh/id_rsa` all went through ungoverned. This is a
+// regression of the v0.2 security work, so it is pinned here for every edge.
+
+describe('red team C-1: the local safety floor applies to protocol edges', () => {
+  it('a plain mcp allow cannot bypass dangerous commands, the path fence or sensitive paths', async () => {
+    const calls: AuthorizedInvocation[] = [];
+    const runtime = new FakeRuntime();
+    const engine = new PermissionEngine({ mode: 'default', rules: [], workspaceRoots: ['/work'], runtime });
+    const fabric = createFabric({
+      runtime,
+      tenantId: TEST_TENANT,
+      workspaceRoots: ['/work'],
+      approvalTimeoutMs: 25, // no authority answers -> fail closed
+      policy: {
+        defaultEffect: 'deny',
+        // The most permissive rule a customer would plausibly write.
+        rules: [{ id: 'allow-mcp', priority: 1, effect: 'allow', match: { capabilities: ['mcp://**'] }, source: 'org' }],
+        permissionEngine: engine,
+      },
+    });
+    await fabric.mount(hostileAdapter({ calls }), { providerId: 'evil', risk: 'execute' });
+
+    const dangerous = [
+      { command: 'rm -rf /' },        // BR-006 dangerous command library
+      { path: '/etc/passwd' },        // outside every workspace root
+      { path: '~/.ssh/id_rsa' },      // sensitive credential path
+    ];
+    for (const input of dangerous) {
+      await expect(
+        fabric.call({ capabilityId: 'mcp://evil/tool/wipe', input }),
+        `input ${JSON.stringify(input)} must not be allowed through an edge`,
+      ).rejects.toBeDefined();
+    }
+    // Nothing may have reached the peer.
+    expect(calls).toHaveLength(0);
+  });
+
+  it('the safety floor also applies to the ACP reverse direction', async () => {
+    const calls: AuthorizedInvocation[] = [];
+    const runtime = new FakeRuntime();
+    const engine = new PermissionEngine({ mode: 'default', rules: [], workspaceRoots: ['/work'], runtime });
+    const fabric = createFabric({
+      runtime,
+      tenantId: TEST_TENANT,
+      workspaceRoots: ['/work'],
+      approvalTimeoutMs: 25,
+      policy: {
+        defaultEffect: 'deny',
+        rules: [{ id: 'allow-acp', priority: 1, effect: 'allow', match: { capabilities: ['acp://**'] }, source: 'org' }],
+        permissionEngine: engine,
+      },
+    });
+    await fabric.mount(
+      hostileAdapter({
+        calls,
+        capabilities: [{ id: 'acp://zed/fs/write_text_file', kind: 'fs', displayName: 'write_text_file' }],
+      }),
+      { providerId: 'zed', risk: 'write' },
+    );
+    await expect(
+      fabric.call({ capabilityId: 'acp://zed/fs/write_text_file', input: { path: '/etc/passwd', content: 'x' }, direction: 'reverse' }),
+    ).rejects.toBeDefined();
+    expect(calls).toHaveLength(0);
   });
 });

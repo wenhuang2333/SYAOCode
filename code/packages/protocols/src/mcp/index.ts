@@ -87,12 +87,27 @@ export type {
   McpToolExecutor,
 } from './server.js';
 
+export {
+  MCP_HEADER_METHOD,
+  MCP_HEADER_MISMATCH_CODE,
+  MCP_HEADER_MISMATCH_STATUS,
+  MCP_HEADER_NAME,
+  MCP_HEADER_PARAM_PREFIX,
+  MCP_HEADER_PROTOCOL_VERSION,
+  buildMcpHttpHeaders,
+  checkMcpHttpHeaders,
+  parseMcpHttpRequestInfo,
+} from './http.js';
+export type { McpHttpHeaderCheck, McpHttpRequestInfo } from './http.js';
+
 export { createHttpChannel, createLoopbackPair, createStdioChannel } from '../shared/transport.js';
 export type { DuplexChannel, StdioChannelOptions } from '../shared/transport.js';
 
 import type { Logger, Runtime } from '@syaocode/core';
 import type { DuplexChannel } from '../shared/transport.js';
 import { createHttpChannel, createStdioChannel } from '../shared/transport.js';
+import { buildMcpHttpHeaders } from './http.js';
+import { MCP_PROTOCOL_VERSION } from './mapping.js';
 import { McpAdapter, type McpAdapterOptions } from './client.js';
 import { McpServer, type McpServerOptions } from './server.js';
 
@@ -156,12 +171,23 @@ export interface McpHttpEdgeOptions {
   requestTimeoutMs?: number;
   clientInfo?: { name: string; version: string };
   clientCapabilities?: Record<string, unknown>;
+  /** Pinned protocol version for the `MCP-Protocol-Version` header. */
+  protocolVersion?: string;
 }
 
-/** Convenience factory: a Streamable-HTTP MCP edge (01 §2.1 transport rule). */
+/**
+ * Convenience factory: a Streamable-HTTP MCP edge (01 §2.1 transport rule).
+ *
+ * Every request carries the mandatory headers of 04 M13, derived from the
+ * JSON-RPC body. OAuth 2.1 / RFC 9728 PRM is *not* implemented: a peer that
+ * demands it is refused with `unauthenticated` and the
+ * `mcp-oauth-prm-unsupported` lossy marker (04 M20), never half-authenticated.
+ */
 export function createHttpMcpAdapter(options: McpHttpEdgeOptions): McpAdapter {
+  const protocolVersion = options.protocolVersion ?? MCP_PROTOCOL_VERSION;
   const channel: DuplexChannel = createHttpChannel(options.runtime, options.url, {
     ...(options.headers !== undefined ? { headers: options.headers } : {}),
+    headersFor: (body) => buildMcpHttpHeaders(body, { protocolVersion }),
     ...(options.logger !== undefined ? { logger: options.logger } : {}),
     label: `mcp-http:${options.url}`,
   });
@@ -169,6 +195,7 @@ export function createHttpMcpAdapter(options: McpHttpEdgeOptions): McpAdapter {
     runtime: options.runtime,
     channel,
     serverId: options.serverId,
+    transport: 'http',
     ...(options.clientInfo !== undefined ? { clientInfo: options.clientInfo } : {}),
     ...(options.clientCapabilities !== undefined ? { clientCapabilities: options.clientCapabilities } : {}),
     ...(options.requestTimeoutMs !== undefined ? { requestTimeoutMs: options.requestTimeoutMs } : {}),

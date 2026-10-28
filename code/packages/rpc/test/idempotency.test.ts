@@ -53,13 +53,50 @@ describe('idempotency (02 §9.1)', () => {
     expect((await store.begin('k', hash)).kind).toBe('in_flight');
   });
 
-  it('allows a retry after a failure', async () => {
+  it('allows a retry after a RETRYABLE failure of an idempotent capability', async () => {
     const store = makeStore();
     const hash = requestHash(hasher, 'c', {});
     await store.begin('k', hash);
-    await store.fail('k', { kind: 'remote_error', message: 'boom', retryable: true });
+    await store.fail('k', { kind: 'remote_error', message: 'boom', retryable: true }, {
+      retryable: true,
+      sideEffect: 'idempotent',
+      outcome: 'failed',
+    });
     const next = await store.begin('k', hash);
     expect(next.kind).toBe('new');
+  });
+
+  it('refuses to retry a non-idempotent failure (I10)', async () => {
+    const store = makeStore();
+    const hash = requestHash(hasher, 'c', {});
+    await store.begin('k', hash);
+    await store.fail('k', { kind: 'remote_error', message: 'boom', retryable: true }, {
+      retryable: true,
+      sideEffect: 'non_idempotent',
+      outcome: 'failed',
+    });
+    // Retrying could duplicate a side effect: must be a conflict, not a new run.
+    expect((await store.begin('k', hash)).kind).toBe('conflict');
+  });
+
+  it('refuses to retry when the outcome was indeterminate (I10 / ADR-R6)', async () => {
+    const store = makeStore();
+    const hash = requestHash(hasher, 'c', {});
+    await store.begin('k', hash);
+    await store.fail('k', { kind: 'indeterminate', message: 'no response', retryable: false }, {
+      retryable: false,
+      sideEffect: 'idempotent',
+      outcome: 'indeterminate',
+    });
+    expect((await store.begin('k', hash)).kind).toBe('conflict');
+  });
+
+  it('refuses to retry a failure that was never marked retryable', async () => {
+    const store = makeStore();
+    const hash = requestHash(hasher, 'c', {});
+    await store.begin('k', hash);
+    await store.fail('k', { kind: 'invalid_request', message: 'bad input', retryable: false });
+    expect((await store.begin('k', hash)).kind).toBe('conflict');
   });
 
   it('derives a per-invocation key when the caller supplies none', () => {

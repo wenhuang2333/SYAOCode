@@ -30,6 +30,12 @@ export interface BudgetLedgerOptions {
   /** Per-invocation ceiling used when the estimate is unknown (02 §7.2). */
   maxPerInvocationUsd?: number;
   defaultTtlMs?: number;
+  /**
+   * Crash recovery hook: decide whether an expired hold was actually spent.
+   * Returning a cost settles it; returning undefined releases it. Without this
+   * hook recovery releases, which can hand out a free call.
+   */
+  resolveExpired?: (reservation: BudgetReservation) => Promise<number | undefined>;
 }
 
 export class BudgetLedgerImpl implements BudgetLedger {
@@ -38,6 +44,14 @@ export class BudgetLedgerImpl implements BudgetLedger {
   private readonly now: () => string;
   private readonly maxPerInvocationUsd: number;
   private readonly defaultTtlMs: number;
+  private readonly resolveExpired?: (reservation: BudgetReservation) => Promise<number | undefined>;
+  /**
+   * Per-root-account serialization. `reserve()` is read-check-write across a
+   * whole ancestor chain; without this two concurrent reservations can both
+   * pass the limit check and then both commit (classic TOCTOU). Locking on the
+   * OUTERMOST account serializes every sibling that shares a tenant budget.
+   */
+  private readonly locks = new Map<string, Promise<unknown>>();
 
   constructor(opts: BudgetLedgerOptions) {
     this.store = opts.store;
@@ -45,6 +59,26 @@ export class BudgetLedgerImpl implements BudgetLedger {
     this.now = opts.now;
     this.maxPerInvocationUsd = opts.maxPerInvocationUsd ?? DEFAULT_MAX_PER_INVOCATION_USD;
     this.defaultTtlMs = opts.defaultTtlMs ?? DEFAULT_RESERVATION_TTL_MS;
+    if (opts.resolveExpired !== undefined) this.resolveExpired = opts.resolveExpired;
+  }
+
+  /**
+   * Run `fn` with exclusive access to a lock key. Callers queue behind each
+   * other; a rejection does not break the queue.
+   */
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this.locks.get(key) ?? Promise.resolve();
+    const run = previous.then(fn, fn);
+    this.locks.set(key, run.then(() => undefined, () => undefined));
+    try {
+      return await run;
+    } finally {
+      // Drop the entry once it is the tail, so the map cannot grow forever.
+      const tail = this.locks.get(key);
+      void tail?.then(() => {
+        if (this.locks.get(key) === tail) this.locks.delete(key);
+      });
+    }
   }
 
   async ensureAccount(
@@ -86,11 +120,30 @@ export class BudgetLedgerImpl implements BudgetLedger {
     if (chain.length === 0) {
       throw new Error(`budget account '${req.accountId}' does not exist`);
     }
-    for (const account of chain) {
-      if (!canReserve(account, estimate)) {
-        throw new BudgetExceededError(account.id, account.tenantId, estimate.usd, account);
+    const rootId = chain[0]!.id;
+    // Re-read and commit under the lock: the check and the write must be one
+    // critical section or concurrent callers can both pass the limit check.
+    return this.withLock(rootId, async () => {
+      const fresh: BudgetAccount[] = [];
+      for (const account of chain) {
+        const current = await this.store.get(account.id);
+        if (current === undefined) throw new Error(`budget account '${account.id}' disappeared`);
+        fresh.push(current);
       }
-    }
+      for (const account of fresh) {
+        if (!canReserve(account, estimate)) {
+          throw new BudgetExceededError(account.id, account.tenantId, estimate.usd, account);
+        }
+      }
+      return this.commitReservation(req, fresh, estimate);
+    });
+  }
+
+  private async commitReservation(
+    req: ReserveRequest,
+    chain: BudgetAccount[],
+    estimate: BudgetEstimate,
+  ): Promise<BudgetReservation> {
     const createdAt = this.now();
     const reservation: BudgetReservation = {
       id: this.ids.next('rsv'),
@@ -118,7 +171,10 @@ export class BudgetLedgerImpl implements BudgetLedger {
     const reservation = await this.store.getReservation(reservationId);
     if (reservation === undefined) throw new Error(`unknown reservation '${reservationId}'`);
     if (reservation.state !== 'held') return reservation; // settle is idempotent
+    return this.withLock(reservation.accountChain[0] ?? reservation.accountId, () => this.settleLocked(reservation, usage));
+  }
 
+  private async settleLocked(reservation: BudgetReservation, usage: UsageReport): Promise<BudgetReservation> {
     const actual = actualCost(usage, reservation.estimate);
     const createdAt = this.now();
 
@@ -150,6 +206,10 @@ export class BudgetLedgerImpl implements BudgetLedger {
     const reservation = await this.store.getReservation(reservationId);
     if (reservation === undefined) throw new Error(`unknown reservation '${reservationId}'`);
     if (reservation.state !== 'held') return reservation;
+    return this.withLock(reservation.accountChain[0] ?? reservation.accountId, () => this.releaseLocked(reservation));
+  }
+
+  private async releaseLocked(reservation: BudgetReservation): Promise<BudgetReservation> {
     for (const accountId of reservation.accountChain) {
       const account = await this.store.get(accountId);
       if (account === undefined) continue;
@@ -171,7 +231,12 @@ export class BudgetLedgerImpl implements BudgetLedger {
     let count = 0;
     for (const reservation of held) {
       if (Date.parse(reservation.expiresAt) > Date.parse(nowIso)) continue;
-      await this.release(reservation.id);
+      // A hold may have been spent without ever being settled (the process
+      // died mid-flight). Charging the recorded cost is correct; releasing
+      // would hand out a free call.
+      const spent = this.resolveExpired !== undefined ? await this.resolveExpired(reservation) : undefined;
+      if (spent !== undefined) await this.settle(reservation.id, { costUsd: spent });
+      else await this.release(reservation.id);
       count += 1;
     }
     return count;

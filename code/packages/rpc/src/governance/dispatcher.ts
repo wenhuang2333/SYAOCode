@@ -54,8 +54,10 @@ import type {
   ReceiptStore,
   TaskStore,
 } from './contracts.js';
-import { BudgetExceededError } from './budget.js';
+import { BudgetExceededError, DEFAULT_MAX_PER_INVOCATION_USD } from './budget.js';
 import { derivedKey, idempotencyKeyOf, requestHash } from './idempotency.js';
+import { retryVerdict } from '../ir/errors.js';
+import { redactError } from './redactor-bridge.js';
 
 export interface DispatcherOptions extends DispatcherDeps {
   /** How long an approval may wait before it is denied (fail closed). */
@@ -72,7 +74,7 @@ export class GovernanceDispatcher implements Dispatcher {
   }
 
   async invoke(req: InvokeRequest, ctx: DispatchContext): Promise<InvokeResult> {
-    const { kernel, policy, approvals, budget, idempotency, receipts, audit, registry } = this.deps;
+    const { kernel, policy, approvals, budget, idempotency, receipts, audit, registry, identity } = this.deps;
     const step = (name: Parameters<NonNullable<DispatcherDeps['onStep']>>[0], detail: Record<string, unknown> = {}): void => {
       this.deps.onStep?.(name, detail);
     };
@@ -87,11 +89,39 @@ export class GovernanceDispatcher implements Dispatcher {
     const correlationId = ctx.correlationId ?? kernel.ids.next('corr');
 
     // ── 2. authenticate ─────────────────────────────────────────────────
-    // The principal arrives already authenticated (the identity service signs
-    // it); here we assert the invariants the dispatcher owns (I1).
+    // The principal must be authenticated by the identity service, not merely
+    // asserted by the caller (I1). The service is also the only component that
+    // can widen a delegation chain, so it runs on every invocation.
     step('authenticate');
     if (principal.id.trim() === '' || tenantId.trim() === '') {
       throw new CanonicalError({ kind: 'unauthenticated', message: 'the invocation carries no principal or tenant' });
+    }
+    let authenticated;
+    try {
+      authenticated = await identity.authenticate(
+        req.credential ?? { kind: 'local', principal },
+      );
+    } catch (e) {
+      throw CanonicalError.from(e, 'unauthenticated');
+    }
+    if (authenticated.principal.tenantId !== tenantId) {
+      throw new CanonicalError({
+        kind: 'unauthorized',
+        message: 'the authenticated principal belongs to a different tenant',
+      });
+    }
+    // A host may pin the tenant it serves; the caller cannot name another one.
+    if (ctx.tenantId !== undefined && ctx.tenantId !== tenantId) {
+      throw new CanonicalError({
+        kind: 'unauthorized',
+        message: `tenant mismatch: this host serves '${ctx.tenantId}', the request claims '${tenantId}'`,
+      });
+    }
+    if (ctx.session !== undefined && ctx.session.tenantId !== tenantId) {
+      throw new CanonicalError({
+        kind: 'unauthorized',
+        message: 'the session belongs to a different tenant than the principal',
+      });
     }
     const delegationChain: string[] =
       ctx.session !== undefined && ctx.session.approvalAuthority === 'chain' ? [ctx.session.id] : [];
@@ -111,8 +141,15 @@ export class GovernanceDispatcher implements Dispatcher {
     // ── 4. idempotency ──────────────────────────────────────────────────
     // Before the budget: a replay must not reserve money twice.
     step('idempotency');
-    const hash = requestHash(kernel.hash, req.capabilityId, req.input, policy.revision);
-    const clientKey = req.idempotencyKey ?? derivedKey(task.id, 'pending');
+    // Hash the SANITIZED input: the receipt and the idempotency key must
+    // describe what the executor actually received, not the pre-redaction form.
+    const sanitizedInput = this.sanitizeInput(req.input);
+    const hash = requestHash(kernel.hash, req.capabilityId, sanitizedInput, policy.revision);
+    // Allocate the invocation id BEFORE idempotency so the derived key is
+    // unique per invocation. A constant ('pending') made every second call in
+    // a task collide with the first one's key.
+    const invocationId = newId(kernel.ids, 'invocation');
+    const clientKey = req.idempotencyKey ?? derivedKey(task.id, invocationId);
     const key = idempotencyKeyOf({ tenantId, principalId: principal.id, capabilityId: req.capabilityId, clientKey });
     const begin = await idempotency.begin(key, hash);
     if (begin.kind === 'conflict') {
@@ -173,10 +210,72 @@ export class GovernanceDispatcher implements Dispatcher {
     if (decision.effect === 'deny') {
       const error = CanonicalError.denied(decision.reason);
       await idempotency.fail(key, error.toShape());
+      // A denied call is still evidence: it proves the request was refused and
+      // why (I5 — "every invocation has exactly one receipt").
+      await this.writeTerminalReceipt({
+        task,
+        tenantId,
+        capabilityId: capability.id,
+        protocol: req.protocol,
+        principal,
+        outcome: 'denied',
+        inputHash: hash,
+        policyRevision: decision.policyRevision,
+        decisionId: decision.id,
+        effect: 'deny',
+        obligations: decision.obligations,
+        visibility: capability.visibility,
+        delegationChain,
+        error: error.toShape(),
+      }, ctx);
       throw error;
     }
 
-    // Obligations the executor cannot honour must fail closed (02 §5.2).
+    // I7: secret-class data must not leave the kernel unredacted. Without a
+    // redactor configured we cannot guarantee that, so the call is refused
+    // rather than run with a silent leak.
+    if (capability.dataClass === 'secret' && this.deps.redactor === undefined) {
+      const error = new CanonicalError({
+        kind: 'unsupported_obligation',
+        message: 'This capability carries secret-class data but no redactor is configured.',
+      });
+      await idempotency.fail(key, error.toShape());
+      await this.writeTerminalReceipt({
+        task, tenantId, capabilityId: capability.id, protocol: req.protocol, principal,
+        outcome: 'denied', inputHash: hash, policyRevision: decision.policyRevision,
+        decisionId: decision.id, effect: decision.effect, obligations: decision.obligations,
+        visibility: capability.visibility, delegationChain, error: error.toShape(),
+      }, ctx);
+      throw error;
+    }
+
+    // Obligations are hard constraints: if any cannot be honoured the call is
+    // refused, never silently run without it (02 §5.2).
+    const unsupportedObligation = firstUnsupportedObligation(decision.obligations);
+    if (unsupportedObligation !== undefined) {
+      const error = new CanonicalError({
+        kind: 'unsupported_obligation',
+        message: `The obligation '${unsupportedObligation}' cannot be honoured by this executor.`,
+      });
+      await idempotency.fail(key, error.toShape());
+      await this.writeTerminalReceipt({
+        task,
+        tenantId,
+        capabilityId: capability.id,
+        protocol: req.protocol,
+        principal,
+        outcome: 'denied',
+        inputHash: hash,
+        policyRevision: decision.policyRevision,
+        decisionId: decision.id,
+        effect: decision.effect,
+        obligations: decision.obligations,
+        visibility: capability.visibility,
+        delegationChain,
+        error: error.toShape(),
+      }, ctx);
+      throw error;
+    }
     const sandbox = decision.obligations.find((o): o is Extract<Obligation, { type: 'sandbox' }> => o.type === 'sandbox');
     if (sandbox !== undefined && sandbox.level !== 'none') {
       const error = new CanonicalError({
@@ -184,16 +283,38 @@ export class GovernanceDispatcher implements Dispatcher {
         message: `The sandbox obligation '${sandbox.level}' cannot be honoured by this executor.`,
       });
       await idempotency.fail(key, error.toShape());
+      await this.writeTerminalReceipt({
+        task,
+        tenantId,
+        capabilityId: capability.id,
+        protocol: req.protocol,
+        principal,
+        outcome: 'denied',
+        inputHash: hash,
+        policyRevision: decision.policyRevision,
+        decisionId: decision.id,
+        effect: decision.effect,
+        obligations: decision.obligations,
+        visibility: capability.visibility,
+        delegationChain,
+        error: error.toShape(),
+      }, ctx);
       throw error;
     }
 
     // ── 6. approve ──────────────────────────────────────────────────────
     step('approve');
     const approvalIds: string[] = [];
-    if (decision.effect === 'ask') {
+    // An `allow` decision carrying `require_approval` still needs a human:
+    // the obligation is not advisory.
+    const approvalRequired = decision.effect === 'ask' || decision.obligations.some((o) => o.type === 'require_approval');
+    if (approvalRequired) {
       const approval = await approvals.request({
         tenantId,
         taskId: task.id,
+        invocationId,
+        capabilityId: capability.id,
+        inputHash: hash,
         subject: this.subjectFor(capability, req, decision.reason),
         ...(this.deps.approvalTimeoutMs !== undefined ? { timeoutMs: this.deps.approvalTimeoutMs } : {}),
         authority: req.approvalAuthority ?? ctx.session?.approvalAuthority ?? 'local',
@@ -206,6 +327,23 @@ export class GovernanceDispatcher implements Dispatcher {
         const error = CanonicalError.denied(approval.reason ?? 'The request was not approved.');
         await idempotency.fail(key, error.toShape());
         await this.writeAudit('approval.denied', tenantId, principal, { type: 'approval', id: approval.approvalId }, 'denied', decision.policyRevision);
+        await this.writeTerminalReceipt({
+          task,
+          tenantId,
+          capabilityId: capability.id,
+          protocol: req.protocol,
+          principal,
+          outcome: 'denied',
+          inputHash: hash,
+          policyRevision: decision.policyRevision,
+          decisionId: decision.id,
+          effect: 'ask',
+          obligations: decision.obligations,
+          visibility: capability.visibility,
+          delegationChain,
+          approvalIds,
+          error: error.toShape(),
+        }, ctx);
         throw error;
       }
     }
@@ -214,8 +352,14 @@ export class GovernanceDispatcher implements Dispatcher {
     step('reserve');
     let reservationId: string | undefined;
     const accountId = ctx.session?.budgetId ?? 'default';
-    if (req.skipBudget !== true) {
-      const estimate = ctx.estimate ?? { usd: this.deps.defaultEstimateUsd ?? 0 };
+    // `skipBudget` is a REQUEST, not a switch: only a free read-only
+    // capability may actually skip the ledger, so a caller cannot opt out of
+    // the budget (I6).
+    const exempt = req.skipBudget === true && capability.risk === 'read' && capability.sideEffect === 'none';
+    if (!exempt) {
+      // No estimate means "unknown price", which must reserve the conservative
+      // per-invocation ceiling — reserving $0 would make the ledger a no-op.
+      const estimate = ctx.estimate ?? { usd: this.deps.defaultEstimateUsd ?? DEFAULT_MAX_PER_INVOCATION_USD };
       try {
         const reservation = await budget.reserve({
           accountId,
@@ -236,6 +380,22 @@ export class GovernanceDispatcher implements Dispatcher {
           });
           await idempotency.fail(key, error.toShape());
           await this.emit(task, principal, req.protocol, 'budget.exceeded', { accountId: e.accountId }, ctx);
+          await this.writeTerminalReceipt({
+            task,
+            tenantId,
+            capabilityId: capability.id,
+            protocol: req.protocol,
+            principal,
+            outcome: 'failed',
+            inputHash: hash,
+            policyRevision: decision.policyRevision,
+            decisionId: decision.id,
+            effect: decision.effect,
+            obligations: decision.obligations,
+            visibility: capability.visibility,
+            delegationChain,
+            error: error.toShape(),
+          }, ctx);
           throw error;
         }
         throw e;
@@ -244,7 +404,21 @@ export class GovernanceDispatcher implements Dispatcher {
 
     // ── 8. dispatch ─────────────────────────────────────────────────────
     step('dispatch');
-    const invocationId = newId(kernel.ids, 'invocation');
+    // A deadline in the past is already a timeout: do not start work that can
+    // only be abandoned (02 §9.4).
+    if (req.deadlineAt !== undefined && Date.parse(req.deadlineAt) <= kernel.runtime.clock.now()) {
+      const error = new CanonicalError({ kind: 'timed_out', message: 'the deadline passed before dispatch' });
+      await idempotency.fail(key, error.toShape(), { retryable: false, sideEffect: capability.sideEffect, outcome: 'timed_out' });
+      await this.writeTerminalReceipt({
+        task, tenantId, capabilityId: capability.id, protocol: req.protocol, principal,
+        outcome: 'timed_out', inputHash: hash, policyRevision: decision.policyRevision,
+        decisionId: decision.id, effect: decision.effect, obligations: decision.obligations,
+        visibility: capability.visibility, delegationChain, error: error.toShape(),
+      }, ctx);
+      throw error;
+    }
+    const queuedAtForReceipt = this.now();
+    const startedAt = queuedAtForReceipt;
     const authorized: AuthorizedInvocation = {
       invocationId,
       taskId: task.id,
@@ -252,7 +426,7 @@ export class GovernanceDispatcher implements Dispatcher {
       tenantId,
       capability,
       endpoint: resolved.endpoint,
-      input: this.sanitizeInput(req.input),
+      input: sanitizedInput,
       inputHash: hash,
       principal,
       protocol: req.protocol,
@@ -272,6 +446,9 @@ export class GovernanceDispatcher implements Dispatcher {
     } catch (e) {
       payload = this.payloadFromError(e);
     }
+    // Everything that leaves the kernel is scrubbed (I7): the output, the
+    // error text and the artifacts.
+    payload = this.sanitizePayload(payload);
 
     // ── 9. settle ───────────────────────────────────────────────────────
     step('settle');
@@ -306,6 +483,9 @@ export class GovernanceDispatcher implements Dispatcher {
       ...(payload.usage !== undefined ? { usage: payload.usage } : {}),
       visibility: capability.visibility,
       ...(payload.lossy !== undefined ? { lossy: payload.lossy } : {}),
+      ...(payload.error !== undefined ? { error: payload.error } : {}),
+      queuedAt: queuedAtForReceipt,
+      startedAt,
       delegationChain,
     }, ctx);
 
@@ -334,7 +514,18 @@ export class GovernanceDispatcher implements Dispatcher {
         approvalIds,
       });
     } else {
-      await idempotency.fail(key, payload.error ?? { kind: 'remote_error', message: `invocation ${outcome}`, retryable: false });
+      // Record WHY the attempt failed so the retry gate can refuse to repeat a
+      // side effect whose outcome is unknown (I10).
+      const shape = payload.error ?? { kind: 'remote_error' as const, message: `invocation ${outcome}`, retryable: false };
+      const verdict = retryVerdict(
+        CanonicalError.fromShape(shape),
+        { sideEffect: capability.sideEffect, sent: outcome === 'indeterminate' || outcome === 'timed_out' },
+      );
+      await idempotency.fail(key, shape, {
+        retryable: verdict === 'retry',
+        sideEffect: capability.sideEffect,
+        outcome,
+      });
     }
 
     return {
@@ -479,6 +670,23 @@ export class GovernanceDispatcher implements Dispatcher {
     return value;
   }
 
+  /** Scrub the result of an execution before it is stored or returned. */
+  private sanitizePayload(payload: InvokeResultPayload): InvokeResultPayload {
+    const redactor = this.deps.redactor;
+    if (redactor === undefined) return payload;
+    const output = payload.output !== undefined ? redactor.redactValue(payload.output).value : undefined;
+    const error = payload.error !== undefined ? redactError(redactor, payload.error) : undefined;
+    const lossy = payload.lossy !== undefined ? redactor.redactValue(payload.lossy).value : undefined;
+    const artifacts = payload.artifacts !== undefined ? redactor.redactValue(payload.artifacts).value : undefined;
+    return {
+      ...payload,
+      ...(output !== undefined ? { output } : {}),
+      ...(error !== undefined ? { error } : {}),
+      ...(lossy !== undefined ? { lossy } : {}),
+      ...(artifacts !== undefined ? { artifacts } : {}),
+    };
+  }
+
   private payloadFromError(e: unknown): InvokeResultPayload {
     if (CanonicalError.is(e)) {
       const shape = e.toShape();
@@ -495,6 +703,64 @@ export class GovernanceDispatcher implements Dispatcher {
       retryable: false,
     };
     return { outcome: 'failed', error };
+  }
+
+  /**
+   * A receipt for an invocation that never reached dispatch (denied, approval
+   * refused, budget exhausted, obligation unsupported). Without this the four
+   * most security-relevant outcomes would leave no evidence at all.
+   */
+  private async writeTerminalReceipt(input: {
+    task: Task;
+    tenantId: string;
+    capabilityId: string;
+    protocol: InvokeRequest['protocol'];
+    principal: Principal;
+    outcome: InvocationState;
+    inputHash: string;
+    policyRevision: string;
+    decisionId: string;
+    effect: 'allow' | 'deny' | 'ask';
+    obligations: Obligation[];
+    visibility: Receipt['visibility'];
+    delegationChain: string[];
+    approvalIds?: string[];
+    error?: CanonicalErrorShape;
+  }, ctx: DispatchContext): Promise<Receipt> {
+    const now = this.now();
+    const draft: Omit<Receipt, 'hash' | 'prevHash'> = {
+      id: newId(this.deps.kernel.ids, 'receipt'),
+      tenantId: input.tenantId,
+      taskId: input.task.id,
+      invocationId: newId(this.deps.kernel.ids, 'invocation'),
+      protocol: input.protocol,
+      capabilityId: input.capabilityId,
+      principalId: input.principal.id,
+      delegationChain: input.delegationChain,
+      outcome: input.outcome,
+      inputHash: input.inputHash,
+      artifacts: [],
+      approvals: input.approvalIds ?? [],
+      policy: {
+        revision: input.policyRevision,
+        decisionId: input.decisionId,
+        effect: input.effect,
+        obligations: input.obligations.map((o) => o.type),
+      },
+      timing: { queuedAt: now, startedAt: now, endedAt: now },
+      visibility: input.visibility,
+      ...(input.error !== undefined ? { error: input.error } : {}),
+    } as Omit<Receipt, 'hash' | 'prevHash'>;
+    const receipt = await this.deps.receipts.put(draft);
+    await this.emit(
+      input.task,
+      input.principal,
+      input.protocol,
+      'receipt.issued',
+      { receiptId: receipt.id, outcome: input.outcome, error: input.error?.kind },
+      ctx,
+    );
+    return receipt;
   }
 
   private async writeReceipt(input: {
@@ -517,6 +783,9 @@ export class GovernanceDispatcher implements Dispatcher {
     visibility: Receipt['visibility'];
     lossy?: string[];
     delegationChain: string[];
+    error?: CanonicalErrorShape;
+    queuedAt?: string;
+    startedAt?: string;
   }, ctx: DispatchContext): Promise<Receipt> {
     const now = this.now();
     const draft: Omit<Receipt, 'hash' | 'prevHash'> = {
@@ -550,9 +819,14 @@ export class GovernanceDispatcher implements Dispatcher {
             },
           }
         : {}),
-      timing: { queuedAt: now, startedAt: now, endedAt: now },
+      timing: {
+        queuedAt: input.queuedAt ?? now,
+        startedAt: input.startedAt ?? now,
+        endedAt: now,
+      },
       visibility: input.visibility,
       ...(input.lossy !== undefined && input.lossy.length > 0 ? { lossy: input.lossy } : {}),
+      ...(input.error !== undefined ? { error: input.error } : {}),
     };
     const receipt = await this.deps.receipts.put(draft);
     await this.emit(
@@ -598,6 +872,9 @@ export class GovernanceDispatcher implements Dispatcher {
     ctx: DispatchContext,
     invocationId?: string,
   ): Promise<void> {
+    // Redact BEFORE the event reaches the log or a subscriber (I7).
+    const redactor = this.deps.redactor;
+    const safePayload = redactor !== undefined ? redactor.redactValue(payload).value : payload;
     const event = await this.deps.events.append({
       taskId: task.id,
       ...(invocationId !== undefined ? { invocationId } : {}),
@@ -605,7 +882,7 @@ export class GovernanceDispatcher implements Dispatcher {
       principalId: principal.id,
       protocol: protocol === 'local' ? 'native' : protocol,
       type,
-      payload,
+      payload: safePayload,
     });
     ctx.emit?.(event);
   }
@@ -621,6 +898,37 @@ export class GovernanceDispatcher implements Dispatcher {
       default: return 'invocation.failed';
     }
   }
+}
+
+/**
+ * Obligations the kernel cannot enforce on its own.
+ *
+ * `require_approval` IS enforced (the approval step runs), and `redact`,
+ * `audit_level`, `ttl`, `no_retry` and `max_output_bytes` are applied by the
+ * kernel/dispatcher. The rest would have to be honoured by the executor; if
+ * the executor cannot prove it did, the call must be refused rather than run
+ * unguarded (02 §5.2).
+ */
+function firstUnsupportedObligation(obligations: Obligation[]): string | undefined {
+  for (const o of obligations) {
+    switch (o.type) {
+      case 'require_approval':
+      case 'redact':
+      case 'audit_level':
+      case 'no_retry':
+      case 'ttl':
+      case 'max_output_bytes':
+        continue;
+      case 'sandbox':
+        if (o.level === 'none') continue;
+        return `sandbox:${o.level}`;
+      case 'network_allowlist':
+        return `network_allowlist:${o.hosts.join(',')}`;
+      case 'delegation_limit':
+        return `delegation_limit:${o.maxHops}`;
+    }
+  }
+  return undefined;
 }
 
 function normalizeOutcome(outcome: InvokeResultPayload['outcome']): InvocationState {

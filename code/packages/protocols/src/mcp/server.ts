@@ -17,6 +17,7 @@ import { mcpCapabilityId, mcpToolName, type CanonicalErrorShape, type InvokeResu
 import { AdapterBase, mergeLossy, type DuplexChannel } from '../shared/index.js';
 import { NO_RESPONSE, JsonRpcConnection, type JsonRpcId, type JsonRpcHandlerResult } from '../shared/jsonrpc.js';
 import { MCP_ERROR_CODES, mcpError } from './errors.js';
+import { checkMcpHttpHeaders, type McpHttpHeaderCheck } from './http.js';
 import {
   MCP_LOSSY,
   MCP_PROTOCOL_VERSION,
@@ -154,15 +155,19 @@ export class McpServer extends AdapterBase {
       case 'server/discover':
         return this.discoverResult();
       case 'tools/list':
-        return { tools: [...this.tools.values()].map((tool) => this.publishedTool(tool)) };
+        return {
+          resultType: 'complete',
+          ...this.cacheHint(),
+          tools: [...this.tools.values()].map((tool) => this.publishedTool(tool)),
+        };
       case 'tools/call':
         return this.callTool(params, id);
       case 'resources/list':
-        return { resources: this.options.resources ?? [] };
+        return { resultType: 'complete', ...this.cacheHint(), resources: this.options.resources ?? [] };
       case 'resources/read':
         return this.readResource(params);
       case 'prompts/list':
-        return { prompts: this.options.prompts ?? [] };
+        return { resultType: 'complete', ...this.cacheHint(), prompts: this.options.prompts ?? [] };
       case 'prompts/get':
         return this.getPrompt(params);
       case 'tasks/get':
@@ -189,6 +194,17 @@ export class McpServer extends AdapterBase {
 
   private supportedVersions(): string[] {
     return this.options.supportedVersions ?? [MCP_PROTOCOL_VERSION];
+  }
+
+  /**
+   * Cache hints (MCP 2026-07-28). Every list result must carry them: a modern
+   * client validates the fields and refuses a result without `ttlMs`.
+   */
+  private cacheHint(): { ttlMs: number; cacheScope: string } {
+    return {
+      ttlMs: this.options.ttlMs ?? 300_000,
+      cacheScope: this.options.cacheScope ?? 'private',
+    };
   }
 
   private discoverResult(): Record<string, unknown> {
@@ -220,7 +236,10 @@ export class McpServer extends AdapterBase {
       name: tool.name,
       ...(tool.title !== undefined ? { title: tool.title } : {}),
       ...(tool.description !== undefined ? { description: tool.description } : {}),
-      ...(tool.inputSchema !== undefined ? { inputSchema: tool.inputSchema } : {}),
+      // MCP 2026-07-28 requires an inputSchema on every published tool, so a
+      // tool that declares none gets the permissive object schema rather than
+      // being published without the field (which a modern client rejects).
+      inputSchema: tool.inputSchema ?? { type: 'object' },
       ...(tool.outputSchema !== undefined ? { outputSchema: tool.outputSchema } : {}),
       ...(tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
     };
@@ -316,6 +335,17 @@ export class McpServer extends AdapterBase {
     return token;
   }
 
+  /**
+   * Validate the mandatory Streamable-HTTP headers of an inbound request.
+   *
+   * A host that serves this server over HTTP MUST call this before handing the
+   * body to the connection: a mismatch is HTTP 400 + JSON-RPC -32020
+   * (HeaderMismatch, 04 M13/M18) and never reaches a tool handler.
+   */
+  checkHttpRequest(headers: Record<string, string>, body: string): McpHttpHeaderCheck {
+    return checkMcpHttpHeaders(headers, body, { protocolVersion: this.supportedVersions()[0] ?? MCP_PROTOCOL_VERSION });
+  }
+
   /** Number of outstanding MRTR states (test/diagnostic hook). */
   get pendingInputCount(): number {
     let count = 0;
@@ -340,7 +370,7 @@ export class McpServer extends AdapterBase {
       throw { code: MCP_ERROR_CODES.inputRequired, message: 'resource read requires input', data: { inputRequests: payload.inputRequests } };
     }
     const contents = typeof payload.output === 'string' ? [{ uri, text: payload.output }] : [{ uri, json: payload.output }];
-    return { contents };
+    return { resultType: 'complete', contents };
   }
 
   private async getPrompt(params: unknown): Promise<Record<string, unknown>> {
@@ -357,7 +387,7 @@ export class McpServer extends AdapterBase {
     if (isInputRequiredSignal(payload)) {
       throw { code: MCP_ERROR_CODES.inputRequired, message: 'prompt requires input', data: { inputRequests: payload.inputRequests } };
     }
-    return { messages: [{ role: 'user', content: { type: 'text', text: typeof payload.output === 'string' ? payload.output : JSON.stringify(payload.output ?? '') } }] };
+    return { resultType: 'complete', messages: [{ role: 'user', content: { type: 'text', text: typeof payload.output === 'string' ? payload.output : JSON.stringify(payload.output ?? '') } }] };
   }
 
   // ── adapter surface ─────────────────────────────────────────────────────

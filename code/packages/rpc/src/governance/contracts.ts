@@ -156,6 +156,9 @@ export interface ApprovalRequest {
   tenantId: string;
   taskId: string;
   invocationId?: string;
+  /** Binding: what this approval authorizes. */
+  capabilityId?: string;
+  inputHash?: string;
   subject: ApprovalSubject;
   options?: import('../ir/types.js').ApprovalOption[];
   authority: ApprovalRecord['authority'];
@@ -173,16 +176,22 @@ export interface ApprovalOutcome {
   reason?: string;
 }
 
-export interface ApprovalBroker {
-  /**
-   * Create a pending approval and wait for a decision. Timeouts, disconnects
-   * and malformed answers all resolve to `denied` (fail closed, I9).
-   */
+/**
+ * The approval surface an adapter is allowed to see: it may ask, and it may
+ * read the queue, but it may not decide (02 §12.2 / I13).
+ */
+export interface ApprovalRequester {
   request(req: ApprovalRequest): Promise<ApprovalOutcome>;
-  /** CAS decision; returns false when another authority already decided. */
-  decide(approvalId: string, expectedRevision: number, decision: ApprovalDecision): Promise<boolean>;
   get(approvalId: string): Promise<ApprovalRecord | undefined>;
   listPending(filter?: { tenantId?: string; taskId?: string }): Promise<ApprovalRecord[]>;
+}
+
+export interface ApprovalBroker extends ApprovalRequester {
+  /**
+   * CAS decision; returns false when another authority already decided, when
+   * the record expired, or when the decider is not entitled to it (I9).
+   */
+  decide(approvalId: string, expectedRevision: number, decision: ApprovalDecision): Promise<boolean>;
   /** Cancel every pending approval of a task (cancel propagation, 02 §9.3). */
   cancelForTask(taskId: string, reason: string): Promise<number>;
   /** Re-evaluate pending approvals after a policy revision change (recheck). */
@@ -191,7 +200,7 @@ export interface ApprovalBroker {
 
 export interface ApprovalStore {
   insert(record: ApprovalRecord): Promise<void>;
-  get(id: string): Promise<ApprovalRecord | undefined>;
+  get(id: string, tenantId?: string): Promise<ApprovalRecord | undefined>;
   list(filter?: { tenantId?: string; taskId?: string; state?: ApprovalRecord['state'] }): Promise<ApprovalRecord[]>;
   /** Compare-and-set on `revision`; false when the record moved on. */
   decide(id: string, expectedRevision: number, patch: Partial<ApprovalRecord>): Promise<boolean>;
@@ -243,11 +252,22 @@ export type IdempotencyBegin =
   | { kind: 'conflict'; record: IdempotencyRecord };
 
 export interface IdempotencyStore {
-  /** Atomic begin; decides new/replay/in_flight/conflict from key + hash. */
+  /**
+   * Atomic begin; decides new/replay/in_flight/conflict from key + hash.
+   *
+   * A previous attempt that failed is only retryable when the failure was
+   * retryable AND the capability is not non-idempotent AND the outcome was
+   * known. Otherwise `conflict` is returned: a retry of an unknown-outcome
+   * side effect would duplicate it (I10 / ADR-R6).
+   */
   begin(key: string, requestHash: string, ttlMs?: number): Promise<IdempotencyBegin>;
   get(key: string): Promise<IdempotencyRecord | undefined>;
   complete(key: string, result: unknown, resultRef?: string): Promise<void>;
-  fail(key: string, error: CanonicalErrorShape): Promise<void>;
+  fail(
+    key: string,
+    error: CanonicalErrorShape,
+    meta?: { retryable?: boolean; sideEffect?: SideEffect; outcome?: string },
+  ): Promise<void>;
 }
 
 // ── evidence ──────────────────────────────────────────────────────────────
@@ -269,7 +289,8 @@ export interface ReceiptStore {
 }
 
 export interface EvidenceSealer {
-  seal(taskId: string): Promise<import('../ir/types.js').EvidenceBundle>;
+  /** `tenantId` narrows the seal to one tenant when supplied (I8). */
+  seal(taskId: string, tenantId?: string): Promise<import('../ir/types.js').EvidenceBundle>;
   verify(bundle: import('../ir/types.js').EvidenceBundle): Promise<{ ok: boolean; checks: import('../ir/types.js').EvidenceCheck[] }>;
 }
 
@@ -302,7 +323,8 @@ export interface CapabilityRegistry {
     discovered: DiscoveredCapability[],
     defaults?: { risk?: Risk; sideEffect?: SideEffect; dataClass?: DataClass; visibility?: Visibility; reversible?: boolean },
   ): Promise<Capability[]>;
-  get(capabilityId: string): Promise<RegistryEntry | undefined>;
+  /** `tenantId` narrows the read when supplied (I8). */
+  get(capabilityId: string, tenantId?: string): Promise<RegistryEntry | undefined>;
   resolve(capabilityId: string, constraints: RouteConstraints): Promise<ResolvedCapability>;
   list(filter?: { kind?: Capability['kind']; protocol?: string; q?: string; tenantId?: string }): Promise<Capability[]>;
   markHealth(providerId: string, health: HealthStatus): Promise<void>;
@@ -414,12 +436,24 @@ export interface InvokeRequest {
   idempotencyKey?: string;
   deadlineAt?: string;
   approvalAuthority?: ApprovalRecord['authority'];
-  /** Skip budget reservation for purely local read-only helpers. */
+  /**
+   * Budget exemption. The caller may only ASK; the dispatcher grants it for
+   * free read-only capabilities and ignores it otherwise, so a caller cannot
+   * switch off the ledger (I6).
+   */
   skipBudget?: boolean;
+  /** Credential used to authenticate the call (defaults to the local principal). */
+  credential?: TransportCredential;
 }
 
 export interface DispatchContext {
   session?: Session;
+  /**
+   * The tenant of the calling host. When present the dispatcher REQUIRES
+   * `principal.tenantId` and `session.tenantId` to match it, so a caller cannot
+   * name someone else's tenant in the principal it supplies (I1).
+   */
+  tenantId?: string;
   cwd: string;
   workspaceRoots: string[];
   signal?: AbortSignal;
@@ -534,7 +568,11 @@ export interface AdapterContext {
    * gap-free sequence the replay contract depends on.
    */
   append(event: EventDraft): Promise<CanonicalEvent>;
-  approval: ApprovalBroker;
+  /**
+   * Request an approval. Deliberately NOT the full broker: 02 §12.2 forbids an
+   * adapter from deciding allow/deny, so the deciding half is not exposed here.
+   */
+  approval: ApprovalRequester;
   redactor: SecretRedactor;
   logger: Logger;
 }

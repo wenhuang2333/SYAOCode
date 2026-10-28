@@ -135,8 +135,58 @@
 > **两条必须记住的红线**：
 > - drift 基线目前是**实现自身的常量**，只能发现"改坏了"，**不能发现"基线钉错了"**（已发现 MCP 错误码、A2A 版本错误码两处钉错）。升级规范时必须对照 `document/Agent-RPC/04` 手工复核，并逐步换成从官方 SDK/规范快照生成的 fixture。
 > - 若将来引入任一官方 SDK，`zod` 解析值必须 **≥ 3.25.0**（v1 SDK 与 ACP SDK 运行时 `import 'zod/v4'`；MCP v2 直接要求 `zod ^4.2.0`）。本仓 `^3.24.0` 的声明区间本身不足，lockfile 的 `3.25.76` 是唯一保障——建议把声明提升为 `^3.25.76`。
+
+### 5.1 v0.4 审计后的修复状态
+
+审计报告：[`document/Agent-RPC/05-实现评估与结论.md`](../../document/Agent-RPC/05-实现评估与结论.md)。下表只记录**已在本仓代码中修复并有测试**的项。
+
+| 审计项 | 状态 | 证据 |
+| --- | --- | --- |
+| P0-1 身份与租户（I1） | 已修 | 入口调用 `IdentityService.authenticate`；强制 `principal.tenantId === ctx.tenantId === session.tenantId`；`fabric.call` 拒绝跨租户 principal。`test/p0-governance.test.ts` V3 三例 |
+| P0-2 预算真实化 + 原子预留（I6） | 已修 | 无 estimate 时预留保守上限（不再是 `$0`）；`reserve/settle/release` 按根账户串行化，消除 check-then-write TOCTOU；session 账户挂到 tenant 账户下；`recoverExpired` 先查回执再决定结算或释放。V1/V2 三例 |
+| P0-3 非幂等重试门（I10） | 已修 | 失败时记录 `{retryable, sideEffect, outcome}`；`indeterminate` 或 `non_idempotent` 失败返回 `conflict` 而非重跑。`idempotency.test.ts` 四例 |
+| P0-4 obligation 硬约束 | 已修 | `require_approval` 在 `allow` 决策下同样强制审批；无法满足的 obligation（sandbox/network_allowlist/delegation_limit）→ `unsupported_obligation` 且不派发。V5 三例 |
+| P0-5 审批绑定 | 已修 | 审批记录绑定 `capabilityId + inputHash`；`decide` 校验租户、authority、过期；适配器只拿到 `ApprovalRequester`（无 `decide`）。NEG 三例 |
+| P0-6 脱敏全出口（I7） | 已修 | 事件、回执、错误、输出、`lossy`、artifacts 统一过 redactor；`secret` 类能力在无 redactor 时**拒绝执行**。NEG 一例 |
+| P0-7 幂等键 | 已修 | 先分配 `invocationId`，用 `derivedKey(task.id, invocationId)`，删除常量 `'pending'`。V4 一例 |
+| P0-8 拒绝路径回执（I5） | 已修 | 策略拒绝、审批拒绝、预算不足、obligation 不支持、超时、deadline 已过 六条路径都写终态回执；`outcome:'denied'`/`'timed_out'` 可达。两例 |
+| I8 查询租户过滤 | 部分修复 | 任务/会话/预算/审批/注册表 `get`/事件流/evidence seal/审计列表均已按租户过滤；`AuditStore.list` 无 filter 时由 fabric 强制注入租户 |
+| 其他（`inputHash` 覆盖脱敏后输入、真实 timing、`deadlineAt` 强制、事件先脱敏后落盘） | 已修 | 见 `dispatcher.ts` |
+
+### 5.1.1 P1 协议合规（已修 + 已用官方 SDK 验证）
+
+| 审计项 | 状态 | 证据 |
+| --- | --- | --- |
+| P-H1 MCP 保留错误码钉错 | 已修 | 按 04 M18 重钉：`HeaderMismatch -32020`、`MissingRequiredClientCapability -32021`、`UnsupportedProtocolVersion -32022`；MRTR 的 `inputRequired`/`requestStateInvalid` 移出保留区到 `-32010/-32011` |
+| P-H2 A2A 错误码到不了 wire | 已修 | `CanonicalErrorShape.wireCode` + `defaultWireCode()`，`toShape()` 携带数字码；**独立探针**实测：TaskNotFound `-32001`、PushNotSupported `-32003`、VersionNotSupported `-32009`、MethodNotFound `-32601`、InvalidParams `-32602`，且**无一项退化为 `-32603`** |
+| P-H3 A2A 版本错误码 | 已修 | `-32009` 双向映射（`a2aError({code:-32009})` → `version_mismatch`），断言不等于 `-32022` |
+| P-H4 A2A 私有流式帧 | 已修 | 删除 `notifications/stream`；改为规范 SSE（`text/event-stream`，事件体为 Task/Message/TaskStatusUpdateEvent/TaskArtifactUpdateEvent），快照先行、终态事件收尾 |
+| P-H5 ACP 取消语义 | 已修 | `session/cancel` → `stopReason:'cancelled'`（取消优先于 handler 返回值）；pending `session/request_permission` 一律回 `{outcome:'cancelled'}` |
+| P-H6 MCP HTTP 强制头 | 已修 | `MCP-Protocol-Version` / `Mcp-Method` / `Mcp-Name`（+`Mcp-Param-*`）由 body 推导并校验，不匹配 → HTTP 400 + `-32020` |
+| P-H7 ACP 反向 fs 围栏 | 已修 | 围栏上移到 `AcpAdapter.invoke`：先校验 sessionId 归属，再 `realpath` 归一后比对 workspace roots（`/repo-evil` 这类词法绕过被拒） |
+| P-H8 MCP OAuth/PRM | 已明确标注不支持 | `mcp-oauth-prm-unsupported` 进 `lossy`；401/403 对端 → `unauthenticated` fail-closed，不半实现 |
+| 两个 server 零测试 | 已修 | 新增 3 个 wire 套件共 **57 项**：`mcp-server.wire`（22）、`a2a-server.wire`（20）、`acp-server.wire`（15） |
+| drift 基线自指 | **已修（关键）** | 新增 `fixtures/mcp-wire-snapshot.json`，由 `scripts/gen-wire-fixture.ts` **从官方 tarball `@modelcontextprotocol/server@2.4.0` 生成**（非本项目常量）；`test/drift-external.test.ts` 比对实现与外部快照，并强制"已声明的 gap 必须仍是真的"。**该外部基线立刻发现了两处实现缺口**：`subscriptions/listen` 与 `notifications/message`（已作为 `knownGaps` 显式登记） |
+| 与官方 SDK 真实互通 | **已达成（MCP）** | `scripts/interop-mcp-official.mjs` 用官方 `@modelcontextprotocol/client@2.4.0` 驱动 `syao serve --mcp --http`：**8/8 通过**（modern era 协商、`server/discover`、缓存提示、`tools/list`、`inputSchema`、`tools/call` 真实内容） |
+
+> **真实互通发现并修掉的 4 个 MUST 级缺陷**（自指测试全部漏过）：
+> 1. HTTP 响应体写成 stdio `Content-Length` 帧 → 任何真实 peer 解析失败（`SyntaxError: Unexpected token 'C'`）；
+> 2. `tools/list`/`resources/list`/`prompts/list` 缺 `resultType` 判别符（modern 规范要求）；
+> 3. 上述列表结果缺 `ttlMs`/`cacheScope` 缓存提示，工具缺 `inputSchema`；
+> 4. 内置 local 工具的 provider `ttlMs: 60_000` 使其 60 秒后变成 `down` 并被路由过滤（`no provider … satisfies the route constraints`）。
 >
-> **zod 版本红线**：若将来引入 MCP 或 ACP 官方 SDK，`zod` 解析值必须 ≥ 3.25.0（两者运行时 `import 'zod/v4'`）。本仓 `^3.24.0` 的声明区间本身不足，lockfile 的 `3.25.76` 是唯一保障。
+> 这 4 项均已补 wire 回归测试。
+
+> 仍未完成（**不要在对外材料中宣称**）：A2A/ACP 与各自官方 SDK 的真实互通测试（仅 MCP 完成）、A2A/ACP 的 `subscriptions`/`authenticate` 等中危项、主 agent 路径接入 ARF（进行中）。
+
+### 5.2 对外口径（截至本版本）
+
+| 现在可以说 | 现在不能说 |
+| --- | --- |
+| ARF 内核骨架与三边缘已落地，门禁全绿，治理开销 p95 < 1ms | "协议合规"、"与 MCP/A2A/ACP 生态互通" |
+| 十步流水线、审批 CAS、SHA-256 审计链、回执链已实现并通过单元/红队/P0 回归测试 | "生产级可治理底座" |
+| 单机/单租户场景下策略、审批、预算、回执可用（P0 已修） | "跨组织联邦治理" |
+| **实验性预览（experimental preview）** | "已通过外部互通验证" |
 
 ---
 

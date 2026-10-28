@@ -16,10 +16,13 @@
 import type { Logger, Runtime } from '@syaocode/core';
 import { type CanonicalErrorShape, type DiscoveredCapability, type InvokeResultPayload } from '@syaocode/rpc';
 import { AdapterBase, type DuplexChannel } from '../shared/index.js';
-import { NO_RESPONSE, JsonRpcConnection, type JsonRpcHandlerResult, type JsonRpcId } from '../shared/jsonrpc.js';
-import { a2aPushUnsupported, a2aTaskNotFound, a2aUnsupportedOperation, a2aVersionNotSupported } from './errors.js';
+import { NO_RESPONSE, JsonRpcConnection, type JsonRpcHandlerResult, type JsonRpcId, type SseSink } from '../shared/jsonrpc.js';
+import { a2aPushUnsupported, a2aTaskNotCancelable, a2aTaskNotFound, a2aUnsupportedOperation, a2aVersionNotSupported } from './errors.js';
 import { isA2aTerminal, type A2aMessage, type A2aTask, type A2aTaskStatusUpdateEvent } from './artifacts.js';
 import { agentCardCapabilities, type A2aAgentCard } from './card.js';
+
+/** Methods answered with the `text/event-stream` binding (01 §5.3). */
+export const A2A_STREAMING_METHODS: readonly string[] = ['SendStreamingMessage', 'SubscribeToTask'];
 
 export const A2A_SERVER_METHODS: readonly string[] = [
   'SendMessage',
@@ -142,8 +145,10 @@ export class A2aServer extends AdapterBase {
       channel: options.channel,
       framing: 'auto',
       ...(options.logger !== undefined ? { logger: options.logger } : {}),
+      streamingMethods: A2A_STREAMING_METHODS,
       handlers: {
         request: (method, params, ctx) => this.handleRequest(method, params, ctx.id),
+        stream: (method, params, _ctx, sink) => this.handleStream(method, params, caller(params), sink),
       },
     });
     this.connection.start();
@@ -167,6 +172,7 @@ export class A2aServer extends AdapterBase {
   // ── routing ─────────────────────────────────────────────────────────────
 
   private async handleRequest(method: string, params: unknown, id: JsonRpcId): Promise<JsonRpcHandlerResult> {
+    void id;
     const record = (params ?? {}) as Record<string, unknown>;
     if (method === 'GetExtendedAgentCard') return this.options.card as unknown as Record<string, unknown>;
 
@@ -180,15 +186,15 @@ export class A2aServer extends AdapterBase {
       case 'SendMessage':
         return (await this.sendMessage(record, caller)) as unknown as Record<string, unknown>;
       case 'SendStreamingMessage':
-        return this.handleStream(id, record, caller, true);
+      case 'SubscribeToTask':
+        // Streaming methods are answered by the `stream` handler (SSE binding).
+        throw a2aUnsupportedOperation(`${method} requires the text/event-stream binding`).toShape();
       case 'GetTask':
         return (await this.getTask(record, caller)) as unknown as Record<string, unknown>;
       case 'ListTasks':
         return (await this.listTasks(record, caller)) as unknown as Record<string, unknown>;
       case 'CancelTask':
         return (await this.cancelTask(record, caller)) as unknown as Record<string, unknown>;
-      case 'SubscribeToTask':
-        return this.handleStream(id, record, caller, false);
       case 'CreateTaskPushNotificationConfig':
       case 'GetTaskPushNotificationConfig':
       case 'ListTaskPushNotificationConfigs':
@@ -266,7 +272,11 @@ export class A2aServer extends AdapterBase {
     if (typeof id !== 'string') throw { code: -32602, message: 'CancelTask requires id' };
     const task = await this.store.get(caller.tenantId, id);
     if (task === undefined) throw a2aTaskNotFound(id, caller.tenantId).toShape();
-    if (isA2aTerminal(task.status.state)) return task; // idempotent
+    // CancelTask is idempotent on an already-cancelled task, but a task that
+    // already reached another terminal state cannot be cancelled: the spec's
+    // TaskNotCancelableError (-32002), not a silent success.
+    if (task.status.state === 'TASK_STATE_CANCELED') return task;
+    if (isA2aTerminal(task.status.state)) throw a2aTaskNotCancelable(id, task.status.state).toShape();
     const reason = typeof record['reason'] === 'string' ? record['reason'] : 'cancelled by caller';
     const cancelled: A2aTask = {
       ...task,
@@ -280,39 +290,68 @@ export class A2aServer extends AdapterBase {
     return cancelled;
   }
 
-  /** Streaming methods: snapshot first, then updates, then the final response. */
-  private async handleStream(id: JsonRpcId, record: Record<string, unknown>, caller: A2aCallerContext, isSend: boolean): Promise<JsonRpcHandlerResult> {
+  /**
+   * Streaming methods over the spec's `text/event-stream` binding.
+   *
+   * Every frame is a complete JSON-RPC response carrying a `Task` or a
+   * `TaskStatusUpdateEvent`. The first event MUST be the current task snapshot
+   * (01 §5.3); the stream ends with a `final: true` status event.
+   */
+  private async handleStream(
+    method: string,
+    params: unknown,
+    caller: A2aCallerContext | undefined,
+    sink: SseSink,
+  ): Promise<JsonRpcHandlerResult> {
+    if (caller === undefined) throw { code: -32602, message: 'a2a: missing caller context (metadata.tenantId)' };
+    this.assertVersion(caller.version);
+    const record = (params ?? {}) as Record<string, unknown>;
+
     let task: A2aTask | undefined;
-    if (isSend) {
+    if (method === 'SendStreamingMessage') {
       const result = await this.sendMessage(record, caller);
       if (!isTask(result)) {
-        await this.connection.respond(id, result);
+        // A bare Message is a legal first frame for SendStreamingMessage.
+        await sink.event(result);
         return NO_RESPONSE;
       }
       task = result;
     } else {
       task = await this.getTask(record, caller);
     }
+
     // The first event MUST be the current task snapshot (01 §5.3).
-    await this.connection.notifyStream(id, task);
+    await sink.event(task);
+    if (isA2aTerminal(task.status.state)) {
+      await sink.event(this.statusEvent(task, true));
+      return NO_RESPONSE;
+    }
+
     const interval = this.options.pollIntervalMs ?? 50;
     const maxPolls = this.options.maxPolls ?? 200;
-    for (let poll = 0; poll < maxPolls && !isA2aTerminal(task.status.state); poll += 1) {
+    for (let poll = 0; poll < maxPolls; poll += 1) {
       await this.runtime.clock.sleep(interval);
       const refreshed = await this.store.get(caller.tenantId, task.id);
       if (refreshed === undefined) break;
       task = refreshed;
-      const event: A2aTaskStatusUpdateEvent = {
-        taskId: task.id,
-        contextId: task.contextId,
-        status: task.status,
-        final: isA2aTerminal(task.status.state),
-        kind: 'status-update',
-      };
-      await this.connection.notifyStream(id, event);
+      const final = isA2aTerminal(task.status.state);
+      await sink.event(this.statusEvent(task, final));
+      if (final) return NO_RESPONSE;
     }
-    await this.connection.respond(id, task);
+    // Bounded poll exhausted: end the stream with a non-final status event so
+    // the peer knows the task is still running rather than "done".
+    await sink.event(this.statusEvent(task, true));
     return NO_RESPONSE;
+  }
+
+  private statusEvent(task: A2aTask, final: boolean): A2aTaskStatusUpdateEvent {
+    return {
+      taskId: task.id,
+      contextId: task.contextId,
+      status: task.status,
+      final,
+      kind: 'status-update',
+    };
   }
 
   // ── adapter-ish surface (the server is not a client adapter) ────────────
@@ -344,6 +383,15 @@ export class A2aServer extends AdapterBase {
     const error: CanonicalErrorShape = { kind: 'unsupported_capability', message: 'A2aServer does not invoke peers; use A2aClient', retryable: false };
     return { outcome: 'failed', error };
   }
+}
+
+function caller(params: unknown): A2aCallerContext | undefined {
+  const metadata = (params as { metadata?: unknown } | null)?.metadata;
+  if (metadata === null || typeof metadata !== 'object') return undefined;
+  const tenantId = (metadata as { tenantId?: unknown }).tenantId;
+  if (typeof tenantId !== 'string' || tenantId.length === 0) return undefined;
+  const version = (metadata as { 'A2A-Version'?: unknown })['A2A-Version'];
+  return { tenantId, version: typeof version === 'string' ? version : '0.3' };
 }
 
 function isTask(value: A2aTask | A2aMessage): value is A2aTask {

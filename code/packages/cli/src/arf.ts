@@ -21,15 +21,23 @@
 import {
   PermissionEngine,
   ToolRegistry,
+  sha256Hex,
   type PermissionMode,
   type PermissionRule,
+  type PermissionSubject,
+  type PolicyVerdict,
   type Runtime,
+  type ToolRisk,
 } from '@syaocode/core';
 import { nodeRuntime } from '@syaocode/node';
 import { createBuiltinTools, FileStateTracker } from '@syaocode/tools';
 import {
   CanonicalError,
+  RulePolicyEngine,
+  computeRevision,
   createFabric,
+  emptyBundle,
+  layerBundles,
   type ApprovalRecord,
   type BudgetEstimate,
   type Fabric,
@@ -37,11 +45,13 @@ import {
   type InvokeResult,
   type PolicyRule as ArfPolicyRule,
   type Principal,
+  type SecretRedactor,
   type Session,
 } from '@syaocode/rpc';
 import { createCliRedactor } from './effective-config.js';
 import { mountPeerEdge } from './edges.js';
 import { listPeers, type PeerConfig } from './peers.js';
+import type { ApprovalVerdict } from './arf-governor.js';
 
 /** Loopback hosts that never need a bearer token (ARF 02 §11 / BR-041). */
 export const LOOPBACK_HOSTS: readonly string[] = ['127.0.0.1', 'localhost', '::1', '0:0:0:0:0:0:0:1'];
@@ -55,6 +65,31 @@ export interface CliFabricOptions {
   permissionMode?: PermissionMode;
   /** Session-level permission rules (`/permissions allow|deny <tool>`). */
   rules?: PermissionRule[];
+  /**
+   * The permission engine the ARF policy preset must consult.
+   *
+   * The MAIN agent path passes the agent's own live engine (a getter, because
+   * the agent is rebuilt on `/model` and `/permission`), so the kernel and the
+   * agent gate on exactly the SAME rules and the same tier — a tier change is
+   * picked up without recreating the fabric. When omitted the fabric builds
+   * its own engine from `permissionMode` + `rules` (console / `serve` paths).
+   */
+  permissionEngine?: PermissionEngine | (() => PermissionEngine);
+  /**
+   * Mirror the tier into bundle rules (default). The main agent path sets
+   * `false`: the preset already consults the live engine, and a bundle copy
+   * would go stale the moment the user switches tier at runtime.
+   */
+  mirrorTierRules?: boolean;
+  /**
+   * Answer kernel `ask` decisions through the host's own authority.
+   *
+   * Returning `undefined` defers to `presentApproval` (used by the console
+   * paths, which have no interactive agent engine).
+   */
+  approvalBridge?: (record: ApprovalRecord) => Promise<ApprovalVerdict | undefined>;
+  /** Redactor for kernel input/output scrubbing; defaults to the CLI's. */
+  redactor?: SecretRedactor;
   /** Tenant that owns every task / receipt / audit event. */
   tenantId?: string;
   /** Budget ceilings (USD). */
@@ -101,6 +136,15 @@ export interface CliFabric {
   readonly fileState: FileStateTracker;
   /** Pending approvals seen by the `presentApproval` hook. */
   readonly pendingApprovals: ApprovalRecord[];
+  /**
+   * Re-stamp the policy bundle for a new tier (`/permission si|yao|strict`).
+   *
+   * The preset already reads the live engine, so local tool decisions follow
+   * a tier change with no rebuild; this keeps the *bundle* (the tier rules and
+   * the default effect used for non-local capabilities) in step, which is what
+   * the console's `/call mcp://…` and `/rpc policy` read.
+   */
+  setPermissionTier(mode: PermissionMode): void;
   /** Resolve a pending approval by id. Returns false when it was already taken. */
   decideApproval(id: string, optionId: string, by?: string, reason?: string): Promise<boolean>;
   /** Approval ids that were already decided (single-winner bookkeeping). */
@@ -223,6 +267,16 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
     workspaceRoots,
     runtime,
   });
+  // The MAIN agent path hands the fabric a getter for the agent's LIVE engine
+  // (the agent is rebuilt on `/model` and `/permission`), so the kernel always
+  // gates on exactly the rules and tier the agent is using right now — no
+  // second rule set, no stale snapshot.
+  const policyEngine: PermissionEngine =
+    opts.permissionEngine === undefined
+      ? engine
+      : typeof opts.permissionEngine === 'function'
+        ? new LivePermissionEngine(opts.permissionEngine, runtime)
+        : opts.permissionEngine;
 
   const principal: Principal = {
     id: 'user:local',
@@ -231,6 +285,29 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
     scopes: [],
     trustTier: 'first_party',
     displayName: 'local user',
+  };
+
+  /**
+   * Policy bundle for one tier.
+   *
+   * Built here (rather than letting `createFabric` layer `policy.rules`) so
+   * `setPermissionTier()` can re-stamp the SAME bundle shape on a runtime
+   * tier switch without recreating the fabric — recreating it would drop the
+   * receipts, approvals and audit chain collected so far.
+   */
+  const hasher = { sha256: sha256Hex };
+  const bundleFor = (mode: PermissionMode): import('@syaocode/rpc').PolicyBundle => {
+    const base = emptyBundle(hasher, tenantId, tierDefaultEffect(mode));
+    const tier = opts.mirrorTierRules === false ? [] : tierPolicyRules(mode, rules);
+    if (tier.length === 0) return base;
+    const session = { ...base, rules: tier };
+    return layerBundles({
+      hasher,
+      tenantId,
+      defaultEffect: base.defaultEffect,
+      org: base,
+      session: { ...session, revision: computeRevision(hasher, session) },
+    });
   };
 
   // ── built-in tools as `local://tools/<name>` capabilities ─────────────
@@ -253,9 +330,8 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
     tenantId,
     workspaceRoots,
     policy: {
-      defaultEffect: tierDefaultEffect(permissionMode),
-      rules: tierPolicyRules(permissionMode, rules),
-      permissionEngine: engine,
+      bundle: bundleFor(permissionMode),
+      permissionEngine: policyEngine,
       // `local://tools/<name>` maps onto the bare tool name for rule matching.
       localToolName: (capabilityId) => capabilityId.replace(/^local:\/\/tools\//, ''),
     },
@@ -263,11 +339,25 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
       opts.maxBudgetUsd !== undefined
         ? { tenantLimitUsd: opts.maxBudgetUsd, sessionLimitUsd: opts.maxBudgetUsd }
         : {},
-    redactor: createCliRedactor(),
+    redactor: opts.redactor ?? createCliRedactor(),
     ...(tools !== undefined ? { tools } : {}),
     presentApproval: async (record: ApprovalRecord) => {
       pendingApprovals.push(record);
       approvalHistory.push(record);
+      // The agent path answers the kernel's `ask` through the SAME permission
+      // engine the pipeline used to call, so the prompt, the remember scope
+      // and the hot-tier recheck behave exactly as before. The console paths
+      // have no live engine and fall through to their own presenter.
+      const verdict = await opts.approvalBridge?.(record);
+      if (verdict !== undefined) {
+        await fabric.approvals.decide(
+          record.id,
+          verdict.decision === 'allow' ? 'allow_once' : 'deny_once',
+          'user:local',
+          ...(verdict.reason !== undefined ? [verdict.reason] : []),
+        );
+        return;
+      }
       await opts.presentApproval?.(record);
     },
     ...(opts.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: opts.approvalTimeoutMs } : {}),
@@ -362,6 +452,12 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
     approvalHistory,
     failedPeers,
     ensureSession,
+    setPermissionTier(mode: PermissionMode): void {
+      // Only the concrete rule engine can swap a bundle; a host-supplied
+      // policy engine is left alone (it owns its own revision).
+      if (!(fabric.policy instanceof RulePolicyEngine)) return;
+      fabric.policy.setBundle(bundleFor(mode));
+    },
     async mountPeer(id: string, peer?: PeerConfig): Promise<MountReport> {
       const entry = peer ?? listPeers(opts.home)[id];
       if (entry === undefined) {
@@ -425,6 +521,34 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
   };
 }
 
+/**
+ * A `PermissionEngine` that always defers to the host's CURRENT engine.
+ *
+ * The fabric is a process singleton while the agent (and therefore its
+ * engine) is rebuilt on `/model`, `/resume` and `/permission`. The ARF policy
+ * preset must consult the LIVE engine — otherwise a runtime tier change could
+ * be evaluated against a stale mode, which would either re-prompt in `si`
+ * (annoying) or silently skip a `strict` confirmation (unsafe). The preset
+ * only ever reads `mode` and `policyVerdict`, so those two are all that is
+ * delegated; every other member keeps the base behaviour and is unused here.
+ */
+class LivePermissionEngine extends PermissionEngine {
+  private readonly liveEngine: () => PermissionEngine;
+
+  constructor(liveEngine: () => PermissionEngine, runtime: Runtime) {
+    super({ mode: 'default', rules: [], workspaceRoots: [], runtime });
+    this.liveEngine = liveEngine;
+  }
+
+  override get mode(): PermissionMode {
+    return this.liveEngine().mode;
+  }
+
+  override policyVerdict(toolName: string, risk: ToolRisk, subject: PermissionSubject): Promise<PolicyVerdict> {
+    return this.liveEngine().policyVerdict(toolName, risk, subject);
+  }
+}
+
 // ── process singleton ─────────────────────────────────────────────────────
 
 let singleton: CliFabric | undefined;
@@ -445,6 +569,23 @@ export async function disposeCliFabric(): Promise<void> {
 /** True when the singleton exists (the TUI checks before wiring panels). */
 export function hasCliFabric(): boolean {
   return singleton !== undefined;
+}
+
+/** The live singleton, when one was created (used by the main-path installer). */
+export function peekCliFabric(): CliFabric | undefined {
+  return singleton;
+}
+
+/**
+ * Install an externally-built fabric as the process singleton.
+ *
+ * The MAIN agent path builds the fabric itself (it must hand the agent the
+ * same wrapped tools it registers), and installs it here so `/rpc`, `/peer`,
+ * `/call` and `/approve` all read and extend the ONE evidence chain that the
+ * agent's tool calls produce — instead of a second, empty fabric.
+ */
+export function installCliFabric(cli: CliFabric): void {
+  singleton = cli;
 }
 
 /**

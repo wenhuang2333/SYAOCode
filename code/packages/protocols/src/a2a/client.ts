@@ -17,8 +17,8 @@ import {
   wireError,
   type DuplexChannel,
 } from '../shared/index.js';
-import { JsonRpcConnection, JsonRpcTimeoutError, type JsonRpcId } from '../shared/jsonrpc.js';
-import { A2A_LOSSY, A2A_VISIBILITY, inputToMessage, isA2aTerminal, a2aStateToTaskState, type A2aArtifact, type A2aMessage, type A2aStreamEvent, type A2aTask } from './artifacts.js';
+import { JsonRpcConnection, JsonRpcRemoteError, JsonRpcTimeoutError, isFinalStreamResult, isJsonRpcResponse, type JsonRpcId } from '../shared/jsonrpc.js';
+import { A2A_LOSSY, A2A_VISIBILITY, inputToMessage, isA2aTerminal, a2aStateToTaskState, type A2aArtifact, type A2aMessage, type A2aStreamEvent, type A2aTask, type A2aTaskStatusUpdateEvent } from './artifacts.js';
 import { a2aUnsupportedOperation, a2aVersionNotSupported } from './errors.js';
 import { agentCardCapabilities, parseAgentCard, type A2aAgentCard } from './card.js';
 
@@ -69,7 +69,6 @@ export interface A2aListResult {
 export class A2aClient {
   readonly connection: JsonRpcConnection;
   private readonly options: A2aClientOptions;
-  private readonly streams = new Map<JsonRpcId, (event: A2aStreamEvent) => void>();
   private card: A2aAgentCard | undefined;
 
   constructor(options: A2aClientOptions) {
@@ -79,14 +78,6 @@ export class A2aClient {
       framing: 'auto',
       ...(options.requestTimeoutMs !== undefined ? { requestTimeoutMs: options.requestTimeoutMs } : {}),
       ...(options.logger !== undefined ? { logger: options.logger } : {}),
-      handlers: {
-        streamEvent: (id, event) => {
-          const sink = this.streams.get(id);
-          if (sink === undefined) return false;
-          sink(event as A2aStreamEvent);
-          return true;
-        },
-      },
     });
     this.connection.start();
   }
@@ -187,60 +178,27 @@ export class A2aClient {
     return out;
   }
 
-  /** One streaming request: frames arrive as `{id, event}` notifications. */
+  /**
+   * One streaming request over the spec's `text/event-stream` binding.
+   *
+   * `SendStreamingMessage` / `SubscribeToTask` answer with a stream of events;
+   * each SSE frame carries a complete JSON-RPC response with the request id and
+   * a `Task` / `Message` / `TaskStatusUpdateEvent` / `TaskArtifactUpdateEvent`
+   * as its `result`. The stream ends at a `final` status event or when the peer
+   * closes the connection.
+   */
   private async *stream(method: string, params: Record<string, unknown>, opts?: A2aCallOptions): AsyncIterable<A2aStreamEvent> {
-    const queue: A2aStreamEvent[] = [];
-    let notify: (() => void) | undefined;
-    let finished = false;
-    let failure: unknown;
-
-    const push = (event: A2aStreamEvent): void => {
-      queue.push(event);
-      const wake = notify;
-      notify = undefined;
-      wake?.();
-    };
-
-    const settle = this.connection
-      .request(method, params, {
-        ...this.requestOptions(opts),
-        timeoutMs: 0,
-        onId: (id) => {
-          this.streams.set(id, push);
-        },
-      })
-      .then((value) => {
-        const result = normalizeSendResult(value as A2aTask | A2aMessage);
-        if (result.task !== undefined) push(result.task);
-        else if (result.message !== undefined) push(result.message);
-      })
-      .catch((error: unknown) => {
-        failure = error;
-      })
-      .finally(() => {
-        finished = true;
-        const wake = notify;
-        notify = undefined;
-        wake?.();
-      });
-
-    try {
-      for (;;) {
-        while (queue.length > 0) {
-          const event = queue.shift();
-          if (event !== undefined) yield event;
-        }
-        if (finished) break;
-        await new Promise<void>((resolve) => {
-          notify = resolve;
-        });
-      }
-      await settle;
-      if (failure !== undefined) throw failure;
-    } finally {
-      for (const [id, sink] of this.streams) {
-        if (sink === push) this.streams.delete(id);
-      }
+    for await (const frame of this.connection.requestStream(method, params, this.requestOptions(opts))) {
+      if (!isJsonRpcResponse(frame)) continue;
+      if ('error' in frame) throw new JsonRpcRemoteError(frame.error);
+      const event = frame.result as A2aStreamEvent | undefined;
+      if (event === undefined) continue;
+      yield event;
+      if (isFinalStreamResult(event)) return;
+      const state = (event as A2aTaskStatusUpdateEvent).status?.state;
+      if (state !== undefined && isA2aTerminal(state)) return;
+      const task = event as A2aTask;
+      if (typeof task.id === 'string' && task.status !== undefined && isA2aTerminal(task.status.state)) return;
     }
   }
 }

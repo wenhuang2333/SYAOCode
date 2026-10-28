@@ -26,6 +26,7 @@ export function a2aTaskNotFound(taskId: string, tenantId?: string): CanonicalErr
     message: `A2A task not found: ${taskId}`,
     protocol: 'a2a',
     retryable: false,
+    wireCode: A2A_TASK_NOT_FOUND,
     protocolError: { code: A2A_TASK_NOT_FOUND, message: 'TaskNotFoundError' },
     ...(tenantId !== undefined ? { details: { tenantId } } : {}),
   });
@@ -37,6 +38,7 @@ export function a2aTaskNotCancelable(taskId: string, state: string): CanonicalEr
     message: `A2A task ${taskId} is not cancelable in state ${state}`,
     protocol: 'a2a',
     retryable: false,
+    wireCode: A2A_TASK_NOT_CANCELABLE,
     protocolError: { code: A2A_TASK_NOT_CANCELABLE, message: 'TaskNotCancelableError' },
   });
 }
@@ -47,6 +49,7 @@ export function a2aPushUnsupported(): CanonicalError {
     message: 'A2A push notifications are not implemented by this agent',
     protocol: 'a2a',
     retryable: false,
+    wireCode: A2A_PUSH_NOT_SUPPORTED,
     protocolError: { code: A2A_PUSH_NOT_SUPPORTED, message: 'PushNotificationNotSupportedError' },
   });
 }
@@ -57,6 +60,7 @@ export function a2aUnsupportedOperation(message: string): CanonicalError {
     message,
     protocol: 'a2a',
     retryable: false,
+    wireCode: A2A_UNSUPPORTED_OPERATION,
     protocolError: { code: A2A_UNSUPPORTED_OPERATION, message: 'UnsupportedOperationError' },
   });
 }
@@ -67,6 +71,7 @@ export function a2aVersionNotSupported(requested: string, supported: string): Ca
     message: `A2A version ${requested} is not supported (supported: ${supported})`,
     protocol: 'a2a',
     retryable: false,
+    wireCode: A2A_VERSION_NOT_SUPPORTED,
     protocolError: { code: A2A_VERSION_NOT_SUPPORTED, message: 'VersionNotSupportedError' },
   });
 }
@@ -75,34 +80,30 @@ export function a2aErrorShape(error: CanonicalError): CanonicalErrorShape {
   return error.toShape();
 }
 
-/** Map a canonical failure onto an A2A JSON-RPC error object. */
-export function canonicalToA2aError(shape: CanonicalErrorShape): { code: number; message: string; data?: unknown } {
-  const out: { code: number; message: string; data?: unknown } = {
-    code: a2aCodeFor(shape.kind),
+/**
+ * Map a canonical failure onto an A2A JSON-RPC error object.
+ *
+ * The numeric code comes from the error itself: `CanonicalError` derives it via
+ * `defaultWireCode('a2a', kind)` (rpc) and `toShape()` carries it as
+ * `wireCode`, which `shared/jsonrpc.ts` emits verbatim. An explicit
+ * `wireCode` always wins, so a call site can pin a more specific code.
+ *
+ * This helper exists for hosts that build the JSON-RPC envelope by hand; the
+ * server simply throws the `CanonicalError`/shape and lets the connection
+ * convert it.
+ */
+export function canonicalToA2aError(shape: CanonicalErrorShape): { code: number; message: string; data: unknown } {
+  return {
+    code: a2aWireCode(shape),
     message: shape.message,
-    data: { kind: shape.kind, ...(shape.details ?? {}) },
+    data: { kind: shape.kind, retryable: shape.retryable, ...(shape.details ?? {}) },
   };
-  return out;
 }
 
-export function a2aCodeFor(kind: CanonicalErrorShape['kind']): number {
-  switch (kind) {
-    case 'capability_not_found':
-      return A2A_TASK_NOT_FOUND;
-    case 'unsupported_capability':
-    case 'unsupported_obligation':
-      return A2A_UNSUPPORTED_OPERATION;
-    case 'version_mismatch':
-      return A2A_VERSION_NOT_SUPPORTED;
-    case 'unauthorized':
-    case 'unauthenticated':
-    case 'denied':
-    case 'cancelled':
-      return A2A_TASK_NOT_CANCELABLE;
-    case 'invalid_request':
-    case 'idempotency_conflict':
-      return -32602;
-    default:
-      return -32603;
-  }
+/** The numeric code an A2A error shape will carry on the wire. */
+export function a2aWireCode(shape: CanonicalErrorShape): number {
+  return shape.wireCode ?? A2A_FALLBACK_CODE;
 }
+
+/** JSON-RPC internal error: only reached for an unstamped, non-protocol error. */
+export const A2A_FALLBACK_CODE = -32603;
