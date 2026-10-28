@@ -444,6 +444,8 @@ export interface InvokeRequest {
   skipBudget?: boolean;
   /** Credential used to authenticate the call (defaults to the local principal). */
   credential?: TransportCredential;
+  /** Cancellation signal propagated to the executor (and to the adapter). */
+  signal?: AbortSignal;
 }
 
 export interface DispatchContext {

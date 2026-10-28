@@ -47,6 +47,18 @@ export interface ServeIo {
 }
 
 /** Default ports, one per edge so two edges can run side by side. */
+/**
+ * Why the A2A edge refuses to run agent turns in this build (05 §10.1 C-2).
+ *
+ * The previous implementation answered `TASK_STATE_COMPLETED` without going
+ * through the dispatcher: it did no work and still reported success. Returning
+ * a fabricated completion poisons every caller that trusts the state, so the
+ * edge is explicit about being unable to execute. Kept as a named constant so
+ * a test can assert the refusal instead of the fake completion.
+ */
+export const A2A_EXECUTION_UNSUPPORTED_MESSAGE =
+  'SYAOCode A2A edge accepts discovery and task bookkeeping but does not execute agent turns in this build; the task was recorded and cancelled rather than reported as completed.';
+
 export const DEFAULT_PORTS: Readonly<Record<ServeProtocol, number>> = {
   mcp: 8787,
   a2a: 8788,
@@ -271,14 +283,24 @@ export async function mountServerEdge(
         agentId: serverId,
         card,
         onMessage: async (input: { message?: { parts?: unknown[] } }) => {
+          // The A2A edge has no task runner wired in this build. The previous
+          // implementation created an ARF task and immediately answered
+          // TASK_STATE_COMPLETED without going through the dispatcher — it did
+          // no work and still told the caller the work was done. Auditing
+          // (05 §10.1 C-2) flagged that as fabricated success, which is exactly
+          // what this design must never do, so the edge now refuses honestly.
+          //
+          // The ARF task IS created and recorded (so the request is visible and
+          // auditable), then the call fails with an explicit unsupported
+          // operation instead of a fake completion.
           const active = await ctx.ensureSession();
           const task = await ctx.fabric.tasks.create({ sessionId: active.id });
-          return {
-            id: task.id,
-            contextId: task.sessionId,
-            status: { state: 'TASK_STATE_COMPLETED' },
-            artifacts: [],
-            metadata: { input: input.message?.parts ?? [] },
+          await ctx.fabric.tasks.cancel(task.id, 'a2a task execution is not implemented in this build');
+          void input;
+          throw {
+            code: -32004, // A2A UnsupportedOperationError
+            message: A2A_EXECUTION_UNSUPPORTED_MESSAGE,
+            data: { kind: 'unsupported_capability', taskId: task.id, registryCode: 'SY-SRV-004' },
           };
         },
       });

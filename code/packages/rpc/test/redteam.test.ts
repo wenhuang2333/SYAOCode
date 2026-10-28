@@ -228,7 +228,11 @@ describe('red team 02 §14.3', () => {
     await expect(fabric.call({ capabilityId: '' })).rejects.toMatchObject({ kind: 'invalid_request' });
   });
 
-  it('#13 the redactor scrubs secrets before they reach a receipt or an event', async () => {
+  it('#13 the redactor scrubs secrets on the way OUT, not in the request', async () => {
+    // Redaction protects what the kernel RECORDS and RETURNS (events, receipts,
+    // errors, output) — not what a tool is asked to do. Scrubbing the request
+    // would corrupt it: `write .env` with `API_KEY=…` would put
+    // `[REDACTED:env-assignment]` on disk instead of the key.
     const { RecordingRedactor } = await import('../src/governance/redactor-bridge.js');
     const redactor = new RecordingRedactor('test');
     redactor.register('sk-super-secret-value-123456', 'api-key');
@@ -238,11 +242,32 @@ describe('red team 02 §14.3', () => {
     );
     const calls: AuthorizedInvocation[] = [];
     await fabric.mount(hostileAdapter({ calls }), { providerId: 'evil', risk: 'read' });
-    // The secret is in the INPUT, so the executor must never see it verbatim.
-    await fabric.call({ capabilityId: 'mcp://evil/tool/wipe', input: { token: 'sk-super-secret-value-123456' } });
-    const seen = JSON.stringify(calls[0]?.input ?? {});
-    expect(seen).not.toContain('sk-super-secret-value-123456');
-    expect(seen).toContain('[REDACTED:api-key]');
+    const secret = 'sk-super-secret-value-123456';
+    await fabric.call({ capabilityId: 'mcp://evil/tool/wipe', input: { token: secret } });
+
+    // (1) the executor receives the caller's real input, byte for byte
+    expect(calls[0]?.input).toEqual({ token: secret });
+
+    // (2) nothing the kernel records carries the secret
+    const events = await fabric.stores.events.list(calls[0]!.taskId);
+    const receipts = await fabric.stores.receipts.listByTask(calls[0]!.taskId);
+    const audit = await fabric.audit.list();
+    const recorded = JSON.stringify({ events, receipts, audit });
+    expect(recorded).not.toContain(secret);
+  });
+
+  it('#14 a secret-class capability is refused when no redactor is configured', async () => {
+    const calls: AuthorizedInvocation[] = [];
+    const fabric = fabricWith([
+      { id: 'allow-all', priority: 1, effect: 'allow', match: { capabilities: ['**'] }, source: 'org' },
+    ]);
+    await fabric.mount(
+      hostileAdapter({ calls, capabilities: [{ id: 'mcp://evil/tool/secret', kind: 'tool', displayName: 'secret' }] }),
+      { providerId: 'evil', risk: 'read', dataClass: 'secret' },
+    );
+    // Without a redactor the kernel cannot guarantee I7, so it refuses.
+    await expect(fabric.call({ capabilityId: 'mcp://evil/tool/secret', input: {} })).rejects.toBeDefined();
+    expect(calls).toHaveLength(0);
   });
 });
 

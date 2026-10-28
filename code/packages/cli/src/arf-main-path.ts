@@ -22,10 +22,10 @@
  * `/call` and `/approve` read the SAME evidence chain the agent produced.
  */
 
-import { PermissionEngine, ToolRegistry, type PermissionMode, type PermissionRule, type Runtime, type Tool } from '@syaocode/core';
+import { PermissionEngine, ToolRegistry, type PermissionMode, type PermissionRule, type PermissionSubject, type Runtime, type Tool } from '@syaocode/core';
 import type { SecretRedactor } from '@syaocode/rpc';
 import type { FileStateTracker } from '@syaocode/tools';
-import { createCliFabric, installCliFabric, type CliFabric } from './arf.js';
+import { createCliFabric, installCliFabric, releaseCliFabric, type CliFabric } from './arf.js';
 import {
   ArfToolGovernor,
   createPermissionEngineApprovalBridge,
@@ -78,7 +78,11 @@ export interface MainPathGovernance {
 export function installMainPathGovernance(opts: MainPathGovernanceOptions): MainPathGovernance {
   const wrapped = governedTools(opts.tools);
   const registry = new ToolRegistry();
-  for (const tool of wrapped) registry.register(tool);
+  const toolByName = new Map<string, Tool>();
+  for (const tool of wrapped) {
+    registry.register(tool);
+    toolByName.set(tool.name, tool);
+  }
 
   let engineRef: PermissionEngine | undefined;
   const engine = (): PermissionEngine => {
@@ -104,8 +108,23 @@ export function installMainPathGovernance(opts: MainPathGovernanceOptions): Main
       ...(opts.redactor !== undefined ? { redactor: opts.redactor } : {}),
       ...(opts.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
       // The kernel's `ask` is answered by the agent's own permission handler
-      // (same prompt, same remember scope, same hot-tier recheck).
-      approvalBridge: createPermissionEngineApprovalBridge(engine),
+      // (same prompt, same remember scope, same hot-tier recheck). A `/call`
+      // from the console carries no tool handle, so it is answered from the
+      // approval record itself — still the same engine, still one authority.
+      approvalBridge: createPermissionEngineApprovalBridge(engine, (record) => {
+        const toolName = (record.capabilityId ?? '').replace(/^local:\/\/tools\//, '');
+        const tool = toolByName.get(toolName);
+        if (tool === undefined) return Promise.resolve(undefined);
+        const subject: PermissionSubject = {
+          ...(record.subject.resource !== undefined ? { path: record.subject.resource.uri } : {}),
+          ...(record.subject.command !== undefined ? { command: record.subject.command.argv.join(' ') } : {}),
+        };
+        return engine().checkSubject(tool.name, tool.risk, subject).then((outcome) =>
+          outcome.outcome === 'allow'
+            ? { decision: 'allow' as const }
+            : { decision: 'deny' as const, reason: outcome.error.modelMessage ?? outcome.error.message },
+        );
+      }),
       // `dispatch` is the first step that happens only after the policy allowed
       // the call and every approval was granted: it is where core used to emit
       // `tool.start`.
@@ -128,7 +147,10 @@ export function installMainPathGovernance(opts: MainPathGovernanceOptions): Main
     },
     cli: ensureCli,
     async dispose(): Promise<void> {
-      if (cliRef !== undefined) await cliRef.dispose();
+      const current = cliRef;
+      if (current === undefined) return;
+      releaseCliFabric(current);
+      await current.dispose();
     },
   };
 }

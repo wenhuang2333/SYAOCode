@@ -1713,6 +1713,8 @@ export async function runTui(opts: TuiOptions): Promise<number> {
     const rule: PermissionRule = { effect, tool, source: 'user' };
     sessionRules.push(rule);
     agent.engine.addRules([rule]);
+    // 会话规则立即进入内核策略包（控制台 /rpc policy 与内核判定同源）
+    governance.cli().setPermissionTier(agent.engine.mode);
     printAbove(`${ANSI.green(`已添加 ${effect} 规则: ${tool}（仅本次会话）。`)}\n`);
   }
 
