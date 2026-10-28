@@ -184,13 +184,21 @@ export class BudgetLedgerImpl implements BudgetLedger {
       const reserved = Math.min(account.reservedUsd, reservation.estimate.usd);
       const spent = actual.usd;
       const overLimit = account.limitUsd !== undefined && account.spentUsd + spent > account.limitUsd;
+      // An omitted counter means "the executor did not report it", not "it went
+      // back to zero": keep the reservation's estimate so toolCallLimit keeps
+      // counting a real call.
+      const tokensAfter = usage.inputTokens !== undefined || usage.outputTokens !== undefined
+        ? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)
+        : (reservation.estimate.tokens ?? 0);
+      const timeAfter = usage.timeMs ?? reservation.estimate.timeMs ?? 0;
+      const callsAfter = usage.toolCalls ?? reservation.estimate.toolCalls ?? 0;
       await this.store.put({
         ...account,
         reservedUsd: Math.max(0, account.reservedUsd - reserved),
         spentUsd: account.spentUsd + spent,
-        tokensUsed: Math.max(0, account.tokensUsed - (reservation.estimate.tokens ?? 0) + (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)),
-        timeUsedMs: Math.max(0, account.timeUsedMs - (reservation.estimate.timeMs ?? 0) + (usage.timeMs ?? 0)),
-        toolCallsUsed: Math.max(0, account.toolCallsUsed - (reservation.estimate.toolCalls ?? 0) + (usage.toolCalls ?? 0)),
+        tokensUsed: Math.max(0, account.tokensUsed - (reservation.estimate.tokens ?? 0) + tokensAfter),
+        timeUsedMs: Math.max(0, account.timeUsedMs - (reservation.estimate.timeMs ?? 0) + timeAfter),
+        toolCallsUsed: Math.max(0, account.toolCallsUsed - (reservation.estimate.toolCalls ?? 0) + callsAfter),
         // Actual spending beyond the limit freezes the account (02 §7.2).
         state: overLimit ? 'frozen' : account.state,
       });

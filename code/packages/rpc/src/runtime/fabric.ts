@@ -180,6 +180,8 @@ export interface Fabric {
     estimate?: import('../ir/types.js').BudgetEstimate;
     cwd?: string;
     workspaceRoots?: string[];
+    /** Cancellation signal, propagated to the executor/adapter. */
+    signal?: AbortSignal;
   }): Promise<InvokeResult>;
 
   readonly tasks: {
@@ -534,11 +536,13 @@ export function createFabric(opts: FabricOptions): Fabric {
         ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
         ...(input.idempotencyKey !== undefined ? { idempotencyKey: input.idempotencyKey } : {}),
         ...(input.deadlineAt !== undefined ? { deadlineAt: input.deadlineAt } : {}),
+        ...(input.signal !== undefined ? { signal: input.signal } : {}),
       };
       const ctx: DispatchContext = {
         ...(session !== undefined ? { session } : {}),
         // The authoritative tenant for every downstream check.
         tenantId,
+        ...(input.signal !== undefined ? { signal: input.signal } : {}),
         cwd: input.cwd ?? opts.workspaceRoots?.[0] ?? runtime.env.get('PWD') ?? '',
         workspaceRoots: input.workspaceRoots ?? session?.workspaceRoots ?? opts.workspaceRoots ?? [],
       };

@@ -56,7 +56,7 @@ import { readWorkspaceUsage, recordUsage, usageFilePath } from './usage-store.js
 import { getLanguage, isLang, languageName, t, type Lang } from './i18n/index.js';
 import { userErrorMessage, userErrorText, userEventErrorText } from './error-text.js';
 import { cliModelSpec, createCliRedactor, loadCliConfig } from './effective-config.js';
-import { disposeCliFabric, hasCliFabric, type CliFabric } from './arf.js';
+import type { CliFabric } from './arf.js';
 import { installMainPathGovernance } from './arf-main-path.js';
 import {
   handleApproveSlash,
@@ -668,6 +668,8 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
       const rule: PermissionRule = { effect: args[0], tool: args[1], source: 'user' };
       sessionRules.push(rule);
       agent.engine.addRules([rule]);
+      // 会话规则立即进入内核策略包（控制台 /rpc policy 与内核判定同源）
+      governance.cli().setPermissionTier(agent.engine.mode);
       output.write(ANSI.green(`${t('config.ruleAdded', { effect: args[0] ?? '', tool: args[1] ?? '' })}\n`));
       return;
     }
@@ -676,6 +678,8 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
     if (tier !== null) {
       agent.engine.setMode(tier.mode);
       permissionMode = tier.mode;
+      // 就地重签策略包，控制台与内核立即按新档位解释策略
+      governance.cli().setPermissionTier(tier.mode);
       output.write(
         ANSI.green(t('tier.switched', { key: tier.key, label: permissionModeShort(tier.mode) })) +
           ` ${ANSI.dim(t('tier.sessionOnly'))}\n`,
@@ -812,7 +816,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
   } finally {
     output.write(ANSI.dim(`\n${t('goodbye')}\n`));
     rl.close();
-    if (hasCliFabric()) await disposeCliFabric();
+    // ONE fabric for the process: tearing it down also clears the singleton.
     await governance.dispose();
   }
   return 0;

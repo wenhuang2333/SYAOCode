@@ -261,6 +261,22 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
   const approvalHistory: ApprovalRecord[] = [];
   let session: Session | undefined;
 
+  /**
+   * Mirror a decision made through the kernel back into the console's
+   * bookkeeping, so `/rpc approvals` stops listing a request that was already
+   * answered and `/call` can render the real option/state.
+   */
+  const noteApprovalDecision = async (id: string): Promise<void> => {
+    decidedApprovals.add(id);
+    const idx = pendingApprovals.findIndex((r) => r.id === id);
+    if (idx >= 0) pendingApprovals.splice(idx, 1);
+    const after = await fabric.approvals.get(id);
+    if (after !== undefined) {
+      const h = approvalHistory.findIndex((r) => r.id === id);
+      if (h >= 0) approvalHistory[h] = after;
+    }
+  };
+
   const engine = new PermissionEngine({
     mode: permissionMode,
     rules,
@@ -350,12 +366,13 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
       // have no live engine and fall through to their own presenter.
       const verdict = await opts.approvalBridge?.(record);
       if (verdict !== undefined) {
-        await fabric.approvals.decide(
+        const decided = await fabric.approvals.decide(
           record.id,
           verdict.decision === 'allow' ? 'allow_once' : 'deny_once',
           'user:local',
           ...(verdict.reason !== undefined ? [verdict.reason] : []),
         );
+        if (decided) await noteApprovalDecision(record.id);
         return;
       }
       await opts.presentApproval?.(record);
@@ -455,8 +472,11 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
     setPermissionTier(mode: PermissionMode): void {
       // Only the concrete rule engine can swap a bundle; a host-supplied
       // policy engine is left alone (it owns its own revision).
-      if (!(fabric.policy instanceof RulePolicyEngine)) return;
-      fabric.policy.setBundle(bundleFor(mode));
+      if (fabric.policy instanceof RulePolicyEngine) fabric.policy.setBundle(bundleFor(mode));
+      // The decision cache is keyed by capability + input, NOT by the tier, so
+      // a hot `/permission` switch (or a new session rule) must drop it or the
+      // kernel could keep serving a decision made under the old mode.
+      fabric.policy.invalidate();
     },
     async mountPeer(id: string, peer?: PeerConfig): Promise<MountReport> {
       const entry = peer ?? listPeers(opts.home)[id];
@@ -500,16 +520,7 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
         by,
         ...(reason !== undefined ? [reason] : []),
       );
-      if (ok) {
-        decidedApprovals.add(id);
-        const idx = pendingApprovals.findIndex((r) => r.id === id);
-        if (idx >= 0) pendingApprovals.splice(idx, 1);
-        const after = await fabric.approvals.get(id);
-        if (after !== undefined) {
-          const h = approvalHistory.findIndex((r) => r.id === id);
-          if (h >= 0) approvalHistory[h] = after;
-        }
-      }
+      if (ok) await noteApprovalDecision(id);
       return ok;
     },
     async dispose(): Promise<void> {
@@ -571,11 +582,6 @@ export function hasCliFabric(): boolean {
   return singleton !== undefined;
 }
 
-/** The live singleton, when one was created (used by the main-path installer). */
-export function peekCliFabric(): CliFabric | undefined {
-  return singleton;
-}
-
 /**
  * Install an externally-built fabric as the process singleton.
  *
@@ -586,6 +592,16 @@ export function peekCliFabric(): CliFabric | undefined {
  */
 export function installCliFabric(cli: CliFabric): void {
   singleton = cli;
+}
+
+/**
+ * Drop a fabric installed by {@link installCliFabric}.
+ *
+ * Only clears the singleton when it is still the same instance, so tearing
+ * down a one-shot run never uninstalls a fabric another host is using.
+ */
+export function releaseCliFabric(cli: CliFabric): void {
+  if (singleton === cli) singleton = undefined;
 }
 
 /**

@@ -85,13 +85,23 @@ const governedScope = new AsyncLocalStorage<GovernedScope>();
 
 /**
  * Wrap tools so a kernel-dispatched execution inherits the CALLER's abort
- * signal and progress sink.
+ * signal, progress sink and ORIGINAL input.
  *
- * The kernel executor supplies its own (never-aborting) default signal and a
- * no-op progress sink — acceptable for a fire-and-forget edge, wrong for an
- * interactive run where Ctrl-C must abort a running command. Registration in
- * the fabric and in the agent registry uses the SAME wrapped instances, so
- * the `FileStateTracker` shared by read/write/edit is untouched.
+ * Two kernel-side defaults are wrong for an interactive local run:
+ *
+ *  - the executor supplies a never-aborting signal and a no-op progress sink
+ *    — acceptable for a fire-and-forget edge, wrong when Ctrl-C must abort a
+ *    running command;
+ *  - the dispatcher scrubs the invocation INPUT with the kernel's redactor
+ *    before dispatching. That scrubbing exists for data crossing a trust
+ *    boundary (a remote peer); a local tool's input comes from the model in
+ *    this very process, and rewriting it would change what the tool does —
+ *    e.g. `write .env` with `API_KEY=…` would land `[REDACTED:…]` on disk.
+ *
+ * The caller's values are parked in the async scope by the governor, so the
+ * wrapper restores them. Registration in the fabric and in the agent registry
+ * uses the SAME wrapped instances, so the `FileStateTracker` shared by
+ * read/write/edit is untouched.
  */
 export function governedTools(tools: Tool[]): Tool[] {
   return tools.map(
@@ -100,7 +110,7 @@ export function governedTools(tools: Tool[]): Tool[] {
       execute: (input: unknown, ctx: ToolContext) => {
         const active = governedScope.getStore();
         if (active === undefined) return tool.execute(input, ctx);
-        return tool.execute(input, {
+        return tool.execute(active.input, {
           ...ctx,
           signal: active.signal,
           progress: (note: string) => active.progress(note),
@@ -141,11 +151,12 @@ export function markToolAuthorized(step: string): void {
  */
 export function createPermissionEngineApprovalBridge(
   engine: () => PermissionEngine,
+  /** Fallback for a kernel `ask` that did not come from the agent path. */
+  offPath?: (record: ApprovalRecord) => Promise<ApprovalVerdict | undefined>,
 ): (record: ApprovalRecord) => Promise<ApprovalVerdict | undefined> {
   return async (record): Promise<ApprovalVerdict | undefined> => {
     const active = governedScope.getStore();
-    if (active === undefined) return undefined;
-    void record;
+    if (active === undefined) return offPath !== undefined ? offPath(record) : undefined;
     const outcome = await engine().check(active.tool, active.input, active.callId);
     if (outcome.outcome === 'allow') return { decision: 'allow' };
     return { decision: 'deny', reason: outcome.error.modelMessage ?? outcome.error.message };

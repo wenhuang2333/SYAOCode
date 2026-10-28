@@ -136,15 +136,23 @@ export class GovernanceDispatcher implements Dispatcher {
     }
     const capability = resolved.capability;
 
+    // A caller-supplied abort signal propagates to the executor so a cancelled
+    // agent turn stops the governed work too (05 §10.1 follow-up from the CLI).
+    if (req.signal !== undefined && ctx.signal === undefined) {
+      ctx = { ...ctx, signal: req.signal };
+    }
     const task = await this.ensureTask(req, ctx, principal, tenantId);
 
     // ── 4. idempotency ──────────────────────────────────────────────────
     // Before the budget: a replay must not reserve money twice.
     step('idempotency');
-    // Hash the SANITIZED input: the receipt and the idempotency key must
-    // describe what the executor actually received, not the pre-redaction form.
-    const sanitizedInput = this.sanitizeInput(req.input);
-    const hash = requestHash(kernel.hash, req.capabilityId, sanitizedInput, policy.revision);
+    // The executor receives the caller's input UNCHANGED. Redaction is applied
+    // to what LEAVES the kernel (events, receipts, errors, returned output), not
+    // to the request itself: scrubbing here rewrote what a local tool was asked
+    // to write (`write .env` with `API_KEY=…` landed `[REDACTED:…]` on disk).
+    // The hash therefore covers the real input, which is also what idempotency
+    // needs to compare.
+    const hash = requestHash(kernel.hash, req.capabilityId, req.input, policy.revision);
     // Allocate the invocation id BEFORE idempotency so the derived key is
     // unique per invocation. A constant ('pending') made every second call in
     // a task collide with the first one's key.
@@ -426,7 +434,7 @@ export class GovernanceDispatcher implements Dispatcher {
       tenantId,
       capability,
       endpoint: resolved.endpoint,
-      input: sanitizedInput,
+      input: req.input,
       inputHash: hash,
       principal,
       protocol: req.protocol,

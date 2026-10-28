@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createAgent, type AgentEvent, type Message, type PermissionHandler } from '@syaocode/core';
+import { createAgent, type AgentEvent, type Message, type PermissionHandler, type Tool, type ToolContext } from '@syaocode/core';
 import { nodeRuntime } from '@syaocode/node';
-import { createBuiltinTools } from '@syaocode/tools';
+import { createBuiltinTools, FileStateTracker } from '@syaocode/tools';
 import { MockProvider, mockText, mockToolUse } from '@syaocode/testing';
+import { z } from 'zod';
 import type { CliArgs } from '../src/args';
 import { EXIT_OK, EXIT_PERM, runPrint } from '../src/run';
-import { disposeCliFabric, peekCliFabric } from '../src/arf';
+import { disposeCliFabric } from '../src/arf';
 import { governanceReport, installMainPathGovernance } from '../src/arf-main-path';
 import { setLanguage } from '../src/i18n/index';
 
@@ -250,6 +251,213 @@ describe('main path → ARF kernel (task-8)', () => {
 
     const report = await governanceReport(governance.cli());
     expect(report.receipts.some((r) => r.outcome === 'denied')).toBe(true);
+    await governance.dispose();
+  }, 60_000);
+
+  it('answers the kernel `ask` through the same permission handler (remember: session survives)', async () => {
+    const runtime = nodeRuntime();
+    const builtins = createBuiltinTools();
+    const governance = installMainPathGovernance({
+      tools: builtins.tools,
+      fileState: builtins.fileState,
+      permissionMode: 'default',
+      rules: [],
+      cwd: tmp,
+      runtime,
+    });
+    let prompts = 0;
+    const allowOnce: PermissionHandler = async () => {
+      prompts += 1;
+      return { decision: 'allow', remember: 'session' };
+    };
+    // `default` tier asks for writes; the handler answers "allow for session",
+    // which the engine records as a path-scoped rule — the second write to the
+    // SAME path must not ask again, exactly as it behaved before the kernel
+    // was in the loop.
+    const script: Message[] = [
+      mockToolUse('a1', [{ id: 'c1', name: 'write', input: { path: 'a.txt', content: 'first' } }]),
+      mockToolUse('a2', [{ id: 'c2', name: 'write', input: { path: 'a.txt', content: 'second' } }]),
+      mockText('a3', 'done'),
+    ];
+    const agent = createAgent({
+      provider: new MockProvider({ script }),
+      model: 'mock',
+      cwd: tmp,
+      tools: governance.tools,
+      permissionMode: 'default',
+      permissionHandler: allowOnce,
+      runtime,
+      governor: governance.governor,
+    });
+    governance.bindEngine(agent.engine);
+
+    const stream = agent.run('write twice');
+    for (;;) {
+      const step = await stream.next();
+      if (step.done) break;
+    }
+
+    expect(prompts).toBe(1);
+    expect(fs.readFileSync(path.join(tmp, 'a.txt'), 'utf8')).toBe('second');
+
+    const report = await governanceReport(governance.cli());
+    expect(report.receipts.filter((r) => r.capabilityId === 'local://tools/write')).toHaveLength(2);
+    expect(report.receipts.every((r) => r.outcome === 'succeeded')).toBe(true);
+    await governance.dispose();
+  }, 60_000);
+
+  it('hands the tool the model\u2019s own input (no kernel-side rewrite of what it writes)', async () => {
+    const runtime = nodeRuntime();
+    const builtins = createBuiltinTools();
+    const governance = installMainPathGovernance({
+      tools: builtins.tools,
+      fileState: builtins.fileState,
+      permissionMode: 'bypass',
+      rules: [],
+      cwd: tmp,
+      runtime,
+    });
+    // The kernel scrubs what LEAVES it; the input of a local tool is the
+    // model's own instruction and must arrive byte-for-byte. `API_KEY=…` is
+    // exactly the pattern the CLI redactor rewrites in outputs.
+    const content = 'API_KEY=abc123\nTOKEN=deadbeef\n';
+    const agent = createAgent({
+      provider: new MockProvider({ script: [mockToolUse('a1', [{ id: 'c1', name: 'write', input: { path: 'config.txt', content } }]), mockText('a2', 'ok')] }),
+      model: 'mock',
+      cwd: tmp,
+      tools: governance.tools,
+      permissionMode: 'bypass',
+      runtime,
+      governor: governance.governor,
+    });
+    governance.bindEngine(agent.engine);
+    const stream = agent.run('write config.txt');
+    for (;;) {
+      const step = await stream.next();
+      if (step.done) break;
+    }
+    expect(fs.readFileSync(path.join(tmp, 'config.txt'), 'utf8')).toBe(content);
+    await governance.dispose();
+  }, 60_000);
+
+  it('propagates the run abort signal into the kernel-dispatched tool', async () => {
+    const runtime = nodeRuntime();
+    let sawAbort = false;
+    // The kernel executor supplies a never-aborting default signal; the
+    // governor must restore the caller's so Ctrl-C still stops a child process.
+    const slow: Tool = {
+      name: 'slow',
+      description: 'waits for the abort signal',
+      inputSchema: z.object({}),
+      risk: 'read',
+      readOnly: true,
+      concurrencySafe: true,
+      timeoutMs: 60_000,
+      async execute(_input: unknown, ctx: ToolContext) {
+        await new Promise<void>((resolve) => {
+          if (ctx.signal.aborted) {
+            sawAbort = true;
+            resolve();
+            return;
+          }
+          ctx.signal.addEventListener(
+            'abort',
+            () => {
+              sawAbort = true;
+              resolve();
+            },
+            { once: true },
+          );
+        });
+        return { content: [{ type: 'text', text: 'aborted' }] };
+      },
+    };
+    const governance = installMainPathGovernance({
+      tools: [slow],
+      fileState: new FileStateTracker(),
+      permissionMode: 'bypass',
+      rules: [],
+      cwd: tmp,
+      runtime,
+    });
+    const agent = createAgent({
+      provider: new MockProvider({
+        script: [mockToolUse('a1', [{ id: 'c1', name: 'slow', input: {} }]), mockText('a2', 'done')],
+      }),
+      model: 'mock',
+      cwd: tmp,
+      tools: governance.tools,
+      permissionMode: 'bypass',
+      runtime,
+      governor: governance.governor,
+    });
+    governance.bindEngine(agent.engine);
+
+    const controller = new AbortController();
+    const stream = agent.run('go', { signal: controller.signal });
+    const timer = setTimeout(() => controller.abort(new Error('SIGINT')), 100);
+    try {
+      for (;;) {
+        const step = await stream.next();
+        if (step.done) break;
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+    expect(sawAbort).toBe(true);
+    await governance.dispose();
+  }, 60_000);
+
+  it('applies a hot tier switch to the very next call', async () => {
+    fs.writeFileSync(path.join(tmp, 'n.txt'), 'hello\n');
+    const runtime = nodeRuntime();
+    const builtins = createBuiltinTools();
+    const governance = installMainPathGovernance({
+      tools: builtins.tools,
+      fileState: builtins.fileState,
+      permissionMode: 'bypass',
+      rules: [],
+      cwd: tmp,
+      runtime,
+    });
+    let prompts = 0;
+    const denyAll: PermissionHandler = async () => {
+      prompts += 1;
+      return { decision: 'deny', message: 'blocked' };
+    };
+    // The SAME call twice: switching the tier mid-run must change the verdict
+    // of the second one (the kernel caches `allow` decisions and the cache key
+    // carries no tier, so the bundle swap has to drop it).
+    const script: Message[] = [
+      mockToolUse('a1', [{ id: 'c1', name: 'read', input: { path: 'n.txt' } }]),
+      mockToolUse('a2', [{ id: 'c2', name: 'read', input: { path: 'n.txt' } }]),
+      mockText('a3', 'done'),
+    ];
+    const agent = createAgent({
+      provider: new MockProvider({ script }),
+      model: 'mock',
+      cwd: tmp,
+      tools: governance.tools,
+      permissionMode: 'bypass',
+      runtime,
+      permissionHandler: denyAll,
+      governor: governance.governor,
+    });
+    governance.bindEngine(agent.engine);
+
+    const stream = agent.run('read twice');
+    for (;;) {
+      const step = await stream.next();
+      if (step.done) break;
+      if (step.value.type === 'tool.receipt') {
+        agent.engine.setMode('strict');
+        governance.cli().setPermissionTier('strict');
+      }
+    }
+
+    expect(prompts).toBe(1);
+    const report = await governanceReport(governance.cli());
+    expect(report.receipts.map((r) => r.outcome)).toEqual(['succeeded', 'denied']);
     await governance.dispose();
   }, 60_000);
 });
