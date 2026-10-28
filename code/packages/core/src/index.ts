@@ -35,7 +35,7 @@ export type { Capabilities, ModelRequest, ModelStreamEvent, Pricing, Provider, R
 export { withRetry, DEFAULT_RETRY_POLICY, mapHttpStatus } from './provider.js';
 
 // tool
-export type { PermissionSubject, PromptContext, Tool, ToolContext, ToolOutput, ToolProgress, ToolResultMeta, ToolRisk } from './tool.js';
+export type { GovernedToolCall, PermissionSubject, PromptContext, Tool, ToolContext, ToolGovernor, ToolOutput, ToolProgress, ToolResultMeta, ToolRisk } from './tool.js';
 export { ToolRegistry, zodToJsonSchema, textContent } from './tool.js';
 
 // permissions
@@ -70,7 +70,7 @@ export { MemorySessionStore, FileSessionStore, projectHashOf } from './session/i
 export { Redactor, RedactingLogger, RedactingSessionStore, redactToolResultContent } from './redact.js';
 
 // evidence / verification / claims
-export type { ReceiptStore, SandboxLevel, Sha256, StoredOutput, TestStats, ToolReceipt, TrustLevel, VerificationReport, VerificationResult } from './evidence.js';
+export type { ReceiptStore, SandboxLevel, Sha256, StoredOutput, TestStats, ToolGovernanceRef, ToolReceipt, TrustLevel, VerificationReport, VerificationResult } from './evidence.js';
 export { MemoryReceiptStore, defaultSha256, fencingHash, parseTestStats, receiptInputHash, stableStringify } from './evidence.js';
 export type { DiscoveredCommand, VerificationOptions } from './verify.js';
 export { discoverVerification, runVerification, verificationPassed } from './verify.js';

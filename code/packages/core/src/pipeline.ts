@@ -1,5 +1,5 @@
 import type { Runtime } from './runtime/index.js';
-import type { SandboxLevel, ToolRegistry, ToolResultMeta, TrustLevel } from './tool.js';
+import type { SandboxLevel, ToolGovernor, ToolRegistry, ToolResultMeta, TrustLevel } from './tool.js';
 import type { PermissionEngine } from './permissions.js';
 import type { ToolCall, ToolResultBlock, ToolResultContent } from './types.js';
 import { SyaoError, ToolError } from './errors/syao-error.js';
@@ -43,6 +43,13 @@ export async function executeToolCall(
     events?: PipelineEvents;
     redactor?: Redactor;
     receipts?: ReceiptStore;
+    /**
+     * Host-supplied execution authority (ARF). When present the governor
+     * replaces BOTH the permission gate and the direct `tool.execute` call:
+     * the kernel authorizes and runs the tool, and the pipeline keeps its
+     * validation / timeout / redaction / receipt / event duties.
+     */
+    governor?: ToolGovernor;
   },
 ): Promise<ToolResultBlock> {
   const started = runtime.clock.now();
@@ -104,6 +111,9 @@ export async function executeToolCall(
       ...(testStats !== undefined ? { testStats } : {}),
       trust,
       sandbox,
+      // Kernel link (ARF): lets a receipt be traced back to the governance
+      // record that authorized the call.
+      ...(meta.governance !== undefined ? { governance: meta.governance } : {}),
     };
     opts.events?.onToolReceipt?.(receipt);
     const block: ToolResultBlock = {
@@ -152,17 +162,27 @@ export async function executeToolCall(
   }
 
   // ── permission gate (the only authority — ADR-04) ──
-  const gate = await engine.check(tool, parsed.data, call.id);
-  if (gate.outcome === 'deny') {
-    return finish(
-      call.name,
-      sanitize([{ type: 'text', text: gate.error.modelMessage ?? gate.error.message }]),
-      true,
-    );
+  // With a governor the kernel owns the gate (it wraps the SAME engine), so
+  // the local check is skipped: two gates would be two authorities.
+  if (opts.governor === undefined) {
+    const gate = await engine.check(tool, parsed.data, call.id);
+    if (gate.outcome === 'deny') {
+      return finish(
+        call.name,
+        sanitize([{ type: 'text', text: gate.error.modelMessage ?? gate.error.message }]),
+        true,
+      );
+    }
   }
 
   // ── execute with timeout + abort ──
-  opts.events?.onToolStart?.(call.id, tool.name, parsed.data);
+  const emitStart = (): void => {
+    opts.events?.onToolStart?.(call.id, tool.name, parsed.data);
+  };
+  // With a governor the host decides WHEN the call is authorized, so the
+  // start event waits for it: a denied call emits no `tool.start`, exactly
+  // like a local permission denial does today.
+  if (opts.governor === undefined) emitStart();
   const timeoutMs = tool.timeoutMs ?? 120_000;
   const timeoutSignal = new AbortController();
   const onOuterAbort = () => timeoutSignal.abort(opts.signal.reason);
@@ -199,14 +219,29 @@ export async function executeToolCall(
 
   let output;
   try {
-    const ctx = {
-      runtime,
-      cwd: opts.cwd,
-      signal: timeoutSignal.signal,
-      progress,
-    };
-    const result = tool.execute(parsed.data as never, ctx);
+    const governor = opts.governor;
     const runIt = async (): Promise<{ content: ToolResultContent[]; isError?: boolean; meta?: ToolResultMeta }> => {
+      if (governor !== undefined) {
+        // The governor authorizes AND executes; its output shape is the same
+        // ToolOutput a local tool returns, so the rest of the pipeline is
+        // unchanged.
+        return governor.execute({
+          call,
+          tool,
+          input: parsed.data,
+          cwd: opts.cwd,
+          signal: timeoutSignal.signal,
+          progress,
+          onAuthorized: emitStart,
+        });
+      }
+      const ctx = {
+        runtime,
+        cwd: opts.cwd,
+        signal: timeoutSignal.signal,
+        progress,
+      };
+      const result = tool.execute(parsed.data as never, ctx);
       if (isAsyncGenerator(result)) {
         for (;;) {
           const n = await result.next();

@@ -10,7 +10,7 @@ import {
 } from './events.js';
 import type { Provider, ToolDefinition } from './provider.js';
 import { DEFAULT_RETRY_POLICY, withRetry, type RetryPolicy } from './provider.js';
-import { ToolRegistry, type Tool } from './tool.js';
+import { ToolRegistry, type Tool, type ToolGovernor } from './tool.js';
 import {
   PermissionEngine,
   classifyCommand,
@@ -79,6 +79,15 @@ export interface AgentConfig {
   eventSink?: EventSink;
   /** Persisted `remember:'project'` approvals, reloaded per run (report C5). */
   permissionRuleStore?: PermissionRuleStore;
+  /**
+   * Host-supplied execution authority (ARF kernel).
+   *
+   * When set, every tool call is authorized and executed by the governor
+   * instead of the local permission gate + `tool.execute`. The agent keeps
+   * emitting `tool.start` / `tool.result` / `tool.receipt` and keeps building
+   * the same `ToolResultBlock`s, so the UI and the loop are unaffected.
+   */
+  governor?: ToolGovernor;
   /** 工具开始执行的即时回调：事件流仍按批次有序（tool.start 在批次结束后才 yield），
    *  UI 可用这个回调实时更新"正在做什么"（阶段行）。 */
   onToolStart?: (info: { callId: string; name: string; input: unknown }) => void;
@@ -558,6 +567,7 @@ export function createAgent(config: AgentConfig): Agent {
                   signal,
                   ...(config.redactor !== undefined ? { redactor: config.redactor } : {}),
                   ...(config.receipts !== undefined ? { receipts: config.receipts } : {}),
+                  ...(config.governor !== undefined ? { governor: config.governor } : {}),
                   events: {
                     onToolStart: (callId, name, input) => {
                       config.onToolStart?.({ callId, name, input });

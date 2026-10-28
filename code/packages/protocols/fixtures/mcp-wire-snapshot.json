@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/gen-wire-fixture.ts",
+  "provenance": {
+    "protocol": "mcp",
+    "source": "official SDK tarball",
+    "package": "@modelcontextprotocol/server",
+    "version": "2.4.0",
+    "tarball": "https://registry.npmjs.org/@modelcontextprotocol/server/-/server-2.4.0.tgz",
+    "verifiedAt": "2026-10-28",
+    "note": "Generated from the published artifact, NOT from this repository's own constants, so a wrong pin in the implementation is detectable."
+  },
+  "protocolVersion": "2026-07-28",
+  "supportedVersionsSeen": [
+    "2025-11-25",
+    "2026-07-28"
+  ],
+  "methods": [
+    "prompts/get",
+    "prompts/list",
+    "resources/list",
+    "resources/read",
+    "server/discover",
+    "subscriptions/listen",
+    "tasks/cancel",
+    "tasks/get",
+    "tasks/update",
+    "tools/call",
+    "tools/list"
+  ],
+  "notifications": [
+    "notifications/cancelled",
+    "notifications/initialized",
+    "notifications/message",
+    "notifications/progress"
+  ],
+  "resultTypes": [
+    "complete",
+    "input_required",
+    "task"
+  ],
+  "metaKeys": [
+    "io.modelcontextprotocol/related-task"
+  ],
+  "errorCodes": {
+    "ParseError": -32700,
+    "InvalidRequest": -32600,
+    "MethodNotFound": -32601,
+    "InvalidParams": -32602,
+    "InternalError": -32603,
+    "ResourceNotFound": -32002,
+    "MissingRequiredClientCapability": -32021,
+    "UnsupportedProtocolVersion": -32022,
+    "UrlElicitationRequired": -32042,
+    "HeaderMismatch": -32020
+  },
+  "knownGaps": [
+    {
+      "name": "subscriptions/listen",
+      "kind": "method",
+      "reason": "Resource/list-change subscriptions are not implemented. The design maps this to EventSubscribe (01 5.2); the kernel already has an EventLog, so this is an implementation gap, not a design gap.",
+      "trackedIn": "document/Agent-RPC/05-实现评估与结论.md section 3 (other medium-severity)"
+    },
+    {
+      "name": "notifications/message",
+      "kind": "notification",
+      "reason": "Server logging notifications are not emitted. MCP 2026-07-28 removed logging/setLevel; only the notification remains and we do not produce it.",
+      "trackedIn": "document/Agent-RPC/05-实现评估与结论.md section 3 (other medium-severity)"
+    }
+  ]
+}

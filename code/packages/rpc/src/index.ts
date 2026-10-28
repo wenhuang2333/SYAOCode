@@ -159,6 +159,7 @@ export {
   EXIT,
   MCP_ERROR_CODES,
   canonicalFromJsonRpcError,
+  defaultWireCode,
   retryVerdict,
 } from './ir/errors.js';
 export type { CanonicalErrorInit, RetryVerdict } from './ir/errors.js';

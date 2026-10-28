@@ -102,6 +102,8 @@ export class ApprovalBrokerImpl implements ApprovalBroker {
       tenantId: req.tenantId,
       taskId: req.taskId,
       ...(req.invocationId !== undefined ? { invocationId: req.invocationId } : {}),
+      ...(req.capabilityId !== undefined ? { capabilityId: req.capabilityId } : {}),
+      ...(req.inputHash !== undefined ? { inputHash: req.inputHash } : {}),
       subject: req.subject,
       options: normalizeOptions(req.options ?? defaultApprovalOptions(sensitive), sensitive),
       authority: req.authority,
@@ -188,9 +190,24 @@ export class ApprovalBrokerImpl implements ApprovalBroker {
   }
 
   async decide(approvalId: string, expectedRevision: number, decision: import('../ir/types.js').ApprovalDecision): Promise<boolean> {
-    const current = await this.store.get(approvalId);
+    const current = await this.store.get(approvalId, decision.tenantId);
     if (current === undefined) return false;
     if (current.state !== 'pending') return false;
+    // I9: an approval past its expiry is not decidable — it is already a deny.
+    if (Date.parse(current.expiresAt) <= Date.parse(this.now())) {
+      await this.store.decide(approvalId, current.revision, {
+        state: 'expired',
+        decidedAt: this.now(),
+        decidedBy: 'expiry',
+        decisionReason: 'The approval expired before it was answered; treated as deny.',
+      });
+      this.resolve(approvalId, { approvalId, state: 'expired', reason: 'expired' });
+      return false;
+    }
+    // The decider must be entitled to this record: same tenant, and — when the
+    // caller names one — the same authority that owns it.
+    if (decision.tenantId !== undefined && decision.tenantId !== current.tenantId) return false;
+    if (decision.authority !== undefined && decision.authority !== current.authority) return false;
     const option = current.options.find((o) => o.id === decision.optionId);
     // An unknown option id is a malformed answer: deny, never guess.
     const state: ApprovalRecord['state'] = isAllowOption(option) ? 'allowed' : 'denied';

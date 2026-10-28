@@ -205,7 +205,76 @@ describe('GovernanceDispatcher — the ten-step pipeline (02 §4)', () => {
     const h = await makeHarness();
     await expect(h.dispatcher.invoke(req, ctx)).rejects.toBeInstanceOf(CanonicalError);
     expect(h.calls).toHaveLength(0);
-    expect(h.receipts).toHaveLength(0);
+    // A denial is evidence: exactly one terminal receipt with outcome 'denied'
+    // (I5). The peer was never touched, but the refusal is recorded.
+    expect(h.receipts).toHaveLength(1);
+    expect(h.receipts[0]?.outcome).toBe('denied');
+  });
+
+  it('writes a receipt for every non-dispatch outcome (I5)', async () => {
+    // budget exhausted
+    const budgetDenied = await makeHarness({
+      rules: [{ id: 'allow', priority: 1, effect: 'allow', match: { capabilities: ['**'] }, source: 'org' }],
+      limitUsd: 0.1,
+    });
+    await expect(budgetDenied.dispatcher.invoke(req, { ...ctx, estimate: { usd: 10 } })).rejects.toMatchObject({ kind: 'budget_exceeded' });
+    expect(budgetDenied.receipts).toHaveLength(1);
+    expect(budgetDenied.calls).toHaveLength(0);
+
+    // approval refused
+    const approvalDenied = await makeHarness({
+      rules: [{ id: 'ask', priority: 1, effect: 'ask', match: { capabilities: ['**'] }, source: 'org' }],
+    });
+    await expect(approvalDenied.dispatcher.invoke(req, ctx)).rejects.toMatchObject({ kind: 'denied' });
+    expect(approvalDenied.receipts).toHaveLength(1);
+    expect(approvalDenied.receipts[0]?.outcome).toBe('denied');
+    expect(approvalDenied.calls).toHaveLength(0);
+
+    // unsupported obligation
+    const obligationDenied = await makeHarness({
+      rules: [{
+        id: 'allow-with-sandbox',
+        priority: 1,
+        effect: 'allow',
+        match: { capabilities: ['**'] },
+        source: 'org',
+        obligations: [{ type: 'sandbox', level: 'container' }],
+      }],
+    });
+    await expect(obligationDenied.dispatcher.invoke(req, ctx)).rejects.toMatchObject({ kind: 'unsupported_obligation' });
+    expect(obligationDenied.receipts).toHaveLength(1);
+    expect(obligationDenied.calls).toHaveLength(0);
+  });
+
+  it('honours require_approval even when the policy allows (obligation is hard)', async () => {
+    let presented = 0;
+    const h = await makeHarness({
+      rules: [{
+        id: 'allow-but-ask',
+        priority: 1,
+        effect: 'allow',
+        match: { capabilities: ['**'] },
+        source: 'org',
+        obligations: [{ type: 'require_approval' }],
+      }],
+      presentApproval: () => {
+        presented += 1;
+      },
+    });
+    // No authority answers -> the call must NOT dispatch.
+    await expect(h.dispatcher.invoke(req, ctx)).rejects.toMatchObject({ kind: 'denied' });
+    expect(presented).toBe(1);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it('rejects a principal from another tenant (I1)', async () => {
+    const h = await makeHarness({
+      rules: [{ id: 'allow', priority: 1, effect: 'allow', match: { capabilities: ['**'] }, source: 'org' }],
+    });
+    await expect(
+      h.dispatcher.invoke({ ...req, principal: { ...principal, tenantId: 'tenant-victim' } }, ctx),
+    ).rejects.toMatchObject({ kind: 'unauthorized' });
+    expect(h.calls).toHaveLength(0);
   });
 
   it('dispatches and issues exactly one receipt when allowed (I5)', async () => {

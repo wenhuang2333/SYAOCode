@@ -56,7 +56,8 @@ import { readWorkspaceUsage, recordUsage, usageFilePath } from './usage-store.js
 import { getLanguage, isLang, languageName, t, type Lang } from './i18n/index.js';
 import { userErrorMessage, userErrorText, userEventErrorText } from './error-text.js';
 import { cliModelSpec, createCliRedactor, loadCliConfig } from './effective-config.js';
-import { disposeCliFabric, getCliFabric, hasCliFabric, type CliFabric } from './arf.js';
+import { disposeCliFabric, hasCliFabric, type CliFabric } from './arf.js';
+import { installMainPathGovernance } from './arf-main-path.js';
 import {
   handleApproveSlash,
   handleCallSlash,
@@ -102,7 +103,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
   const redactor = createCliRedactor();
   const receipts = createFileReceiptStore(runtime, `${syaoHome()}/evidence`);
   const sessionStore = new FileSessionStore(runtime, `${syaoHome()}/sessions`, String(projectHashOf(cwd)));
-  const { tools } = createBuiltinTools();
+  const builtins = createBuiltinTools();
   const usageTotals: UsageTotals = {
     inputTokens: 0,
     outputTokens: 0,
@@ -120,6 +121,22 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
   let permissionMode: PermissionMode = config.permissionMode;
   let pendingResume: string | undefined;
   const sessionRules: PermissionRule[] = rulesFromConfig(config);
+
+  // ── ARF governance on the main path (task-8) ────────────────────────────
+  // The REPL's tool calls are governed invocations: the kernel gates them with
+  // the SAME live permission engine, reserves/settles budget and writes the
+  // receipt + audit link. `/rpc` then shows the very same evidence chain.
+  const governance = installMainPathGovernance({
+    tools: builtins.tools,
+    fileState: builtins.fileState,
+    permissionMode,
+    rules: sessionRules,
+    cwd,
+    runtime,
+    redactor,
+    ...(config.limits.maxBudgetUsd !== undefined ? { maxBudgetUsd: config.limits.maxBudgetUsd } : {}),
+    taskLabel: 'syao repl session',
+  });
 
   const rl = readline.createInterface({ input, output, prompt: promptOf() });
   const isTTY = input.isTTY === true;
@@ -145,7 +162,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
       model: provider.model,
       cwd,
       context: buildCliContext(cwd),
-      tools,
+      tools: governance.tools,
       permissionMode,
       rules: sessionRules,
       permissionHandler: terminalPermissionHandler,
@@ -153,9 +170,12 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
       runtime,
       redactor,
       receipts,
+      governor: governance.governor,
       ...(opts.args.verify === true ? { verification: { enabled: true } } : {}),
       limits: config.limits,
     });
+    // The kernel consults this agent's live engine (rebuilt on /model).
+    governance.bindEngine(created.engine);
     if (resumeSessionId !== undefined) {
       pendingResume = resumeSessionId;
     }
@@ -166,6 +186,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
   function applyInlinePermissionChange(change: InlinePermissionChange): void {
     agent.engine.setMode(change.mode);
     permissionMode = change.mode;
+    governance.cli().setPermissionTier(change.mode);
     output.write(
       ANSI.green(t('tier.switched', { key: change.key, label: permissionModeShort(change.mode) })) +
         ` ${ANSI.dim(t('tier.sessionOnly'))}\n` +
@@ -341,16 +362,19 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
   }
 
   // ── ARF governance console (/rpc /peer /call /serve /approve) ──────────
-  // The fabric is a process singleton; it is rebuilt when the permission tier
-  // changes so the console always explains the policy that is actually live.
+  // ONE fabric for the whole process: the agent's tool calls and the console
+  // share the same receipts, audit chain and budget. A tier change re-stamps
+  // the policy bundle in place instead of rebuilding the fabric, so the
+  // evidence collected so far is never dropped.
   let fabricMode: PermissionMode | undefined;
 
   function governanceCli(): CliFabric {
+    const cli = governance.cli();
     if (fabricMode !== agent.engine.mode) {
-      if (hasCliFabric()) void disposeCliFabric();
       fabricMode = agent.engine.mode;
+      cli.setPermissionTier(agent.engine.mode);
     }
-    return getCliFabric({ cwd, permissionMode: agent.engine.mode, rules: sessionRules });
+    return cli;
   }
 
   function governanceConsole(): SlashConsole {
@@ -789,6 +813,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
     output.write(ANSI.dim(`\n${t('goodbye')}\n`));
     rl.close();
     if (hasCliFabric()) await disposeCliFabric();
+    await governance.dispose();
   }
   return 0;
 }

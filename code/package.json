@@ -24,7 +24,9 @@
     "lint:registry": "pnpm exec tsx scripts/check-error-registry.ts",
     "lint:core": "pnpm exec tsx scripts/check-core-purity.ts",
     "lint:rpc": "pnpm exec tsx scripts/check-rpc-boundaries.ts",
-    "lint": "pnpm run lint:registry && pnpm run lint:core && pnpm run lint:rpc"
+    "lint": "pnpm run lint:registry && pnpm run lint:core && pnpm run lint:rpc",
+    "fixtures:gen": "pnpm exec tsx scripts/gen-wire-fixture.ts",
+    "build:check": "pnpm exec tsx scripts/check-build-artifact.ts"
   },
   "devDependencies": {
     "@syaocode/core": "workspace:*",

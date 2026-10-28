@@ -320,6 +320,11 @@ async function* ssePayloads(body: ReadableStream<Uint8Array>): AsyncIterable<str
 
 export interface HttpChannelOptions {
   headers?: Record<string, string>;
+  /**
+   * Per-request headers derived from the body (MCP Streamable HTTP's mandatory
+   * `MCP-Protocol-Version` / `Mcp-Method` / `Mcp-Name`, 04 M13).
+   */
+  headersFor?: (body: string) => Record<string, string>;
   signal?: AbortSignal;
   /** Extra query string appended to the URL (e.g. A2A `A2A-Version`). */
   query?: Record<string, string>;
@@ -369,9 +374,15 @@ export function createHttpChannel(runtime: Runtime, url: string, opts?: HttpChan
       if (closed) throw new Error(`http channel ${url} is closed`);
       pending += 1;
       try {
+        const derived = opts?.headersFor?.(chunk) ?? {};
         const init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal } = {
           method: 'POST',
-          headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(opts?.headers ?? {}) },
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            ...(opts?.headers ?? {}),
+            ...derived,
+          },
           body: chunk,
         };
         if (opts?.signal !== undefined) init.signal = opts.signal;

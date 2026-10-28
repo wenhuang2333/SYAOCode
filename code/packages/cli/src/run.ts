@@ -1,13 +1,4 @@
-import {
-  createAgent,
-  rulesFromConfig,
-  SyaoError,
-  type Agent,
-  type AgentEvent,
-  type EndReason,
-  type PermissionHandler,
-  type RunSummary,
-} from '@syaocode/core';
+import { createAgent, rulesFromConfig, SyaoError, type Agent, type AgentEvent, type EndReason, type PermissionHandler, type RunSummary } from '@syaocode/core';
 import { nodeRuntime, createFileReceiptStore } from '@syaocode/node';
 import { createBuiltinTools } from '@syaocode/tools';
 import { createOpenAICompatibleProvider, createAnthropicProvider } from '@syaocode/providers';
@@ -19,6 +10,7 @@ import { recordUsage } from './usage-store.js';
 import { resolveProvider } from './provider-select.js';
 import { cliCwd, cliModelSpec, createCliRedactor, loadCliConfig } from './effective-config.js';
 import { syaoHome } from './model-config.js';
+import { governanceReport, installMainPathGovernance } from './arf-main-path.js';
 
 /** BR-042 exit codes. */
 export const EXIT_OK = 0;
@@ -64,9 +56,26 @@ export async function runPrint(args: CliArgs, prompt: string): Promise<number> {
   const config = await loadCliConfig(args, runtime);
   const spec = cliModelSpec(args, config);
   const provider = resolveProvider(args, { mockProvider: (script) => new MockProvider({ script }) }, { spec });
-  const { tools } = createBuiltinTools();
+  const builtins = createBuiltinTools();
   const redactor = createCliRedactor();
   const receipts = createFileReceiptStore(runtime, `${syaoHome()}/evidence`);
+
+  // ── ARF governance on the main path ─────────────────────────────────────
+  // Every tool call of this run is a governed invocation: the kernel gates it,
+  // reserves/settles budget and writes the receipt + audit link (task-8). The
+  // SAME tool instances go to the agent and to the fabric, so read-before-
+  // write fencing and cancellation keep working.
+  const governance = installMainPathGovernance({
+    tools: builtins.tools,
+    fileState: builtins.fileState,
+    permissionMode: config.permissionMode,
+    rules: rulesFromConfig(config),
+    cwd: cliCwd(args),
+    runtime,
+    redactor,
+    ...(config.limits.maxBudgetUsd !== undefined ? { maxBudgetUsd: config.limits.maxBudgetUsd } : {}),
+    taskLabel: `syao -p: ${prompt.slice(0, 120)}`,
+  });
 
   // Headless permission policy (BR-042): ask → deny with a clear note.
   const headlessHandler: PermissionHandler = async (req) => ({
@@ -79,16 +88,23 @@ export async function runPrint(args: CliArgs, prompt: string): Promise<number> {
     model: provider.model,
     cwd: cliCwd(args),
     context: buildCliContext(cliCwd(args), { model: `${spec.provider}:${spec.model}` }),
-    tools,
+    tools: governance.tools,
     permissionMode: config.permissionMode,
     permissionHandler: headlessHandler,
     limits: config.limits,
     runtime,
     redactor,
     receipts,
+    governor: governance.governor,
     ...(args.verify === false ? {} : { verification: { enabled: true } }),
     rules: rulesFromConfig(config),
   });
+  // The kernel policy preset must consult THIS agent's engine (the same live
+  // gate the pipeline used before), never a second rule set.
+  governance.bindEngine(agent.engine);
+  // Create the fabric now so the run's receipts/audit/budget are queryable
+  // (tests and `--output-format json` readers use the same singleton).
+  governance.cli();
 
   let exitCode = EXIT_OK;
   let summary: RunSummary | undefined;
@@ -118,6 +134,9 @@ export async function runPrint(args: CliArgs, prompt: string): Promise<number> {
       stderr(redactor.redact(`error: ${e instanceof Error ? e.message : String(e)}`).text);
       exitCode = EXIT_ERROR;
     }
+  } finally {
+    // One-shot process: release the kernel (stores stay readable in-process).
+    await governance.dispose();
   }
 
   if (summary !== undefined) {
@@ -156,6 +175,9 @@ export async function runPrint(args: CliArgs, prompt: string): Promise<number> {
         ...(summary.verification !== undefined ? { verification: summary.verification } : {}),
         ...(summary.verificationNote !== undefined ? { verificationNote: summary.verificationNote } : {}),
         finalText: summary.finalText,
+        // ARF evidence for this run (task-8): the receipts, audit links and
+        // budget reservations the kernel produced for the tool calls above.
+        governance: await governanceReport(governance.cli()),
       };
       write(JSON.stringify(redactor.redactValue(payload).value));
     }

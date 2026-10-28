@@ -132,19 +132,56 @@ export const NO_RESPONSE: unique symbol = Symbol('jsonrpc.no-response');
 
 export type JsonRpcHandlerResult = unknown | typeof NO_RESPONSE;
 
-/** Coerce any thrown value into a JSON-RPC error object (never loses `data`). */
+/**
+ * Coerce any thrown value into a JSON-RPC error object.
+ *
+ * Three shapes carry a numeric code, in priority order:
+ *   1. `{ code, message }` — an already-formed JSON-RPC error;
+ *   2. a `CanonicalErrorShape` with `wireCode` — the canonical error vocabulary
+ *      carries the protocol-correct code (04 M18 / A16). Without this every
+ *      A2A failure degraded to `-32603`, so `TaskNotFoundError` reached the
+ *      peer as "internal error";
+ *   3. a `CanonicalError` *instance* (which may only have `kind`/`protocol`).
+ *
+ * Anything else is an internal error. The canonical `kind` always travels in
+ * `data.kind` so a peer can still classify the failure losslessly.
+ */
 export function toJsonRpcErrorObject(error: unknown): JsonRpcErrorObject {
   if (error instanceof JsonRpcRemoteError) return error.raw;
-  // A thrown `{ code, message }` object is already a JSON-RPC error (adapters
-  // use this to answer with protocol-specific codes such as -32021).
+
   if (error !== null && typeof error === 'object' && !Array.isArray(error)) {
-    const candidate = error as { code?: unknown; message?: unknown; data?: unknown };
+    const candidate = error as {
+      code?: unknown;
+      message?: unknown;
+      data?: unknown;
+      kind?: unknown;
+      wireCode?: unknown;
+      details?: unknown;
+      retryable?: unknown;
+    };
+
+    // 1. an explicit JSON-RPC error object.
     if (typeof candidate.code === 'number' && typeof candidate.message === 'string') {
       return candidate.data !== undefined
         ? { code: candidate.code, message: candidate.message, data: candidate.data }
         : { code: candidate.code, message: candidate.message };
     }
+
+    // 2. a CanonicalErrorShape / CanonicalError carrying a wire code.
+    if (typeof candidate.kind === 'string' && typeof candidate.message === 'string') {
+      const code = typeof candidate.wireCode === 'number' ? candidate.wireCode : JSONRPC_ERROR_CODES.internalError;
+      const data: Record<string, unknown> = { kind: candidate.kind };
+      if (candidate.retryable !== undefined) data['retryable'] = candidate.retryable;
+      if (candidate.details !== undefined && typeof candidate.details === 'object') {
+        Object.assign(data, candidate.details as Record<string, unknown>);
+      }
+      if (candidate.data !== undefined && typeof candidate.data === 'object') {
+        Object.assign(data, candidate.data as Record<string, unknown>);
+      }
+      return { code, message: candidate.message, data };
+    }
   }
+
   if (error instanceof JsonRpcProtocolError) {
     return error.data !== undefined
       ? { code: error.code, message: error.message, data: error.data }
@@ -169,6 +206,34 @@ export function isJsonRpcNotification(message: JsonRpcMessage): message is JsonR
 export function isJsonRpcResponse(message: JsonRpcMessage): message is JsonRpcResponse {
   const m = message as { method?: unknown; id?: unknown; result?: unknown; error?: unknown };
   return m.method === undefined && m.id !== undefined && (m.result !== undefined || m.error !== undefined);
+}
+
+// ── SSE binding (A2A §5.3: streaming methods answer with text/event-stream) ─
+
+/** Prefix of an SSE data line. */
+export const SSE_DATA_PREFIX = 'data:';
+
+/**
+ * Encode one server-sent event.
+ *
+ * The A2A JSON-RPC binding streams `Task` / `Message` /
+ * `TaskStatusUpdateEvent` / `TaskArtifactUpdateEvent` values, one JSON-RPC
+ * *response* per event (same request id), separated by a blank line.
+ */
+export function encodeSseEvent(payload: unknown): string {
+  return `${SSE_DATA_PREFIX} ${JSON.stringify(payload)}\n\n`;
+}
+
+/** True when a frame line is an SSE `data:` line. */
+export function isSseDataLine(line: string): boolean {
+  return line.startsWith(SSE_DATA_PREFIX);
+}
+
+/** A decoded frame plus how it was framed on the wire. */
+export interface FramedMessage {
+  message: JsonRpcMessage;
+  /** `sse` when the frame arrived as a `text/event-stream` event. */
+  transport: 'json' | 'sse';
 }
 
 /** Serialize one message to its JSON body (no framing applied). */
@@ -266,6 +331,8 @@ function looksLikeHeaders(buf: Uint8Array): boolean {
     if (byte === 0x0a) break;
     text += String.fromCharCode(byte);
   }
+  // An SSE `data:` line is not a header block: it frames an event payload.
+  if (isSseDataLine(text.trim())) return false;
   return /^[A-Za-z][A-Za-z0-9-]*\s*:/.test(text);
 }
 
@@ -292,31 +359,62 @@ function safeDecode(body: string): JsonRpcMessage[] {
 export class MessageFramer {
   private buf: Uint8Array = new Uint8Array(0);
   private decoder = new TextDecoder();
+  /** Frames produced since the last `pushFrames`, tagged with their framing. */
+  private framed: FramedMessage[] = [];
 
   constructor(private readonly mode: Framing = 'auto') {}
 
   /** Feed a text chunk (the byte length is computed from its UTF-8 encoding). */
   push(chunk: string): JsonRpcMessage[] {
-    return this.pushBytes(new TextEncoder().encode(chunk));
+    return this.pushFrames(chunk).map((frame) => frame.message);
+  }
+
+  /** Feed raw bytes; returns messages tagged with their framing. */
+  pushFrames(chunk: string): FramedMessage[] {
+    return this.pushBytesFrames(new TextEncoder().encode(chunk));
   }
 
   /** Feed raw bytes (the byte-exact path used by stdio transports). */
   pushBytes(chunk: Uint8Array): JsonRpcMessage[] {
-    if (chunk.length === 0) return [];
-    const merged = new Uint8Array(this.buf.length + chunk.length);
-    merged.set(this.buf, 0);
-    merged.set(chunk, this.buf.length);
-    this.buf = merged;
-    return this.drain(false);
+    return this.pushBytesFrames(chunk).map((frame) => frame.message);
+  }
+
+  /** Feed raw bytes; returns messages tagged with their framing. */
+  pushBytesFrames(chunk: Uint8Array): FramedMessage[] {
+    this.framed = [];
+    if (chunk.length > 0) {
+      const merged = new Uint8Array(this.buf.length + chunk.length);
+      merged.set(this.buf, 0);
+      merged.set(chunk, this.buf.length);
+      this.buf = merged;
+    }
+    this.drain(false);
+    return this.take();
   }
 
   /** Call when the channel reached EOF: parse any trailing unframed message. */
   flush(): JsonRpcMessage[] {
-    return this.drain(true);
+    return this.flushFrames().map((frame) => frame.message);
   }
 
-  private drain(final: boolean): JsonRpcMessage[] {
-    const out: JsonRpcMessage[] = [];
+  /** EOF variant of {@link pushFrames}. */
+  flushFrames(): FramedMessage[] {
+    this.framed = [];
+    this.drain(true);
+    return this.take();
+  }
+
+  private take(): FramedMessage[] {
+    const out = this.framed;
+    this.framed = [];
+    return out;
+  }
+
+  private emit(message: JsonRpcMessage, transport: 'json' | 'sse'): void {
+    this.framed.push({ message, transport });
+  }
+
+  private drain(final: boolean): void {
     for (;;) {
       this.trimLeadingWhitespace();
       if (this.buf.length === 0) break;
@@ -336,7 +434,7 @@ export class MessageFramer {
           if (final) {
             const leftover = this.buf;
             this.buf = new Uint8Array(0);
-            out.push(...safeDecode(this.decoder.decode(leftover)));
+            for (const message of safeDecode(this.decoder.decode(leftover))) this.emit(message, 'json');
           }
           break;
         }
@@ -351,7 +449,7 @@ export class MessageFramer {
         if (this.buf.length < bodyStart + length) break;
         const body = this.buf.slice(bodyStart, bodyStart + length);
         this.buf = this.buf.slice(bodyStart + length);
-        out.push(...safeDecode(this.decoder.decode(body)));
+        for (const message of safeDecode(this.decoder.decode(body))) this.emit(message, 'json');
         continue;
       }
 
@@ -360,16 +458,21 @@ export class MessageFramer {
         if (final) {
           const leftover = this.decoder.decode(this.buf).trim();
           this.buf = new Uint8Array(0);
-          if (leftover.length > 0) out.push(...safeDecode(leftover));
+          if (leftover.length > 0) for (const message of safeDecode(leftover)) this.emit(message, 'json');
         }
         break;
       }
       const line = this.decoder.decode(this.buf.slice(0, nl)).trim();
       this.buf = this.buf.slice(nl + 1);
       if (line.length === 0) continue;
-      out.push(...safeDecode(line));
+      // SSE binding (A2A): a `data:` line carries one JSON-RPC response.
+      if (isSseDataLine(line)) {
+        const payload = line.slice(SSE_DATA_PREFIX.length).trim();
+        for (const message of safeDecode(payload)) this.emit(message, 'sse');
+        continue;
+      }
+      for (const message of safeDecode(line)) this.emit(message, 'json');
     }
-    return out;
   }
 
   private trimLeadingWhitespace(): void {
@@ -404,21 +507,57 @@ export interface JsonRpcPeerHandlers {
   /** Inbound notifications (`session/cancel`, `notifications/cancelled`). */
   notification?: (method: string, params: unknown) => void;
   /**
-   * Inbound stream events. A2A streaming is modelled as notifications that
-   * carry the originating request id (`{ id, event }`); returning `true` marks
-   * the event as consumed by a pending stream.
+   * Inbound *streaming* requests (A2A `SendStreamingMessage` / `SubscribeToTask`).
+   *
+   * The spec binds these to `text/event-stream`: the handler writes one event
+   * per frame and returns `NO_RESPONSE` so the connection sends no single
+   * JSON-RPC response of its own.
    */
-  streamEvent?: (id: JsonRpcId, event: unknown) => boolean;
+  stream?: (method: string, params: unknown, ctx: JsonRpcRequestContext, sink: SseSink) => Promise<JsonRpcHandlerResult> | JsonRpcHandlerResult;
 }
+
+/**
+ * The server-side sink of a streaming request.
+ *
+ * `event()` writes one `text/event-stream` frame; `close()` ends the stream.
+ */
+export interface SseSink {
+  /** Write one SSE event carrying a JSON-RPC response frame. */
+  event(payload: unknown): Promise<void>;
+  /** End the stream (the peer sees EOF). */
+  close(): Promise<void>;
+}
+
+/**
+ * True when a stream frame ends the stream.
+ *
+ * The A2A spec marks the last `TaskStatusUpdateEvent` with `final: true`.
+ */
+export function isFinalStreamResult(result: unknown): boolean {
+  return result !== null && typeof result === 'object' && (result as { final?: unknown }).final === true;
+}
+
+/** The A2A streaming methods (01 §5.3). */
+export const DEFAULT_STREAMING_METHODS: readonly string[] = ['SendStreamingMessage', 'SubscribeToTask'];
 
 export interface JsonRpcConnectionOptions {
   channel: DuplexChannel;
   framing?: Framing;
   handlers?: JsonRpcPeerHandlers;
+  /**
+   * Methods answered with the `text/event-stream` binding. Default: the A2A
+   * streaming methods (01 §5.3 / 04 A16).
+   */
+  streamingMethods?: readonly string[];
   /** Default per-request timeout; 0 disables. */
   requestTimeoutMs?: number;
   ids?: IdGenerator;
   logger?: Logger;
+}
+
+interface StreamEntry {
+  push(frame: JsonRpcMessage): void;
+  finish(reason?: unknown): void;
 }
 
 interface PendingEntry {
@@ -447,10 +586,12 @@ export class JsonRpcConnection {
   private readonly ids: IdGenerator | undefined;
   private readonly logger: Logger | undefined;
   private readonly pending = new Map<JsonRpcId, PendingEntry>();
+  private readonly streams = new Map<JsonRpcId, StreamEntry>();
   private readonly closeHandlers: ((reason?: string) => void)[] = [];
   private counter = 0;
   private pumpPromise: Promise<void> | undefined;
   private closedFlag = false;
+  private readonly streamingMethods: readonly string[];
 
   constructor(options: JsonRpcConnectionOptions) {
     this.channel = options.channel;
@@ -459,6 +600,12 @@ export class JsonRpcConnection {
     this.defaultTimeoutMs = options.requestTimeoutMs ?? 30_000;
     this.ids = options.ids;
     this.logger = options.logger;
+    this.streamingMethods = options.streamingMethods ?? DEFAULT_STREAMING_METHODS;
+  }
+
+  /** True when `method` is answered with the SSE binding. */
+  isStreamingMethod(method: string): boolean {
+    return this.streamingMethods.includes(method);
   }
 
   get closed(): boolean {
@@ -507,6 +654,11 @@ export class JsonRpcConnection {
         else reject(outcome.error);
       };
     });
+    // A caller may abandon this promise (the write below can fail first, and
+    // `close()` settles anything still pending), so keep a no-op handler
+    // attached: a rejected promise nobody awaits must not surface as an
+    // unhandled rejection in the host process.
+    void promise.catch(() => undefined);
     this.pending.set(id, entry);
 
     const timeoutMs = opts?.timeoutMs ?? this.defaultTimeoutMs;
@@ -534,10 +686,85 @@ export class JsonRpcConnection {
       await this.write(message);
       entry.sent = true;
     } catch (error) {
+      // Settle the entry as well as releasing it: otherwise the promise stays
+      // pending until `close()` and its late rejection has no owner.
       this.release(id);
+      entry.settle({ ok: false, error });
       throw error;
     }
     return (await promise) as T;
+  }
+
+  /**
+   * Send a request whose answer is a **stream** of frames.
+   *
+   * The A2A spec binds `SendStreamingMessage` / `SubscribeToTask` to
+   * `text/event-stream`: the peer answers with one JSON-RPC *response* frame
+   * per event (same request id), and the stream ends with a `final` event or
+   * when the peer closes the connection.
+   *
+   * The yielded values are the raw JSON-RPC response frames, so the caller
+   * sees the `result` payload of every event.
+   */
+  async *requestStream(
+    method: string,
+    params?: unknown,
+    opts?: { timeoutMs?: number; signal?: AbortSignal },
+  ): AsyncIterable<JsonRpcMessage> {
+    if (this.closedFlag) {
+      throw new JsonRpcProtocolError(JSONRPC_ERROR_CODES.internalError, `connection closed before ${method}`);
+    }
+    const id = this.allocateId();
+    const queue: JsonRpcMessage[] = [];
+    let wake: (() => void) | undefined;
+    let finished = false;
+    let failure: unknown;
+
+    const entry: StreamEntry = {
+      push: (frame) => {
+        queue.push(frame);
+        wake?.();
+      },
+      finish: (reason) => {
+        finished = true;
+        if (reason !== undefined) failure = reason;
+        wake?.();
+      },
+    };
+    this.streams.set(id, entry);
+
+    const onAbort = (): void => {
+      entry.finish(new JsonRpcAbortedError(method, true));
+    };
+    if (opts?.signal !== undefined) {
+      if (opts.signal.aborted) onAbort();
+      else opts.signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    const message: JsonRpcRequest = { jsonrpc: '2.0', id, method, ...(params !== undefined ? { params } : {}) };
+    try {
+      await this.write(message);
+    } catch (error) {
+      this.streams.delete(id);
+      throw error;
+    }
+
+    try {
+      for (;;) {
+        while (queue.length > 0) {
+          const frame = queue.shift();
+          if (frame !== undefined) yield frame;
+        }
+        if (finished) break;
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+      if (failure !== undefined) throw failure;
+    } finally {
+      this.streams.delete(id);
+      if (opts?.signal !== undefined) opts.signal.removeEventListener('abort', onAbort);
+    }
   }
 
   async notify(method: string, params?: unknown): Promise<void> {
@@ -545,9 +772,15 @@ export class JsonRpcConnection {
     await this.write(message);
   }
 
-  /** Send one stream event correlated to `id` (see `handlers.streamEvent`). */
-  async notifyStream(id: JsonRpcId, event: unknown): Promise<void> {
-    await this.notify('notifications/stream', { id, event });
+  /**
+   * Send one SSE event (the A2A streaming binding).
+   *
+   * Each event carries a complete JSON-RPC *response* frame (same request id),
+   * which is what the spec's `text/event-stream` binding expects.
+   */
+  async sendSseEvent(payload: unknown): Promise<void> {
+    await this.channel.send(encodeSseEvent(payload));
+    this.stats.sent += 1;
   }
 
   /** Write a response frame directly (used by `NO_RESPONSE` handlers). */
@@ -640,7 +873,6 @@ export class JsonRpcConnection {
       return;
     }
     this.stats.notificationsReceived += 1;
-    if (this.handlers.streamEvent !== undefined && this.routeStreamEvent(message.params)) return;
     try {
       this.handlers.notification?.(message.method, message.params);
     } catch (error) {
@@ -648,19 +880,19 @@ export class JsonRpcConnection {
     }
   }
 
-  /** A stream event is `{ id, event }`; consumed by the matching pending stream. */
-  private routeStreamEvent(params: unknown): boolean {
-    if (params === null || typeof params !== 'object') return false;
-    const record = params as { id?: unknown; event?: unknown };
-    const id = record.id;
-    if (typeof id !== 'string' && typeof id !== 'number') return false;
-    if (!('event' in record)) return false;
-    return this.handlers.streamEvent?.(id, record.event) === true;
-  }
-
   private settleResponse(response: JsonRpcResponse): void {
     const id = response.id;
     if (id === null) return;
+    // A stream request reuses its id for every event frame.
+    const stream = this.streams.get(id);
+    if (stream !== undefined) {
+      if ('error' in response) stream.finish(new JsonRpcRemoteError(response.error));
+      else {
+        stream.push(response);
+        if (isFinalStreamResult(response.result)) stream.finish();
+      }
+      return;
+    }
     const entry = this.pending.get(id);
     if (entry === undefined) return; // late response after timeout: ignored
     this.release(id);
@@ -669,6 +901,27 @@ export class JsonRpcConnection {
   }
 
   private async handleRequest(request: JsonRpcRequest): Promise<void> {
+    const streamHandler = this.handlers.stream;
+    if (streamHandler !== undefined && this.isStreamingMethod(request.method)) {
+      const sink: SseSink = {
+        // The sink owns the JSON-RPC envelope: every SSE frame is a complete
+        // response for this request id carrying the payload as its `result`.
+        event: async (payload: unknown) => {
+          await this.sendSseEvent({ jsonrpc: '2.0', id: request.id, result: payload ?? null });
+        },
+        close: async () => undefined,
+      };
+      try {
+        const result = await streamHandler(request.method, request.params, { id: request.id, raw: request }, sink);
+        if (result !== NO_RESPONSE) {
+          // The handler returned a value: deliver it as the final frame.
+          await this.sendSseEvent({ jsonrpc: '2.0', id: request.id, result: result ?? null });
+        }
+      } catch (error) {
+        await this.sendSseEvent({ jsonrpc: '2.0', id: request.id, error: toJsonRpcErrorObject(error) });
+      }
+      return;
+    }
     const handler = this.handlers.request;
     if (handler === undefined) {
       await this.write({

@@ -163,6 +163,9 @@ export class RulePolicyEngine implements PolicyEngine {
     let winner: PolicyRule | undefined;
     let reason: string;
 
+    // Precedence: deny (any source) > ask (any source) > allow > default.
+    // The preset participates at the SAME level as a rule, so it can tighten
+    // but never be widened by an ARF allow.
     if (denied.length > 0) {
       effect = 'deny';
       winner = byPriority(denied)[0];
@@ -202,9 +205,18 @@ export class RulePolicyEngine implements PolicyEngine {
     return decision;
   }
 
+  /**
+   * The local safety verdict — dangerous-command library (BR-006), workspace
+   * path fence (BR-003), sensitive-path rule — for EVERY capability, not only
+   * `local://`.
+   *
+   * This used to run only for local capabilities, which meant a single
+   * `mcp://**` allow rule silently disabled all of the v0.2 safety work on
+   * every protocol edge: `rm -rf /`, `/etc/passwd` and `~/.ssh/id_rsa` all
+   * went through ungoverned. The safety floor is protocol-independent.
+   */
   private async presetVerdict(input: PolicyInput): Promise<{ effect: Effect; reason: string } | undefined> {
     if (this.preset === undefined) return undefined;
-    if (input.capability.protocol !== 'local') return undefined;
     return await this.preset.evaluateLocal(input);
   }
 

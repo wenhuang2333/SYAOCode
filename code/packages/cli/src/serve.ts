@@ -199,7 +199,10 @@ export async function mountServerEdge(
   const useStdout = opts.bufferStdout !== true;
   const { channel, push, end } = createCallbackChannel({
     describe: `${protocol}:serve`,
-    framing: useStdout ? 'content-length' : 'json-lines',
+    // HTTP carries the JSON-RPC payload in the response BODY, so it must be
+    // newline-delimited, not stdio `Content-Length` framed: writing stdio
+    // framing into an HTTP body makes every real peer fail to parse it.
+    framing: 'json-lines',
     onSend: (chunk) => {
       outbox.push(chunk);
       if (useStdout) stdout.write(chunk);
@@ -539,7 +542,9 @@ async function startHttpServer(
         res.end();
         return;
       }
-      const text = replies.join('');
+      // One HTTP response carries exactly one JSON-RPC reply: strip the
+      // newline framing a channel adds and return the bare JSON object.
+      const text = replies.map((reply) => reply.trim()).filter((r) => r !== '').join('');
       res.writeHead(200, {
         'content-type': 'application/json; charset=utf-8',
         'content-length': Buffer.byteLength(text),

@@ -55,6 +55,24 @@ export class MemoryReceiptStore implements ReceiptStore {
   }
 }
 
+/**
+ * Link from a tool call to the governance kernel that authorized it (ARF).
+ *
+ * Present only when the host routes tool execution through a `ToolGovernor`
+ * (`@syaocode/rpc` fabric in the CLI). Embedders that keep the built-in
+ * pipeline see no change: the field is optional everywhere.
+ */
+export interface ToolGovernanceRef {
+  /** Kernel invocation id (`inv_…`). */
+  invocationId: string;
+  /** Kernel task the invocation belongs to (one per agent session). */
+  taskId: string;
+  /** Kernel receipt id (`rcpt_…`); the evidence record for this call. */
+  receiptId: string;
+  /** Kernel outcome (`succeeded` | `failed` | `denied` | …). */
+  outcome: string;
+}
+
 export interface ToolReceipt {
   callId: string;
   tool: string;
@@ -74,6 +92,8 @@ export interface ToolReceipt {
   testStats?: TestStats;
   trust: TrustLevel;
   sandbox: SandboxLevel;
+  /** Governance kernel link; present when the host governs the call (ARF). */
+  governance?: ToolGovernanceRef;
 }
 
 export interface VerificationResult {

@@ -152,7 +152,8 @@ import {
   statusPanel,
   toolsPanel,
 } from '../views.js';
-import { disposeCliFabric, getCliFabric, hasCliFabric, type CliFabric } from '../arf.js';
+import type { CliFabric } from '../arf.js';
+import { installMainPathGovernance } from '../arf-main-path.js';
 import {
   handleApproveSlash,
   handleCallSlash,
@@ -241,7 +242,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
   const redactor = createCliRedactor();
   const receipts = createFileReceiptStore(runtime, `${syaoHome()}/evidence`);
   const sessionStore = new FileSessionStore(runtime, `${syaoHome()}/sessions`, String(projectHashOf(cwd)));
-  const { tools } = createBuiltinTools();
+  const builtins = createBuiltinTools();
   // FR-051/FR-083：工作目录 + AGENTS.md/CLAUDE.md 项目指令；模型身份随 spec 变化
   const HARNESS = 'SYAOCode v0.2.0-dev';
   const usageTotals: UsageTotals = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, requests: 0 };
@@ -256,6 +257,22 @@ export async function runTui(opts: TuiOptions): Promise<number> {
   let permissionMode: PermissionMode = config.permissionMode;
   let pendingResume: string | undefined;
   const sessionRules: PermissionRule[] = rulesFromConfig(config);
+
+  // ── ARF governance on the main path (task-8) ────────────────────────────
+  // Every tool call of this TUI session is a governed invocation: the kernel
+  // gates it with the SAME live permission engine, reserves/settles budget and
+  // writes the receipt + audit link. `/rpc` reads the very same evidence.
+  const governance = installMainPathGovernance({
+    tools: builtins.tools,
+    fileState: builtins.fileState,
+    permissionMode,
+    rules: sessionRules,
+    cwd,
+    runtime,
+    redactor,
+    ...(config.limits.maxBudgetUsd !== undefined ? { maxBudgetUsd: config.limits.maxBudgetUsd } : {}),
+    taskLabel: 'syao tui session',
+  });
 
   input.setRawMode(true);
   input.resume();
@@ -337,7 +354,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
       model: provider.model,
       cwd,
       context: buildCliContext(cwd, { model: modelSpecLabel(spec), harness: HARNESS }),
-      tools,
+      tools: governance.tools,
       permissionMode,
       rules: sessionRules,
       permissionHandler: tuiPermissionHandler,
@@ -345,6 +362,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
       runtime,
       redactor,
       receipts,
+      governor: governance.governor,
       ...(opts.args.verify === true ? { verification: { enabled: true } } : {}),
       retryPolicy: {
         onRetry: (info) => {
@@ -359,6 +377,8 @@ export async function runTui(opts: TuiOptions): Promise<number> {
       },
       limits: config.limits,
     });
+    // The kernel consults this agent's live engine (rebuilt on /model).
+    governance.bindEngine(created.engine);
     if (resumeSessionId !== undefined) {
       pendingResume = resumeSessionId;
     }
@@ -636,6 +656,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
   function applyInlinePermissionChange(change: InlinePermissionChange): void {
     agent.engine.setMode(change.mode);
     permissionMode = change.mode;
+    governance.cli().setPermissionTier(change.mode);
     printAbove(
       `${ANSI.green(t('tier.switched', { key: change.key, label: permissionModeShort(change.mode) }))} ${ANSI.dim(t('tier.sessionOnly'))}\n` +
         `${ANSI.dim(t('permission.hotApplied'))}\n`,
@@ -1287,16 +1308,18 @@ export async function runTui(opts: TuiOptions): Promise<number> {
 
   // ── 斜杠命令（移植自 REPL，交互改用 promptUser） ────────────────────
 
-  // ARF 治理控制台：fabric 为进程单例；权限档位变化时重建，
-  // 保证面板解释的始终是当前生效的策略。
+  // ── ARF 治理控制台：fabric 为进程单例，主路径与 /rpc 共享同一条证据链。
+  // 档位变化就地重签策略包（setPermissionTier），不重建 fabric —— 重建会丢掉
+  // 已产生的 receipt / audit / budget。
   let fabricMode: PermissionMode | undefined;
 
   function governanceCli(): CliFabric {
+    const cli = governance.cli();
     if (fabricMode !== agent.engine.mode) {
-      if (hasCliFabric()) void disposeCliFabric();
       fabricMode = agent.engine.mode;
+      cli.setPermissionTier(agent.engine.mode);
     }
-    return getCliFabric({ cwd, permissionMode: agent.engine.mode, rules: sessionRules });
+    return cli;
   }
 
   function governanceConsole(): SlashConsole {
@@ -1828,6 +1851,8 @@ export async function runTui(opts: TuiOptions): Promise<number> {
   function cleanup(code: number): never {
     if (statusTimer !== undefined) clearInterval(statusTimer);
     guards.cleanup(); // 恢复 raw/光标/粘贴/同步输出（幂等）
+    // 释放 fabric（挂载的 peer 子进程等）；进程随即退出，不做异步等待。
+    void governance.dispose();
     process.exit(code);
   }
 

@@ -16,7 +16,7 @@
 
 import type { IdGenerator } from '@syaocode/core';
 import { canonicalJson } from '../ir/schemas.js';
-import type { CanonicalErrorShape, IdempotencyRecord } from '../ir/types.js';
+import type { CanonicalErrorShape, IdempotencyRecord, SideEffect } from '../ir/types.js';
 import type { Hasher, IdempotencyBegin, IdempotencyStore } from './contracts.js';
 
 export const DEFAULT_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -79,7 +79,16 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
       if (existing.requestHash !== hash) return { kind: 'conflict', record: existing };
       if (existing.state === 'completed') return { kind: 'replay', record: existing };
       if (existing.state === 'in_flight') return { kind: 'in_flight', record: existing };
-      // failed: allow the caller to retry, resetting the record to in_flight.
+      // A previous attempt failed. Retrying is only safe when the failure was
+      // retryable, the capability is idempotent, and the outcome is known.
+      // An `indeterminate` outcome means the side effect MAY have happened:
+      // retrying it would duplicate it, so it must be reviewed by a human.
+      const retryable = existing.retryable === true;
+      const idempotent = existing.sideEffect !== 'non_idempotent';
+      const knownOutcome = existing.outcome !== 'indeterminate';
+      if (!retryable || !idempotent || !knownOutcome) {
+        return { kind: 'conflict', record: existing };
+      }
       const retried: IdempotencyRecord = {
         ...existing,
         state: 'in_flight',
@@ -117,10 +126,21 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
     });
   }
 
-  async fail(key: string, error: CanonicalErrorShape): Promise<void> {
+  async fail(
+    key: string,
+    error: CanonicalErrorShape,
+    meta?: { retryable?: boolean; sideEffect?: SideEffect; outcome?: string },
+  ): Promise<void> {
     const existing = this.records.get(key);
     if (existing === undefined) return;
-    this.records.set(key, { ...existing, state: 'failed', error });
+    this.records.set(key, {
+      ...existing,
+      state: 'failed',
+      error,
+      ...(meta?.retryable !== undefined ? { retryable: meta.retryable } : {}),
+      ...(meta?.sideEffect !== undefined ? { sideEffect: meta.sideEffect } : {}),
+      ...(meta?.outcome !== undefined ? { outcome: meta.outcome } : {}),
+    });
   }
 
   private expiry(ttlMs?: number): string {

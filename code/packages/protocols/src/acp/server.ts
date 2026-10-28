@@ -132,7 +132,11 @@ export class AcpServer extends AdapterBase {
   readonly connection: JsonRpcConnection;
   private readonly options: AcpServerOptions;
   private readonly sessions: Map<string, AcpSessionRecord>;
-  private readonly running = new Map<string, { taskId: string; abort: AbortController }>();
+  private readonly running = new Map<string, { taskId: string; abort: AbortController; cancelled: boolean }>();
+  /** Pending `session/request_permission` calls, keyed by session. */
+  private readonly pendingPermissions = new Map<string, (() => void)[]>();
+  /** Sessions whose last turn was cancelled (observable by hosts and tests). */
+  private readonly cancelledSessions = new Set<string>();
   private clientCapabilitiesValue: AcpClientCapabilities = {};
   private negotiatedVersion = ACP_PROTOCOL_VERSION;
 
@@ -303,8 +307,16 @@ export class AcpServer extends AdapterBase {
     const sessionId = sessionIdOf(record);
     const entry = this.running.get(sessionId);
     if (entry === undefined) return;
+    // Abort the turn; the prompt handler answers `cancelled`, and every
+    // pending permission request is answered `cancelled` (ACP §2.3).
     entry.abort.abort();
+    entry.cancelled = true;
     this.running.delete(sessionId);
+    this.cancelledSessions.add(sessionId);
+    // Answer every in-flight permission request with `cancelled`: a pending
+    // approval must never outlive the turn it belongs to.
+    for (const pending of this.pendingPermissions.get(sessionId) ?? []) pending();
+    this.pendingPermissions.delete(sessionId);
   }
 
   private async prompt(record: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -317,7 +329,7 @@ export class AcpServer extends AdapterBase {
       throw { code: -32603, message: 'this agent has no prompt handler' };
     }
     const abort = new AbortController();
-    this.running.set(sessionId, { taskId, abort });
+    this.running.set(sessionId, { taskId, abort, cancelled: false });
     const fs = this.fsBridge(sessionId);
     const terminal = this.terminalBridge(sessionId);
     const approval = new AcpApprovalChannel(
@@ -331,7 +343,7 @@ export class AcpServer extends AdapterBase {
       update: (update) => {
         void this.connection.notify('session/update', { sessionId, update });
       },
-      requestPermission: (request) => approval.requestPermission(request),
+      requestPermission: (request) => approval.requestPermission(request, { register: (cancel) => this.trackPermission(sessionId, cancel) }),
       fs,
       terminal,
       signal: abort.signal,
@@ -339,8 +351,21 @@ export class AcpServer extends AdapterBase {
     try {
       const result = await this.options.runTurn({ ...io, prompt });
       session.history.push({ role: 'user', content: prompt });
+      // Cancellation wins over whatever the turn handler claims: the client
+      // MUST see `cancelled` for a turn it cancelled (ACP §2.3), even when the
+      // handler degraded the abort into its own non-cancelled stop reason.
+      if (abort.signal.aborted) {
+        this.cancelledSessions.add(sessionId);
+        return { stopReason: 'cancelled' };
+      }
       return { stopReason: result.stopReason };
     } catch (error) {
+      // A cancelled turn is NOT a refusal (ACP MUST): the distinction is the
+      // difference between "the user stopped it" and "the agent refused".
+      if (isCancellation(error, abort.signal)) {
+        this.cancelledSessions.add(sessionId);
+        return { stopReason: 'cancelled' };
+      }
       return { stopReason: 'refusal' };
     } finally {
       this.running.delete(sessionId);
@@ -348,6 +373,18 @@ export class AcpServer extends AdapterBase {
   }
 
   // ── reverse bridges ─────────────────────────────────────────────────────
+
+  /** Track a pending permission request so a cancel can answer it. */
+  private trackPermission(sessionId: string, cancel: () => void): void {
+    const list = this.pendingPermissions.get(sessionId) ?? [];
+    list.push(cancel);
+    this.pendingPermissions.set(sessionId, list);
+  }
+
+  /** True when the session's last turn was cancelled. */
+  wasCancelled(sessionId: string): boolean {
+    return this.cancelledSessions.has(sessionId);
+  }
 
   /** Governed reverse filesystem bridge for a session. */
   fsBridge(sessionId: string): AcpFsBridge {
@@ -442,6 +479,19 @@ export class AcpServer extends AdapterBase {
     const error: CanonicalErrorShape = { kind: 'unsupported_capability', message: 'AcpServer does not invoke peers; use AcpAdapter', retryable: false };
     return { outcome: 'failed', error };
   }
+}
+
+/**
+ * True when a failure is a cancellation rather than a real error.
+ *
+ * The turn may fail because the session was cancelled (the abort signal fired)
+ * or because the handler raised a canonical `cancelled` error.
+ */
+function isCancellation(error: unknown, signal: AbortSignal): boolean {
+  if (signal.aborted) return true;
+  if (error === null || typeof error !== 'object') return false;
+  const kind = (error as { kind?: unknown }).kind;
+  return kind === 'cancelled';
 }
 
 function sessionIdOf(record: Record<string, unknown>): string {

@@ -63,9 +63,13 @@ export const MCP_INVENTORY: ProtocolInventory = {
     methodNotFound: -32601,
     invalidParams: -32602,
     internalError: -32603,
-    inputRequired: -32020,
-    requestStateInvalid: -32021,
-    versionNegotiationFailed: -32022,
+    // MRTR codes live in the implementation-defined range...
+    inputRequired: -32010,
+    requestStateInvalid: -32011,
+    // ...while -32020/-32021/-32022 are the reserved MCP partition (04 M18):
+    headerMismatch: -32020,
+    missingRequiredClientCapability: -32021,
+    unsupportedProtocolVersion: -32022,
   },
 };
 
@@ -91,7 +95,10 @@ export const A2A_INVENTORY: ProtocolInventory = {
     taskNotCancelable: -32002,
     pushNotificationNotSupported: -32003,
     unsupportedOperation: -32004,
-    versionNotSupported: -32022,
+    contentTypeNotSupported: -32005,
+    invalidAgentResponse: -32006,
+    // 04 A16: version negotiation is -32009, *not* MCP's -32022.
+    versionNotSupported: -32009,
   },
 };
 

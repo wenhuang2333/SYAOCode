@@ -96,6 +96,18 @@ export interface AcpAdapterOptions {
   clientId: string;
   /** Default session for reverse calls that do not carry one. */
   sessionId?: string;
+  /**
+   * The session this connection owns. A reverse call naming a different
+   * sessionId is rejected: one editor connection must not drive another
+   * session's filesystem.
+   */
+  ownedSessionIds?: readonly string[];
+  /**
+   * Roots a reverse call may touch, per session (client-declared `cwd` +
+   * `additionalDirectories`). Compared against **realpaths**, never lexical
+   * prefixes.
+   */
+  workspaceRoots?: readonly string[] | ((sessionId: string) => readonly string[]);
   /** Client capabilities, or a getter (lets the adapter read the server's). */
   clientCapabilities: AcpClientCapabilities | (() => AcpClientCapabilities);
   requestTimeoutMs?: number;
@@ -236,6 +248,14 @@ export class AcpAdapter extends AdapterBase {
       };
     }
 
+    // ── P-H7: the fence lives on the path the dispatcher actually calls ────
+    // Session ownership first: a request may only act on a session this
+    // connection owns. Then the realpath fence for fs/terminal capabilities.
+    const ownership = this.checkSessionOwnership(sessionId);
+    if (ownership !== undefined) return ownership;
+    const fence = await this.checkFence(parsed.kind, parsed.name, sessionId, input, ctx);
+    if (fence !== undefined) return fence;
+
     const method = `${parsed.kind}/${parsed.name}`;
     const params = { sessionId, ...withoutKeys(input, ['sessionId']) };
     const timeoutMs = remainingMs(ctx.runtime, ctx);
@@ -283,6 +303,72 @@ export class AcpAdapter extends AdapterBase {
     return [...this.inFlight.values()].map((entry) => ({ requestId: entry.requestId, method: entry.method, taskId: entry.taskId }));
   }
 
+  /**
+   * The reverse call must name a session this connection owns.
+   *
+   * Without this, any capability id naming `acp://<client>/fs/...` could be
+   * dispatched against another editor's session (I11).
+   */
+  private checkSessionOwnership(sessionId: string): InvokeResultPayload | undefined {
+    const owned = this.options.ownedSessionIds;
+    const configured = this.options.sessionId;
+    if (owned === undefined && configured === undefined) return undefined;
+    const allowed = owned ?? (configured !== undefined ? [configured] : []);
+    if (allowed.includes(sessionId)) return undefined;
+    return {
+      outcome: 'failed',
+      error: {
+        kind: 'denied',
+        message: `ACP reverse call names session ${sessionId}, which this connection does not own`,
+        retryable: false,
+        details: { sessionId, owned: this.options.ownedSessionIds ?? (this.options.sessionId !== undefined ? [this.options.sessionId] : []) },
+      },
+      lossy: mergeLossy(this.adapterLossy(), [ACP_LOSSY.sessionNotOwned]),
+    };
+  }
+
+  /**
+   * Realpath fence for `direction: 'reverse'` fs/terminal capabilities.
+   *
+   * `Runtime.fs.realpath` resolves symlinks and `..`, so a lexical prefix test
+   * (`/repo-evil`.startsWith(`/repo`)) cannot be used to escape the roots. A
+   * path that does not exist yet (a file about to be written) is fenced by its
+   * parent directory, which must exist and be inside a root.
+   */
+  private async checkFence(
+    kind: string,
+    name: string,
+    sessionId: string,
+    input: Record<string, unknown>,
+    ctx: AdapterContext,
+  ): Promise<InvokeResultPayload | undefined> {
+    const roots = this.rootsFor(sessionId);
+    if (roots.length === 0) return undefined; // no declared roots: nothing to fence against
+    const candidate = fenceCandidate(kind, name, input);
+    if (candidate === undefined) return undefined;
+
+    const resolved = await resolveForFence(ctx.runtime, candidate);
+    const rootPaths = await Promise.all(roots.map(async (root) => safeRealpath(ctx.runtime, root)));
+    if (resolved !== undefined && rootPaths.some((root) => root !== undefined && isWithin(resolved, root))) return undefined;
+
+    return {
+      outcome: 'failed',
+      error: {
+        kind: 'denied',
+        message: `ACP reverse ${kind}/${name} rejected: ${candidate} is outside the session workspace roots`,
+        retryable: false,
+        details: { path: candidate, resolved, roots: [...roots] },
+      },
+      lossy: mergeLossy(this.adapterLossy(), [ACP_LOSSY.fenceDenied]),
+    };
+  }
+
+  private rootsFor(sessionId: string): readonly string[] {
+    const source = this.options.workspaceRoots;
+    if (source === undefined) return [];
+    return typeof source === 'function' ? source(sessionId) : source;
+  }
+
   private isSupported(kind: string, name: string, caps: AcpClientCapabilities): boolean {
     if (kind === 'fs') {
       if (name === 'read_text_file') return caps.fs?.readTextFile === true;
@@ -313,6 +399,73 @@ export class AcpAdapter extends AdapterBase {
   private adapterLossy(): string[] {
     return mergeLossy([ACP_LOSSY.noTaskState, ACP_LOSSY.clientOwnedFs], this.options.lossy);
   }
+}
+
+/** The path a reverse capability will touch, when it has one. */
+function fenceCandidate(kind: string, name: string, input: Record<string, unknown>): string | undefined {
+  if (kind === 'fs') {
+    const path = input['path'];
+    return typeof path === 'string' && path.length > 0 ? path : undefined;
+  }
+  if (kind === 'terminal') {
+    // `terminal/create` carries a cwd; the other terminal methods act on a
+    // terminalId already created inside the fence.
+    const cwd = input['cwd'];
+    return typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined;
+  }
+  return undefined;
+}
+
+/** `realpath` that never throws (an unresolvable path is simply not allowed). */
+async function safeRealpath(runtime: Runtime, path: string): Promise<string | undefined> {
+  try {
+    return normalizeSlashes(await runtime.fs.realpath(path));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Resolve a path for fencing.
+ *
+ * An existing path resolves directly; a path that does not exist yet (a file
+ * about to be written) is resolved through its parent directory, which must
+ * itself exist. Anything that cannot be resolved returns `undefined` and is
+ * therefore denied.
+ */
+async function resolveForFence(runtime: Runtime, path: string): Promise<string | undefined> {
+  const direct = await safeRealpath(runtime, path);
+  if (direct !== undefined) return direct;
+  const parent = dirnameOf(path);
+  if (parent === undefined) return undefined;
+  const resolvedParent = await safeRealpath(runtime, parent);
+  if (resolvedParent === undefined) return undefined;
+  const base = basenameOf(path);
+  return base === undefined ? resolvedParent : normalizeSlashes(`${resolvedParent}/${base}`);
+}
+
+function normalizeSlashes(path: string): string {
+  return path.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+}
+
+function dirnameOf(path: string): string | undefined {
+  const normalized = normalizeSlashes(path);
+  const index = normalized.lastIndexOf('/');
+  if (index < 0) return undefined;
+  return index === 0 ? '/' : normalized.slice(0, index);
+}
+
+function basenameOf(path: string): string | undefined {
+  const normalized = normalizeSlashes(path);
+  const index = normalized.lastIndexOf('/');
+  const base = index < 0 ? normalized : normalized.slice(index + 1);
+  return base.length === 0 ? undefined : base;
+}
+
+/** True when `target` is `root` or lives below it (both already resolved). */
+function isWithin(target: string, root: string): boolean {
+  if (target === root) return true;
+  return target.startsWith(root.endsWith('/') ? root : `${root}/`);
 }
 
 /** Parse `acp://<client>/<kind>/<name>`; undefined for malformed ids. */

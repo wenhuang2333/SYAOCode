@@ -171,9 +171,12 @@ export class InMemoryCapabilityRegistry implements CapabilityRegistry {
 
   // ── reads ───────────────────────────────────────────────────────────────
 
-  async get(capabilityId: string): Promise<RegistryEntry | undefined> {
+  async get(capabilityId: string, tenantId?: string): Promise<RegistryEntry | undefined> {
     const entry = this.entries.get(capabilityId);
-    return entry === undefined ? undefined : this.materialize(entry);
+    if (entry === undefined) return undefined;
+    // I8: an entry scoped to another tenant is invisible, not merely absent.
+    if (tenantId !== undefined && !visibleTo(entry, tenantId)) return undefined;
+    return this.materialize(entry);
   }
 
   async list(filter?: { kind?: Capability['kind']; protocol?: string; q?: string; tenantId?: string }): Promise<Capability[]> {

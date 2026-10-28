@@ -67,7 +67,7 @@ export function mcpRequestStateInvalid(reason: string, protocolError?: unknown):
   return new CanonicalError({
     kind: 'unsupported_capability',
     message: `MRTR requestState rejected: ${reason}`,
-    code: 'SY-MCP-004',
+    code: 'SY-MCP-006',
     protocol: 'mcp',
     retryable: false,
     ...(protocolError !== undefined ? { protocolError } : {}),

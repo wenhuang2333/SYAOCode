@@ -201,4 +201,8 @@ export const ACP_LOSSY = {
   clientCapabilityMissing: 'acp-client-capability-missing',
   /** Session history replay only exists on `session/load`. */
   replayOnLoadOnly: 'acp-replay-on-load-only',
+  /** A reverse call was refused because it escaped the session roots. */
+  fenceDenied: 'acp-reverse-fence-denied',
+  /** A reverse call named a session this connection does not own. */
+  sessionNotOwned: 'acp-session-not-owned',
 } as const;

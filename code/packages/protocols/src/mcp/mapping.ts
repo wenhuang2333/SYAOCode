@@ -230,4 +230,10 @@ export const MCP_LOSSY = {
   legacy: 'mcp-legacy',
   /** The host cannot answer an MRTR elicitation → fail closed. */
   mrtrUnsupported: 'mcp-mrtr-unsupported',
+  /**
+   * OAuth 2.1 + RFC 9728 PRM is not implemented (04 M20). HTTP peers that
+   * advertise a protected-resource challenge are refused rather than
+   * half-authenticated.
+   */
+  oauthUnsupported: 'mcp-oauth-prm-unsupported',
 } as const;

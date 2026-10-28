@@ -229,6 +229,13 @@ export interface ApprovalRecord {
   tenantId: string;
   taskId: string;
   invocationId?: string;
+  /**
+   * What this approval authorizes. An approval is bound to the exact
+   * capability AND the exact input hash, so a decision cannot be replayed for
+   * a different call (02 §6 / approval binding).
+   */
+  capabilityId?: string;
+  inputHash?: string;
   subject: ApprovalSubject;
   options: ApprovalOption[];
   authority: ApprovalAuthorityKind;
@@ -249,7 +256,12 @@ export interface ApprovalRecord {
 
 export interface ApprovalDecision {
   optionId: string;
+  /** Who answered: a principal id, or `policy-recheck` / `timeout` / `system`. */
   by: string;
+  /** Tenant of the decider; must match the record (I8/I9). */
+  tenantId?: string;
+  /** Authority the decider acts under; must match the record when given. */
+  authority?: ApprovalAuthorityKind;
   reason?: string;
 }
 
@@ -397,6 +409,16 @@ export interface IdempotencyRecord {
   resultRef?: string;
   result?: unknown;
   error?: CanonicalErrorShape;
+  /**
+   * Retry policy captured at failure time. A failed attempt may only be
+   * retried when it is retryable AND the capability is not non-idempotent —
+   * otherwise a "retry" can duplicate a side effect whose outcome is unknown
+   * (I10 / ADR-R6).
+   */
+  retryable?: boolean;
+  sideEffect?: SideEffect;
+  /** Terminal outcome of the failed attempt, when known. */
+  outcome?: string;
   createdAt: string;
   expiresAt: string;
 }
@@ -529,6 +551,14 @@ export interface CanonicalErrorShape {
   code?: string;
   message: string;
   retryable: boolean;
+  /**
+   * Numeric JSON-RPC code this failure must be reported as on the wire.
+   *
+   * Without it an adapter can only fall back to `-32603`, which silently
+   * destroys protocol-specific errors such as A2A `TaskNotFoundError`
+   * (`-32001`): the peer cannot tell "no such task" from "we crashed".
+   */
+  wireCode?: number;
   /** Raw protocol error, preserved verbatim (adapters must not swallow it). */
   protocolError?: unknown;
   details?: Record<string, unknown>;
