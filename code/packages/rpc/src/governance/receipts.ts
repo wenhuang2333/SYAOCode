@@ -91,6 +91,36 @@ export class MemoryReceiptStore implements ReceiptStore {
     this.hash = opts.hash;
   }
 
+  /**
+   * Load already-sealed receipts, preserving chain order. The chain is
+   * verified while loading: a tampered file must fail loudly instead of
+   * silently becoming the new "trusted" head.
+   */
+  hydrate(rows: readonly Receipt[]): void {
+    for (const receipt of rows) {
+      if (this.byId.has(receipt.id)) continue;
+      const chain = this.chains.get(receipt.taskId) ?? [];
+      const previous = chain.length > 0 ? this.byId.get(chain[chain.length - 1]!) : undefined;
+      const expectedPrev = previous === undefined ? GENESIS_HASH : previous.hash;
+      if ((receipt.prevHash ?? GENESIS_HASH) !== expectedPrev) {
+        throw new Error(`receipt chain for task ${receipt.taskId} is broken at ${receipt.id}`);
+      }
+      // A link's own hash must recompute from its body: comparing prevHash alone
+      // would miss an edited receipt (the links would still "line up").
+      const recomputed = receiptHash(this.hash, receiptBody(receipt), expectedPrev);
+      if (recomputed !== receipt.hash) {
+        throw new Error(`receipt ${receipt.id} does not match its own hash (tampered body)`);
+      }
+      this.byId.set(receipt.id, deepClone(receipt));
+      chain.push(receipt.id);
+      this.chains.set(receipt.taskId, chain);
+    }
+  }
+
+  dump(): Receipt[] {
+    return [...this.byId.values()].map((receipt) => deepClone(receipt));
+  }
+
   async put(receipt: UnsealedReceipt): Promise<Receipt> {
     if (this.byId.has(receipt.id)) throw new Error(`receipt ${receipt.id} already exists (append-only)`);
     const chain = this.chains.get(receipt.taskId) ?? [];

@@ -47,6 +47,24 @@ type Waiter = {
 /** In-memory event log. Hosts may swap in a durable one. */
 export class MemoryEventLog implements EventLog {
   private readonly byTask = new Map<string, CanonicalEvent[]>();
+
+  /**
+   * Load persisted events. Sequence numbers come from the rows themselves, so
+   * a restart continues a task's stream without a gap or a duplicate.
+   */
+  hydrate(events: readonly CanonicalEvent[]): void {
+    for (const event of events) {
+      const rows = this.byTask.get(event.taskId) ?? [];
+      if (rows.some((row) => row.seq === event.seq)) continue;
+      rows.push(deepClone(event));
+      rows.sort((a, b) => a.seq - b.seq);
+      this.byTask.set(event.taskId, rows);
+    }
+  }
+
+  dump(): CanonicalEvent[] {
+    return [...this.byTask.values()].flat().map((event) => deepClone(event));
+  }
   private readonly waiters = new Set<Waiter>();
   private readonly ids: IdGenerator;
   private readonly now: () => string;

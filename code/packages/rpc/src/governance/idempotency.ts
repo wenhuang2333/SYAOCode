@@ -73,6 +73,15 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
     this.defaultTtlMs = opts.defaultTtlMs ?? DEFAULT_IDEMPOTENCY_TTL_MS;
   }
 
+  /** Load persisted records so a restart keeps replay protection. */
+  hydrate(records: readonly IdempotencyRecord[]): void {
+    for (const record of records) this.records.set(record.key, { ...record });
+  }
+
+  dump(): IdempotencyRecord[] {
+    return [...this.records.values()].map((record) => ({ ...record }));
+  }
+
   async begin(key: string, hash: string, ttlMs?: number): Promise<IdempotencyBegin> {
     const existing = this.records.get(key);
     if (existing !== undefined && Date.parse(existing.expiresAt) > Date.parse(this.now())) {

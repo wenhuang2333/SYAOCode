@@ -21,7 +21,8 @@ afterEach(async () => {
 });
 
 function cli(opts: Parameters<typeof createCliFabric>[0] = {}): CliFabric {
-  const created = createCliFabric({ cwd: tmp, permissionMode: 'default', ...opts });
+  // Hermetic by default: a test must never touch the developer's ~/.syaocode.
+  const created = createCliFabric({ cwd: tmp, permissionMode: 'default', home: tmp, persist: false, ...opts });
   made.push(created);
   return created;
 }
@@ -225,13 +226,75 @@ describe('createCliFabric', () => {
 
   it('keeps a per-process singleton, and disposal forgets it', async () => {
     expect(hasCliFabric()).toBe(false);
-    const first = getCliFabric({ cwd: tmp });
-    expect(getCliFabric({ cwd: tmp })).toBe(first);
+    const first = getCliFabric({ cwd: tmp, home: tmp, persist: false });
+    expect(getCliFabric({ cwd: tmp, home: tmp, persist: false })).toBe(first);
     expect(hasCliFabric()).toBe(true);
     await disposeCliFabric();
     expect(hasCliFabric()).toBe(false);
-    const second = getCliFabric({ cwd: tmp });
+    const second = getCliFabric({ cwd: tmp, home: tmp, persist: false });
     expect(second).not.toBe(first);
     await second.dispose();
+  });
+});
+
+// ── C-4: governance records outlive the process ───────────────────────────
+//
+// The audit found that every record lived in memory, so `syao rpc audit` after
+// a `syao -p` run reported "0 checked" — the chain existed but was gone by the
+// time anyone could read it. These tests build two fabrics over the SAME
+// directory to model two CLI processes.
+
+describe('createCliFabric — durable governance records (C-4)', () => {
+  it('a second fabric over the same directory sees the first one\'s audit chain', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-persist-'));
+    try {
+      const first = createCliFabric({ cwd: tmp, permissionMode: 'default', home, persist: true });
+      try {
+        await first.fabric.stores.audit.append({
+          ts: '2026-10-28T00:00:00.000Z',
+          tenantId: 'syaocode-local',
+          actor: { type: 'user', id: 'user:local' },
+          action: 'policy.decide',
+          subject: { type: 'capability', id: 'local://tools/read' },
+          outcome: 'success',
+        });
+      } finally {
+        await first.dispose();
+      }
+
+      // A NEW fabric = a new process.
+      const second = createCliFabric({ cwd: tmp, permissionMode: 'default', home, persist: true });
+      try {
+        const events = await second.fabric.audit.list();
+        expect(events.map((e) => e.action)).toContain('policy.decide');
+        expect((await second.fabric.audit.verify()).ok).toBe(true);
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('persist: false keeps the fabric hermetic (no files written)', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-hermetic-'));
+    try {
+      const c = createCliFabric({ cwd: tmp, permissionMode: 'default', home, persist: false });
+      try {
+        await c.fabric.stores.audit.append({
+          ts: '2026-10-28T00:00:00.000Z',
+          tenantId: 'syaocode-local',
+          actor: { type: 'user', id: 'user:local' },
+          action: 'policy.decide',
+          subject: { type: 'capability', id: 'x' },
+          outcome: 'success',
+        });
+      } finally {
+        await c.dispose();
+      }
+      expect(fs.existsSync(path.join(home, '.syaocode', 'arf'))).toBe(false);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 });

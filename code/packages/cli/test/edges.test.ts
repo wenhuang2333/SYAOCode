@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 function cli(opts: Parameters<typeof createCliFabric>[0] = {}): CliFabric {
-  const created = createCliFabric({ cwd: tmp, home, permissionMode: 'default', ...opts });
+  const created = createCliFabric({ cwd: tmp, home, permissionMode: 'default', persist: false, ...opts });
   made.push(created);
   return created;
 }
