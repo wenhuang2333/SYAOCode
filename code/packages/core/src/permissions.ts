@@ -18,6 +18,36 @@ export interface PermissionRule {
   source: 'user' | 'project' | 'plugin' | 'code';
 }
 
+/**
+ * Durable storage for `remember:'project'` approvals (report C5).
+ *
+ * The kernel must stay host-agnostic, so persistence is injected: the CLI
+ * passes a node-backed store (`.syaocode/permissions.json`), tests pass the
+ * in-memory default. Loaded rules are appended after config rules, so a
+ * remembered allow can never outrank an explicit deny (BR-001).
+ */
+export interface PermissionRuleStore {
+  load(): Promise<PermissionRule[]>;
+  save(rules: PermissionRule[]): Promise<void>;
+}
+
+/** In-memory rule store — the default when no host store is injected. */
+export class MemoryPermissionRuleStore implements PermissionRuleStore {
+  private rules: PermissionRule[];
+
+  constructor(initial: PermissionRule[] = []) {
+    this.rules = [...initial];
+  }
+
+  async load(): Promise<PermissionRule[]> {
+    return [...this.rules];
+  }
+
+  async save(rules: PermissionRule[]): Promise<void> {
+    this.rules = [...rules];
+  }
+}
+
 export interface PermissionRequest {
   /** Stable id for this approval round (event correlation / multi-client answers). */
   id: string;
@@ -25,6 +55,8 @@ export interface PermissionRequest {
   risk: ToolRisk;
   subject: PermissionSubject;
   reason: string;
+  /** 0-based recheck round; absent on the first presentation (report C5). */
+  round?: number;
   /** Sensitive path (e.g. ~/.ssh, workspace .env): approval cannot be remembered for the session. */
   sensitive?: boolean;
   /** Tool call that triggered the request, when executed through the pipeline. */
@@ -68,6 +100,8 @@ export interface EngineOptions {
   /** Called before the approval handler sees a request (event contract v2). */
   onRequestStart?: (req: PermissionRequest) => void;
   onResult?: (id: string, decision: 'allow' | 'deny', by: string) => void;
+  /** Durable store for `remember:'project'` approvals (report C5). */
+  ruleStore?: PermissionRuleStore;
 }
 
 /**
@@ -193,9 +227,36 @@ function classifySegment(seg: string): 'read' | 'write' {
 
 export class PermissionEngine {
   private opts: EngineOptions;
+  /** Resolves once persisted project rules have been merged (report C5). */
+  private readonly ready: Promise<void>;
 
   constructor(opts: EngineOptions) {
     this.opts = opts;
+    this.ready = this.loadPersistedRules();
+  }
+
+  /**
+   * Merge rules remembered for the project by earlier approvals. Persisted
+   * rules are appended, so they can never outrank a config or deny rule:
+   * `matchingRule` walks the list and deny wins first (BR-001).
+   */
+  private async loadPersistedRules(): Promise<void> {
+    const store = this.opts.ruleStore;
+    if (store === undefined) return;
+    try {
+      const persisted = await store.load();
+      if (persisted.length > 0) this.opts = { ...this.opts, rules: [...this.opts.rules, ...persisted] };
+    } catch (e) {
+      // A broken store must not brick the engine: fall back to in-memory rules.
+      this.opts.runtime.logger.log('warn', 'permission: failed to load remembered project rules', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  /** Await pending rule-store hydration (tests and CLI startup use this). */
+  async init(): Promise<void> {
+    await this.ready;
   }
 
   get mode(): PermissionMode {
@@ -288,6 +349,7 @@ export class PermissionEngine {
    * change without recursing into another prompt.
    */
   async policyVerdict(toolName: string, risk: ToolRisk, subject: PermissionSubject): Promise<PolicyVerdict> {
+    await this.ready;
     // Exec risk with a concrete command is refined by classification (FR-043):
     // all-read-only segments count as read; dangerous never gets here (below).
     const commandClass = subject.command !== undefined ? classifyCommand(subject.command) : undefined;
@@ -458,15 +520,20 @@ export class PermissionEngine {
       return deny('SY-PERM-005', `Operation needs approval but no permission handler is configured; treated as deny. (${reason})`);
     }
 
+    // One logical approval keeps ONE id across recheck rounds (report C5):
+    // multi-client hosts correlate answers by id, and a hot policy change
+    // re-presents the same request rather than inventing a new one.
+    const requestId = this.opts.runtime.ids.next('perm');
     let currentRisk = risk;
     let currentReason = reason;
     for (let round = 0; round < PermissionEngine.MAX_APPROVAL_ROUNDS; round += 1) {
       const req: PermissionRequest = {
-        id: this.opts.runtime.ids.next('perm'),
+        id: requestId,
         tool: toolName,
         risk: currentRisk,
         subject,
         reason: currentReason,
+        ...(round > 0 ? { round } : {}),
         ...(sensitive ? { sensitive: true } : {}),
         ...(callId !== undefined ? { callId } : {}),
       };
@@ -479,11 +546,11 @@ export class PermissionEngine {
       if ('recheck' in decision) {
         const now = await this.policyVerdict(toolName, currentRisk, subject);
         if (now.outcome === 'allow') {
-          this.opts.onResult?.(req.id, 'allow', 'user');
+          this.opts.onResult?.(requestId, 'allow', 'user');
           return { outcome: 'allow' };
         }
         if (now.outcome === 'deny') {
-          this.opts.onResult?.(req.id, 'deny', 'user');
+          this.opts.onResult?.(requestId, 'deny', 'user');
           return now;
         }
         // Still ask under the new policy: prompt again with the updated reason.
@@ -494,12 +561,16 @@ export class PermissionEngine {
       }
 
       const by = decision.decision === 'allow' ? 'user' : 'user-deny';
-      this.opts.onResult?.(req.id, decision.decision, by);
+      this.opts.onResult?.(requestId, decision.decision, by);
       if (decision.decision === 'allow') {
+        // C5 remember semantics:
+        //   once    → this call only; deliberately adds NO rule
+        //   session → in-memory rule for the rest of the process
+        //   project → in-memory rule AND persisted through the rule store
         // Sensitive approvals are always one-shot, even if the approver asked
         // to remember them.
         if (!sensitive && (decision.remember === 'project' || decision.remember === 'session')) {
-          this.remember(toolName, subject, decision.remember);
+          await this.remember(toolName, subject, decision.remember);
         }
         return { outcome: 'allow' };
       }
@@ -513,15 +584,53 @@ export class PermissionEngine {
     );
   }
 
-  private remember(toolName: string, subject: PermissionSubject, scope: 'session' | 'project'): void {
-    const rule: PermissionRule = {
+  private async remember(
+    toolName: string,
+    subject: PermissionSubject,
+    scope: 'session' | 'project',
+  ): Promise<void> {
+    const rule = this.rememberedRule(toolName, subject, scope);
+    this.addRules([rule]);
+    if (scope !== 'project') return;
+    const store = this.opts.ruleStore;
+    if (store === undefined) {
+      this.opts.runtime.logger.log('warn', 'permission: project-scope approval could not be persisted (no rule store)', {
+        tool: toolName,
+      });
+      return;
+    }
+    try {
+      const existing = await store.load();
+      await store.save([...existing, rule]);
+    } catch (e) {
+      this.opts.runtime.logger.log('warn', 'permission: failed to persist project-scope approval', {
+        tool: toolName,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  private rememberedRule(
+    toolName: string,
+    subject: PermissionSubject,
+    scope: 'session' | 'project',
+  ): PermissionRule {
+    // A session grant is engine-sourced (it dies with the process); a project
+    // grant is user-sourced because a human approved it explicitly.
+    const match =
+      subject.path !== undefined || subject.command !== undefined || subject.url !== undefined
+        ? {
+            ...(subject.path !== undefined ? { path: subject.path } : {}),
+            ...(subject.command !== undefined ? { command: subject.command } : {}),
+            ...(subject.url !== undefined ? { url: subject.url } : {}),
+          }
+        : undefined;
+    return {
       effect: 'allow',
       tool: toolName,
       source: scope === 'session' ? 'code' : 'user',
-      ...(subject.path !== undefined ? { match: { path: subject.path } } : {}),
-      ...(subject.command !== undefined ? { match: { command: subject.command } } : {}),
+      ...(match !== undefined ? { match } : {}),
     };
-    this.addRules([rule]);
   }
 
   private matchingRule(

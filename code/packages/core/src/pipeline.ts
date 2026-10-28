@@ -1,5 +1,5 @@
 import type { Runtime } from './runtime/index.js';
-import type { ToolRegistry, ToolResultMeta } from './tool.js';
+import type { SandboxLevel, ToolRegistry, ToolResultMeta, TrustLevel } from './tool.js';
 import type { PermissionEngine } from './permissions.js';
 import type { ToolCall, ToolResultBlock, ToolResultContent } from './types.js';
 import { SyaoError, ToolError } from './errors/syao-error.js';
@@ -10,7 +10,7 @@ import {
   type ReceiptStore,
   type ToolReceipt,
 } from './evidence.js';
-import { contentHash } from './hash.js';
+import { sha256Hex } from './hash.js';
 
 /**
  * Tool execution pipeline (DD-4, BR-025):
@@ -55,6 +55,9 @@ export async function executeToolCall(
   const textOf = (content: ToolResultContent[]): string =>
     content.filter((c): c is Extract<ToolResultContent, { type: 'text' }> => c.type === 'text').map((c) => c.text).join('\n');
 
+  /** Trust the resolved tool declares for its own results (report C4). */
+  let declaredTrust: TrustLevel | undefined;
+
   const finish = async (
     toolName: string,
     content: ToolResultContent[],
@@ -63,7 +66,10 @@ export async function executeToolCall(
     truncated = false,
   ): Promise<ToolResultBlock> => {
     const fullText = textOf(content);
-    let outputHash = contentHash(fullText);
+    // Governance-facing digest: SHA-256, never the FNV `contentHash` that
+    // read-before-write fencing uses (report C6).
+    const hasher = runtime.hash?.sha256 ?? sha256Hex;
+    let outputHash = hasher(fullText);
     let outputRef: string | undefined;
     if (opts.receipts !== undefined) {
       try {
@@ -76,12 +82,17 @@ export async function executeToolCall(
     }
     const command = meta.command;
     const testStats = meta.testStats ?? (command !== undefined ? parseTestStats(fullText) : undefined);
+    // C4: real provenance instead of the previous hardcoded pair. Precedence:
+    // the tool's per-result meta, then the tool's declared trust, then the
+    // local-workspace default.
+    const trust: TrustLevel = meta.trust ?? declaredTrust ?? 'workspace';
+    const sandbox: SandboxLevel = meta.sandbox ?? 'none';
     const receipt: ToolReceipt = {
       callId: call.id,
       tool: toolName,
       timestamp: started,
       durationMs: runtime.clock.now() - started,
-      inputHash: receiptInputHash(call.input ?? {}),
+      inputHash: receiptInputHash(call.input ?? {}, hasher),
       outputHash,
       ...(outputRef !== undefined ? { outputRef } : {}),
       outputChars: fullText.length,
@@ -91,8 +102,8 @@ export async function executeToolCall(
       ...(command !== undefined ? { command } : {}),
       ...(meta.paths !== undefined ? { paths: meta.paths } : {}),
       ...(testStats !== undefined ? { testStats } : {}),
-      trust: meta.trust ?? 'workspace',
-      sandbox: 'none',
+      trust,
+      sandbox,
     };
     opts.events?.onToolReceipt?.(receipt);
     const block: ToolResultBlock = {
@@ -100,6 +111,9 @@ export async function executeToolCall(
       toolUseId: call.id,
       content,
       ...(isError ? { isError: true } : {}),
+      // Only the two wire-visible levels are stamped: local workspace results
+      // keep the historical unset value so existing consumers are unaffected.
+      ...(trust === 'untrusted' ? { trust: 'untrusted' as const } : trust === 'trusted' ? { trust: 'trusted' as const } : {}),
     };
     opts.events?.onToolResult?.(call.id, toolName, content, isError, receipt.durationMs);
     return block;
@@ -123,7 +137,7 @@ export async function executeToolCall(
       true,
     );
   }
-
+  declaredTrust = tool.trust;
   // ── validate: args against Zod schema ──
   const parsed = tool.inputSchema.safeParse(call.input ?? {});
   if (!parsed.success) {

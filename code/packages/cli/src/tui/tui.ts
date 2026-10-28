@@ -51,6 +51,7 @@ import { userErrorMessage, userEventErrorText } from '../error-text.js';
 import {
   commandDocs,
   helpText,
+  isAvailableDoc,
   parseInlinePermissionSetting,
   parsePermissionAnswer,
   parsePermissionArg,
@@ -151,6 +152,15 @@ import {
   statusPanel,
   toolsPanel,
 } from '../views.js';
+import { disposeCliFabric, getCliFabric, hasCliFabric, type CliFabric } from '../arf.js';
+import {
+  handleApproveSlash,
+  handleCallSlash,
+  handlePeerSlash,
+  handleRpcSlash,
+  handleServeSlash,
+  type SlashConsole,
+} from '../rpc-command.js';
 
 const ANSI = {
   dim: (s: string) => `\x1b[2m${s}\x1b[22m`,
@@ -1277,6 +1287,39 @@ export async function runTui(opts: TuiOptions): Promise<number> {
 
   // ── 斜杠命令（移植自 REPL，交互改用 promptUser） ────────────────────
 
+  // ARF 治理控制台：fabric 为进程单例；权限档位变化时重建，
+  // 保证面板解释的始终是当前生效的策略。
+  let fabricMode: PermissionMode | undefined;
+
+  function governanceCli(): CliFabric {
+    if (fabricMode !== agent.engine.mode) {
+      if (hasCliFabric()) void disposeCliFabric();
+      fabricMode = agent.engine.mode;
+    }
+    return getCliFabric({ cwd, permissionMode: agent.engine.mode, rules: sessionRules });
+  }
+
+  function governanceConsole(): SlashConsole {
+    return {
+      cli: governanceCli(),
+      print: (lines) => {
+        printPanelLines(typeof lines === 'string' ? [lines] : lines);
+      },
+      printError: (text) => {
+        printAbove(`${ANSI.yellow(text)}\n`);
+      },
+      background: (task) => {
+        void task()
+          .then((lines) => {
+            printPanelLines(lines);
+          })
+          .catch((e: unknown) => {
+            printAbove(`${ANSI.red(userErrorMessage(e))}\n`);
+          });
+      },
+    };
+  }
+
   async function handleSlash(cmd: { name: string; args: string[] }): Promise<void> {
     switch (cmd.name) {
       case '/help':
@@ -1285,11 +1328,30 @@ export async function runTui(opts: TuiOptions): Promise<number> {
         } else {
           printPanelLines(
             helpPanel(
-              commandDocs().filter((c) => c.since === 'v0.1').map((c) => ({ usage: c.usage, summary: c.summary })),
-              commandDocs().filter((c) => c.since !== 'v0.1').map((c) => ({ name: c.name, summary: c.summary, since: c.since })),
+              commandDocs().filter(isAvailableDoc).map((c) => ({ usage: c.usage, summary: c.summary })),
+              commandDocs().filter((c) => !isAvailableDoc(c)).map((c) => ({ name: c.name, summary: c.summary, since: c.since })),
             ),
           );
         }
+        return;
+      case '/rpc':
+        await handleRpcSlash(cmd.args, governanceConsole());
+        return;
+      case '/approve':
+        await handleApproveSlash(cmd.args, governanceConsole());
+        return;
+      case '/peer':
+        await handlePeerSlash(cmd.args, governanceConsole());
+        return;
+      case '/mcp':
+        // /mcp 继续可用：现在是 /peer 的 MCP 专用视图。
+        await handlePeerSlash(cmd.args, governanceConsole(), { forceProtocol: 'mcp' });
+        return;
+      case '/call':
+        await handleCallSlash(cmd.args, governanceConsole());
+        return;
+      case '/serve':
+        await handleServeSlash(cmd.args, governanceConsole());
         return;
       case '/exit':
       case '/quit':
@@ -1373,10 +1435,9 @@ export async function runTui(opts: TuiOptions): Promise<number> {
         );
         return;
       }
-      case '/mcp':
       case '/goal':
       case '/rewind': {
-        const doc = { '/mcp': t('milestone.mcp'), '/goal': t('milestone.goal'), '/rewind': t('milestone.rewind') }[cmd.name];
+        const doc = { '/goal': t('milestone.goal'), '/rewind': t('milestone.rewind') }[cmd.name];
         printAbove(`${ANSI.yellow(t('milestone.placeholder', { cmd: cmd.name, doc }))}\n`);
         return;
       }

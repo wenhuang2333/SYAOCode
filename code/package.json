@@ -17,16 +17,20 @@
   "scripts": {
     "start": "tsx packages/cli/src/main.ts",
     "cli": "tsx packages/cli/src/main.ts",
-    "build": "pnpm --filter @syaocode/core run build && pnpm --filter @syaocode/node run build && pnpm --filter \"@syaocode/providers\" --filter \"@syaocode/tools\" --filter \"@syaocode/testing\" run build && pnpm --filter syaocode run build",
-    "typecheck": "pnpm -r --filter './packages/*' run typecheck",
-    "test": "pnpm -r --filter './packages/*' run test",
+    "build": "pnpm --filter @syaocode/core run build && pnpm --filter @syaocode/node run build && pnpm --filter @syaocode/rpc run build && pnpm --filter @syaocode/protocols run build && pnpm --filter \"@syaocode/providers\" --filter \"@syaocode/tools\" --filter \"@syaocode/testing\" run build && pnpm --filter syaocode run build",
+    "typecheck": "pnpm -r --workspace-concurrency=2 --filter './packages/*' run typecheck",
+    "test": "pnpm -r --workspace-concurrency=2 --filter './packages/*' run test",
     "test:evals": "pnpm exec tsx evals/run-eval.ts",
     "lint:registry": "pnpm exec tsx scripts/check-error-registry.ts",
-    "lint:core": "pnpm exec tsx scripts/check-core-purity.ts"
+    "lint:core": "pnpm exec tsx scripts/check-core-purity.ts",
+    "lint:rpc": "pnpm exec tsx scripts/check-rpc-boundaries.ts",
+    "lint": "pnpm run lint:registry && pnpm run lint:core && pnpm run lint:rpc"
   },
   "devDependencies": {
     "@syaocode/core": "workspace:*",
     "@syaocode/node": "workspace:*",
+    "@syaocode/protocols": "workspace:*",
+    "@syaocode/rpc": "workspace:*",
     "@syaocode/testing": "workspace:*",
     "@syaocode/tools": "workspace:*",
     "tsx": "^4.19.0"

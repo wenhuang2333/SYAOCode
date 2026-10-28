@@ -56,6 +56,15 @@ import { readWorkspaceUsage, recordUsage, usageFilePath } from './usage-store.js
 import { getLanguage, isLang, languageName, t, type Lang } from './i18n/index.js';
 import { userErrorMessage, userErrorText, userEventErrorText } from './error-text.js';
 import { cliModelSpec, createCliRedactor, loadCliConfig } from './effective-config.js';
+import { disposeCliFabric, getCliFabric, hasCliFabric, type CliFabric } from './arf.js';
+import {
+  handleApproveSlash,
+  handleCallSlash,
+  handlePeerSlash,
+  handleRpcSlash,
+  handleServeSlash,
+  type SlashConsole,
+} from './rpc-command.js';
 
 /**
  * Interactive REPL (FR-130 / FR-137 subset). Readline-based: streaming
@@ -331,6 +340,42 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
     output.write(ANSI.dim(`${t('error.exitCode', { code })}\n${out.slice(0, 2000)}`));
   }
 
+  // ── ARF governance console (/rpc /peer /call /serve /approve) ──────────
+  // The fabric is a process singleton; it is rebuilt when the permission tier
+  // changes so the console always explains the policy that is actually live.
+  let fabricMode: PermissionMode | undefined;
+
+  function governanceCli(): CliFabric {
+    if (fabricMode !== agent.engine.mode) {
+      if (hasCliFabric()) void disposeCliFabric();
+      fabricMode = agent.engine.mode;
+    }
+    return getCliFabric({ cwd, permissionMode: agent.engine.mode, rules: sessionRules });
+  }
+
+  function governanceConsole(): SlashConsole {
+    return {
+      cli: governanceCli(),
+      print: (lines) => {
+        output.write(`${typeof lines === 'string' ? lines : lines.join('\n')}\n`);
+      },
+      printError: (text) => {
+        output.write(ANSI.yellow(`${text}\n`));
+      },
+      background: (task) => {
+        void task()
+          .then((lines) => {
+            output.write(`${lines.join('\n')}\n`);
+            safePrompt();
+          })
+          .catch((e: unknown) => {
+            output.write(ANSI.red(`${userErrorText(e)}\n`));
+            safePrompt();
+          });
+      },
+    };
+  }
+
   // ── slash handlers ─────────────────────────────────────────────────────
 
   async function handleSlash(cmd: { name: string; args: string[] }): Promise<void> {
@@ -377,13 +422,30 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
       case '/manage':
         output.write(ANSI.yellow(`${t('config.tuiOnly', { cmd: cmd.name })}\n`));
         return;
-      case '/agents':
+      case '/rpc':
+        await handleRpcSlash(cmd.args, governanceConsole());
+        return;
+      case '/approve':
+        await handleApproveSlash(cmd.args, governanceConsole());
+        return;
+      case '/peer':
+        await handlePeerSlash(cmd.args, governanceConsole());
+        return;
       case '/mcp':
+        // /mcp stays a working name: it is now the MCP-only view of /peer.
+        await handlePeerSlash(cmd.args, governanceConsole(), { forceProtocol: 'mcp' });
+        return;
+      case '/call':
+        await handleCallSlash(cmd.args, governanceConsole());
+        return;
+      case '/serve':
+        await handleServeSlash(cmd.args, governanceConsole());
+        return;
+      case '/agents':
       case '/goal':
       case '/rewind': {
         const doc = {
           '/agents': t('milestone.agents'),
-          '/mcp': t('milestone.mcp'),
           '/goal': t('milestone.goal'),
           '/rewind': t('milestone.rewind'),
         }[cmd.name];
@@ -726,6 +788,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
   } finally {
     output.write(ANSI.dim(`\n${t('goodbye')}\n`));
     rl.close();
+    if (hasCliFabric()) await disposeCliFabric();
   }
   return 0;
 }

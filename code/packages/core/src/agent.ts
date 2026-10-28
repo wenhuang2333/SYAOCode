@@ -1,9 +1,23 @@
 import type { Runtime } from './runtime/index.js';
-import { EventBus, type AgentEvent, type AgentEventBody, type EndReason, type PermissionMode } from './events.js';
+import {
+  AGENT_EVENT_SCHEMA_VERSION,
+  EventBus,
+  type AgentEvent,
+  type AgentEventBody,
+  type EndReason,
+  type EventSink,
+  type PermissionMode,
+} from './events.js';
 import type { Provider, ToolDefinition } from './provider.js';
 import { DEFAULT_RETRY_POLICY, withRetry, type RetryPolicy } from './provider.js';
 import { ToolRegistry, type Tool } from './tool.js';
-import { PermissionEngine, classifyCommand, type PermissionHandler, type PermissionRule } from './permissions.js';
+import {
+  PermissionEngine,
+  classifyCommand,
+  type PermissionHandler,
+  type PermissionRule,
+  type PermissionRuleStore,
+} from './permissions.js';
 import { executeToolCall } from './pipeline.js';
 import type { ContextConfig } from './context.js';
 import { assembleSystemPrompt, estimateMessagesTokens } from './context.js';
@@ -56,6 +70,15 @@ export interface AgentConfig {
   receipts?: ReceiptStore;
   /** Automatic verification after a completed run (report v0.2.5). */
   verification?: VerificationOptions;
+  /**
+   * Out-of-band event channel (report C3). Sinks receive every event
+   * synchronously at production time, so an approval request is visible to
+   * subscribers *before* the permission handler is awaited (report C1).
+   * The agent never closes a sink; call `flush()`/`close()` from the host.
+   */
+  eventSink?: EventSink;
+  /** Persisted `remember:'project'` approvals, reloaded per run (report C5). */
+  permissionRuleStore?: PermissionRuleStore;
   /** 工具开始执行的即时回调：事件流仍按批次有序（tool.start 在批次结束后才 yield），
    *  UI 可用这个回调实时更新"正在做什么"（阶段行）。 */
   onToolStart?: (info: { callId: string; name: string; input: unknown }) => void;
@@ -121,15 +144,17 @@ export function createAgent(config: AgentConfig): Agent {
   const sessionId = runtime.ids.next('ses');
   const history: Message[] = [];
   const bus = new EventBus();
+  const sinks: EventSink[] = config.eventSink !== undefined ? [config.eventSink] : [];
 
   /** Set for the duration of one run(); approval callbacks use it to stamp envelopes. */
   let activeRun:
     | {
         emit: (body: AgentEventBody, meta?: { causationId?: string; turnId?: string }, callId?: string) => void;
+        /** Approval path (C1): never buffered, delivered before the handler is awaited. */
+        emitImmediate: (body: AgentEventBody, meta?: { causationId?: string; turnId?: string }) => void;
         notePermission: (decision: 'allow' | 'deny') => void;
       }
     | undefined;
-  const permissionCalls = new Map<string, string>();
 
   const extraRoots = (config.extraDirs ?? []).map((d) => (d.startsWith('/') ? d : `${cwd}/${d}`));
   const engine = new PermissionEngine({
@@ -138,21 +163,19 @@ export function createAgent(config: AgentConfig): Agent {
     workspaceRoots: [cwd, ...extraRoots],
     runtime,
     ...(config.permissionHandler !== undefined ? { onRequest: config.permissionHandler } : {}),
+    ...(config.permissionRuleStore !== undefined ? { ruleStore: config.permissionRuleStore } : {}),
     onRequestStart: (req) => {
-      if (req.callId !== undefined) permissionCalls.set(req.id, req.callId);
-      activeRun?.emit(
+      // C1: an approval prompt must reach subscribers *before* the handler is
+      // awaited — otherwise a multi-client host cannot answer it at all.
+      activeRun?.emitImmediate(
         { type: 'permission.request', id: req.id, request: req },
         { causationId: req.id },
-        req.callId,
       );
     },
     onResult: (id, decision, by) => {
-      const callId = permissionCalls.get(id);
-      permissionCalls.delete(id);
-      activeRun?.emit(
+      activeRun?.emitImmediate(
         { type: 'permission.result', id, decision, by },
         { causationId: id },
-        callId,
       );
       activeRun?.notePermission(decision);
     },
@@ -177,12 +200,41 @@ export function createAgent(config: AgentConfig): Agent {
     let seq = 0;
     let currentTurnId: string | undefined;
     let permissionDenied = false;
+    /** Session the envelopes belong to; updated by the resume branch. */
+    let envelopeSessionId = sessionId;
     const pendingByCall = new Map<string, AgentEvent[]>();
+    /**
+     * Approval events bypass the per-call batch buffer (report C1): they are
+     * queued here and surfaced by the generator's drain loop the moment they
+     * are produced, so `permission.request` is observable *before* the
+     * permission handler is awaited.
+     */
+    const immediateQueue: AgentEvent[] = [];
+    let immediateWake: (() => void) | undefined;
+    const queueImmediate = (event: AgentEvent): void => {
+      immediateQueue.push(event);
+      const wake = immediateWake;
+      immediateWake = undefined;
+      wake?.();
+    };
+
+    /** Fan out one produced event to the bus and to every sink (report C3). */
+    const publish = (event: AgentEvent): void => {
+      bus.emit(event);
+      for (const sink of sinks) {
+        try {
+          const r = sink.emit(event);
+          if (r instanceof Promise) void r.catch(() => undefined);
+        } catch {
+          /* a broken sink must never fail a run */
+        }
+      }
+    };
     const buffer = (callId: string, event: AgentEvent): void => {
       const list = pendingByCall.get(callId) ?? [];
       list.push(event);
       pendingByCall.set(callId, list);
-      bus.emit(event);
+      publish(event);
     };
     const stamp = (
       body: AgentEventBody,
@@ -194,25 +246,78 @@ export function createAgent(config: AgentConfig): Agent {
         ...body,
         seq,
         runId,
+        schemaVersion: AGENT_EVENT_SCHEMA_VERSION,
+        ts: runtime.clock.now(),
+        sessionId: envelopeSessionId,
         ...(turnId !== undefined ? { turnId } : {}),
         ...(meta.causationId !== undefined ? { causationId: meta.causationId } : {}),
       } as AgentEvent;
     };
     const out = (body: AgentEventBody, meta: { causationId?: string; turnId?: string } = {}): AgentEvent => {
       const event = stamp(body, meta);
-      bus.emit(event);
+      publish(event);
       return event;
     };
     activeRun = {
       emit: (body, meta = {}, callId) => {
         const event = stamp(body, meta);
         if (callId !== undefined) buffer(callId, event);
-        else bus.emit(event);
+        else publish(event);
+      },
+      emitImmediate: (body, meta = {}) => {
+        const event = stamp(body, meta);
+        // Subscribers see it now (before the handler is awaited) …
+        publish(event);
+        // … and the run generator yields it as soon as it regains control.
+        queueImmediate(event);
       },
       notePermission: (decision) => {
         if (decision === 'deny') permissionDenied = true;
       },
     };
+
+    /**
+     * Await a batch while yielding the approval events that arrive during it.
+     *
+     * The tool calls run concurrently, so the permission handler is awaited
+     * inside `Promise.all`. Without this drain the `permission.request` event
+     * would only reach the consumer after the whole batch settled — which is
+     * exactly the defect report C1 describes: a multi-client host cannot
+     * answer a prompt it has not seen yet.
+     */
+    async function* drainBatch<R>(running: Promise<R[]>): AsyncGenerator<AgentEvent, R[]> {
+      let done = false;
+      let result: R[] = [];
+      const settled = running.then(
+        (r) => {
+          result = r;
+          done = true;
+          immediateWake?.();
+        },
+        (e) => {
+          done = true;
+          immediateWake?.();
+          throw e;
+        },
+      );
+      void settled.catch(() => undefined);
+      for (;;) {
+        while (immediateQueue.length > 0) {
+          const next = immediateQueue.shift();
+          if (next !== undefined) yield next;
+        }
+        if (done) break;
+        // Wait for either the next approval event or the batch completion.
+        await new Promise<void>((resolve) => {
+          immediateWake = () => resolve();
+        });
+      }
+      while (immediateQueue.length > 0) {
+        const next = immediateQueue.shift();
+        if (next !== undefined) yield next;
+      }
+      return result;
+    }
 
     // ── resume ──
     let resumedSessionId = sessionId;
@@ -225,6 +330,7 @@ export function createAgent(config: AgentConfig): Agent {
         }
       }
       resumedSessionId = opts.sessionId;
+      envelopeSessionId = resumedSessionId;
     }
 
     // ── seed input ──
@@ -435,45 +541,56 @@ export function createAgent(config: AgentConfig): Agent {
         }
 
         // ── execute calls in batches (BR-008 / BR-009) ──
-        // Events fire from inside executeToolCall / the permission engine, so
-        // they are buffered per call and yielded in call order after each batch.
+        // Tool events fire from inside executeToolCall, so they are buffered
+        // per call and yielded in call order after each batch. Approval events
+        // are NOT buffered (report C1): they are yielded the moment they are
+        // produced, i.e. before the permission handler is awaited.
         const results: ToolResultBlock[] = [];
         const batches = planBatches(calls, registry);
         for (const batch of batches) {
           if (signal.aborted) break;
-          const executed = await Promise.all(
-            batch.map((call) =>
-              executeToolCall(call, registry, engine, runtime, {
-                cwd,
-                signal,
-                ...(config.redactor !== undefined ? { redactor: config.redactor } : {}),
-                ...(config.receipts !== undefined ? { receipts: config.receipts } : {}),
-                events: {
-                  onToolStart: (callId, name, input) => {
-                    config.onToolStart?.({ callId, name, input });
-                    buffer(callId, stamp({ type: 'tool.start', callId, name, input }, { causationId: callId }));
-                  },
-                  onToolProgress: (callId, note) =>
-                    buffer(callId, stamp({ type: 'tool.progress', callId, note }, { causationId: callId })),
-                  onToolResult: (callId, name, content, isError, durationMs) =>
-                    buffer(
-                      callId,
-                      stamp(
-                        { type: 'tool.result', callId, name, content, isError, durationMs },
-                        { causationId: callId },
+          let executed: ToolResultBlock[] = [];
+          const drained = drainBatch(
+            Promise.all(
+              batch.map((call) =>
+                executeToolCall(call, registry, engine, runtime, {
+                  cwd,
+                  signal,
+                  ...(config.redactor !== undefined ? { redactor: config.redactor } : {}),
+                  ...(config.receipts !== undefined ? { receipts: config.receipts } : {}),
+                  events: {
+                    onToolStart: (callId, name, input) => {
+                      config.onToolStart?.({ callId, name, input });
+                      buffer(callId, stamp({ type: 'tool.start', callId, name, input }, { causationId: callId }));
+                    },
+                    onToolProgress: (callId, note) =>
+                      buffer(callId, stamp({ type: 'tool.progress', callId, note }, { causationId: callId })),
+                    onToolResult: (callId, name, content, isError, durationMs) =>
+                      buffer(
+                        callId,
+                        stamp(
+                          { type: 'tool.result', callId, name, content, isError, durationMs },
+                          { causationId: callId },
+                        ),
                       ),
-                    ),
-                  onToolReceipt: (receipt) => {
-                    runReceipts.push(receipt);
-                    buffer(
-                      receipt.callId,
-                      stamp({ type: 'tool.receipt', receipt }, { causationId: receipt.callId }),
-                    );
+                    onToolReceipt: (receipt) => {
+                      runReceipts.push(receipt);
+                      buffer(
+                        receipt.callId,
+                        stamp({ type: 'tool.receipt', receipt }, { causationId: receipt.callId }),
+                      );
+                    },
                   },
-                },
-              }),
+                }),
+              ),
             ),
           );
+          let step = await drained.next();
+          while (!step.done) {
+            yield step.value;
+            step = await drained.next();
+          }
+          executed = step.value ?? [];
           results.push(...executed);
           for (const call of batch) {
             for (const ev of pendingByCall.get(call.id) ?? []) yield ev;

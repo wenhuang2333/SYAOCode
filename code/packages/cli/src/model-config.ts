@@ -125,6 +125,19 @@ export interface ModelProfile {
   updatedAt: number;
 }
 
+/** 协议边（/peer、`syao mcp add`）：MCP server / A2A agent / ACP client */
+export interface PeerConfig {
+  /** 协议：mcp（stdio 命令）/ a2a（agent card URL）/ acp（客户端） */
+  protocol: 'mcp' | 'a2a' | 'acp';
+  /** 目标：mcp/acp 为命令行，a2a 为 agent card URL */
+  target: string;
+  /** 面板里显示的名称 */
+  label?: string;
+  /** 令牌的环境变量名（令牌本体永不写入配置文件） */
+  tokenEnv?: string;
+  addedAt: number;
+}
+
 export interface UserConfigFile {
   model?: UserModelConfig;
   permissionMode?: 'strict' | 'default' | 'acceptEdits' | 'plan' | 'bypass';
@@ -136,6 +149,8 @@ export interface UserConfigFile {
   agentGroups?: Record<string, AgentGroup>;
   /** 当前激活的 agent 群（/model use @群名 或 --agents 设置） */
   activeAgentGroup?: string;
+  /** 协议边注册表（/peer、`syao mcp add`）：MCP server / A2A agent / ACP client */
+  peers?: Record<string, PeerConfig>;
 }
 
 /** 已保存的 CLI 语言（缺省英语） */

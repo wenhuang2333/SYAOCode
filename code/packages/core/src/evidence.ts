@@ -1,5 +1,5 @@
 import type { Runtime } from './runtime/index.js';
-import { contentHash } from './hash.js';
+import { contentHash, sha256Hex } from './hash.js';
 
 /**
  * Evidence ledger MVP (report §12 / v0.2.5).
@@ -7,9 +7,22 @@ import { contentHash } from './hash.js';
  * Every tool call leaves a receipt. Outputs are content-addressed so a report
  * can show the actual bytes, not just a hash; `scope` distinguishes related
  * tests from a full run so wording can stay honest.
+ *
+ * Hashing split (report C6): the audit/evidence chain and receipt digests use
+ * SHA-256, while `contentHash` (FNV-1a) remains only for read-before-write
+ * fencing in @syaocode/tools.
  */
 
+/** SHA-256 digest of a string — the governance-facing hash. */
+export type Sha256 = (text: string) => string;
+
+/** Default governance hasher: the dependency-free SHA-256 from ./hash.js. */
+export const defaultSha256: Sha256 = sha256Hex;
+
 export type TrustLevel = 'trusted' | 'workspace' | 'untrusted';
+
+/** Isolation a tool actually ran under (receipt `sandbox`, report C4). */
+export type SandboxLevel = 'none' | 'platform' | 'container';
 
 export interface TestStats {
   total: number;
@@ -30,8 +43,9 @@ export interface ReceiptStore {
 
 export class MemoryReceiptStore implements ReceiptStore {
   readonly entries = new Map<string, string>();
+  constructor(private readonly hasher: Sha256 = defaultSha256) {}
   async put(text: string): Promise<StoredOutput> {
-    const hash = contentHash(text);
+    const hash = this.hasher(text);
     const ref = `mem://${hash}`;
     if (!this.entries.has(ref)) this.entries.set(ref, text);
     return { hash, ref };
@@ -59,7 +73,7 @@ export interface ToolReceipt {
   paths?: string[];
   testStats?: TestStats;
   trust: TrustLevel;
-  sandbox: 'none' | 'platform' | 'container';
+  sandbox: SandboxLevel;
 }
 
 export interface VerificationResult {
@@ -81,9 +95,15 @@ export interface VerificationReport {
   baseline?: VerificationResult[];
 }
 
-export function receiptInputHash(input: unknown): string {
-  return contentHash(stableStringify(input));
+export function receiptInputHash(input: unknown, hasher: Sha256 = defaultSha256): string {
+  return hasher(stableStringify(input));
 }
+
+/**
+ * FNV digest retained for read-before-write fencing only (report C6). Tool
+ * result hashes, receipts and audit chains must use SHA-256.
+ */
+export { contentHash as fencingHash };
 
 /** Deterministic JSON for hashing receipts (key order independent). */
 export function stableStringify(value: unknown): string {

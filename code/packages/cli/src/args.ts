@@ -28,9 +28,15 @@ export interface CliArgs {
   noBoot: boolean;
   /** Activate a saved agent group at startup (its common role drives the session). */
   agents?: string;
-  command?: 'exec' | 'doctor' | 'config' | 'verify' | 'version' | 'help';
+  command?: 'exec' | 'doctor' | 'config' | 'verify' | 'version' | 'help' | 'serve' | 'call' | 'rpc' | 'mcp';
   configSub?: 'list' | 'get' | 'path';
   verifySub?: 'init';
+  /**
+   * Raw argv after an ARF subcommand (`rpc` / `call` / `mcp` / `serve`).
+   * The sub-commands parse their own flags — the global parser stops here so
+   * `syao call x --input @f.json` never sees `--input`.
+   */
+  subArgv: string[];
   /** Overwrite an existing .syaocode/verify.json (syao verify init). */
   force?: boolean;
 }
@@ -85,6 +91,7 @@ export function parseArgs(argv: string[]): CliArgs {
     disallowedTools: [],
     verbose: false,
     noBoot: false,
+    subArgv: [],
   };
   let i = 0;
   const next = (flag: string): string => {
@@ -129,6 +136,20 @@ export function parseArgs(argv: string[]): CliArgs {
       case '--help':
       case '-h':
         args.command = 'help';
+        break;
+      // ── ARF subcommands (v0.3): the rest of argv belongs to the subcommand ──
+      case 'rpc':
+      case 'call':
+      case 'mcp':
+      case 'serve':
+        if (args.positional.length > 0) {
+          // A prompt already started: this token is prose, not a subcommand.
+          args.positional.push(a);
+          break;
+        }
+        args.command = a;
+        args.subArgv = argv.slice(i + 1);
+        i = argv.length;
         break;
       case '--output-format': {
         const v = next(a);

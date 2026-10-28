@@ -16,6 +16,7 @@ import {
   type ShellSpawnOptions,
   type StoredOutput,
 } from '@syaocode/core';
+import { nodeHasher } from './hasher.js';
 
 export type { HttpResponse } from '@syaocode/core';
 
@@ -65,7 +66,7 @@ class NodeShell implements Shell {
       cwd: opts.cwd,
       env: opts.env === undefined ? process.env : { ...process.env, ...opts.env },
       detached: opts.detached === true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [opts.stdin === true ? 'pipe' : 'ignore', 'pipe', 'pipe'],
     });
     let settled = false;
     const exited = new Promise<number>((resolve) => {
@@ -92,10 +93,26 @@ class NodeShell implements Shell {
       if (buffer.length > 0) yield buffer;
     }
 
+    /**
+     * Raw byte chunks, verbatim.
+     *
+     * `lines()` above is lossy by design (it eats the newlines), which breaks
+     * any header/body framing such as MCP's `Content-Length: N\r\n\r\n<body>`.
+     * Protocol edges read this stream instead.
+     */
+    async function* chunks(stream: NodeJS.ReadableStream | null): AsyncIterable<Uint8Array> {
+      if (stream === null) return;
+      for await (const chunk of stream) {
+        yield chunk instanceof Uint8Array ? chunk : Buffer.from(String(chunk));
+      }
+    }
+
     const handle: ProcessHandle = {
       pid: child.pid,
       stdout: lines(child.stdout),
       stderr: lines(child.stderr),
+      stdoutChunks: chunks(child.stdout),
+      stderrChunks: chunks(child.stderr),
       exited,
       kill(signal: 'SIGTERM' | 'SIGKILL' = 'SIGTERM'): void {
         if (child.exitCode === null && !child.killed) {
@@ -111,6 +128,20 @@ class NodeShell implements Shell {
         }
       },
     };
+    // stdio protocol edges (MCP/ACP) need to write frames back to the peer.
+    // Only expose the writer when a pipe was actually requested, so a handle
+    // never advertises a channel it cannot use.
+    if (opts.stdin === true && child.stdin !== null) {
+      const stdinStream = child.stdin;
+      handle.stdin = {
+        write(data: string): void {
+          if (!stdinStream.destroyed) stdinStream.write(data);
+        },
+        end(): void {
+          if (!stdinStream.destroyed) stdinStream.end();
+        },
+      };
+    }
 
     if (opts.signal !== undefined) {
       const onAbort = () => handle.kill('SIGKILL');
@@ -187,7 +218,6 @@ class NodeIds implements IdGenerator {
 export function sha256Hex(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
-
 /** Content-addressed evidence store: <baseDir>/<sha256>. */
 export function createFileReceiptStore(runtime: Runtime, baseDir: string): ReceiptStore {
   return {
@@ -217,5 +247,50 @@ export function nodeRuntime(overrides?: { logger?: Logger }): Runtime {
     logger: overrides?.logger ?? noopLogger,
     env: new NodeEnv(),
     ids: new NodeIds(),
+    hash: nodeHasher,
   };
 }
+
+// ── Agent RPC host extensions (03 §3.5) ───────────────────────────────────
+export { createNodeHasher, createVerifiedHasher, nodeHasher } from './hasher.js';
+export { createFileEventSink } from './event-sink.js';
+export type { FileEventSinkOptions } from './event-sink.js';
+export { StdioTransportError, createStdioTransport, decodeJsonRpcFrames, encodeFrame } from './stdio.js';
+export type { StdioFrame, StdioFraming, StdioTransport, StdioTransportOptions } from './stdio.js';
+export { createHttpServer, sseChannel } from './http-server.js';
+export type {
+  HttpRequestLike,
+  HttpResponseLike,
+  HttpServerHandle,
+  HttpServerOptions,
+  SseChannel,
+} from './http-server.js';
+export { createSecretResolver, parseSecretRef } from './secrets.js';
+export type { SecretRef, SecretResolver, SecretResolverOptions } from './secrets.js';
+export { createFilePermissionStore } from './secrets.js';
+export {
+  DEFAULT_TERMINAL_TASK_STATES,
+  createFileAuditStore,
+  createFileBudgetStore,
+  createFileIdempotencyStore,
+  createFileTaskStore,
+} from './stores.js';
+export type {
+  AuditEventShape,
+  AuditFilter,
+  BudgetAccountRecord,
+  BudgetReservationFilter,
+  BudgetReservationRecord,
+  FileAuditStore,
+  FileAuditStoreOptions,
+  FileBudgetStore,
+  FileIdempotencyStore,
+  FileIdempotencyStoreOptions,
+  FileStoreOptions,
+  FileTaskStore,
+  FileTaskStoreOptions,
+  IdempotencyBeginResult,
+  IdempotencyRecordShape,
+  TaskListFilter,
+  TaskRecord,
+} from './stores.js';

@@ -1,12 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_ERROR_CODES, ERROR_REGISTRY, SyaoError, MESSAGES_ZH_CN } from '../src';
+import { ALL_ERROR_CODES, DOMAIN_CATEGORY, ERROR_DOMAINS, ERROR_REGISTRY, SyaoError, MESSAGES_ZH_CN } from '../src';
 
 describe('error registry governance (09 §9.10)', () => {
   it('has unique, well-formed codes', () => {
     const set = new Set(ALL_ERROR_CODES);
     expect(set.size).toBe(ALL_ERROR_CODES.length);
     for (const code of ALL_ERROR_CODES) {
-      expect(code).toMatch(/^SY-[A-Z]{2,4}-\d{3}$/);
+      // Domains may contain digits (A2A); registry.ts holds the closed union.
+      expect(code).toMatch(/^SY-[A-Z][A-Z0-9]{1,3}-\d{3}$/);
+      const entry = ERROR_REGISTRY.get(code);
+      expect(ERROR_DOMAINS).toContain(entry?.domain);
+      expect(entry?.category).toBe(DOMAIN_CATEGORY[entry!.domain]);
+    }
+  });
+
+  it("carries the A2A domain and the Agent RPC reserved codes (03 §4 C7)", () => {
+    expect(ERROR_DOMAINS).toContain('A2A');
+    for (const code of ['SY-A2A-001', 'SY-A2A-006', 'SY-MCP-006', 'SY-SRV-004']) {
+      expect(ERROR_REGISTRY.get(code)?.domain, code).toBe(code.startsWith('SY-A2A') ? 'A2A' : ERROR_REGISTRY.get(code)?.domain);
+      expect(MESSAGES_ZH_CN[code], code).toBeDefined();
     }
   });
 

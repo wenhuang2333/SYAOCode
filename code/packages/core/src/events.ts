@@ -45,7 +45,16 @@ export interface EventEnvelope {
   turnId?: string;
   /** Direct cause: tool call id, permission request id, or message id. */
   causationId?: string;
+  /** Event contract version. Optional so pre-C2 consumers keep compiling. */
+  schemaVersion?: number;
+  /** Wall clock at production time (Runtime.clock), not at delivery time. */
+  ts?: number;
+  /** Session the run belongs to; lifted out of `session.start` (C2). */
+  sessionId?: string;
 }
+
+/** Event contract version stamped on every envelope (report C2). */
+export const AGENT_EVENT_SCHEMA_VERSION = 2;
 
 export type AgentEventBody =
   | { type: 'session.start'; sessionId: string; permissionMode: PermissionMode }
@@ -111,5 +120,85 @@ export class EventBus {
         return new Promise((resolve) => this.resolvers.push(resolve));
       },
     };
+  }
+}
+
+// ── event sinks (report C3) ───────────────────────────────────────────────
+
+/**
+ * Out-of-band event channel. Unlike the run generator — which can only yield
+ * after the current tool batch settles — a sink is called **synchronously at
+ * production time**, so an approval request is visible to every subscriber
+ * before the permission handler is awaited (report C1/C3).
+ *
+ * Implementations must not throw: a broken sink may not fail a run.
+ */
+export interface EventSink {
+  emit(event: AgentEvent): void | Promise<void>;
+  /** Flush buffered writes; called once at the end of each run. */
+  flush?(): void | Promise<void>;
+  /** Release resources; called by the host, never by the agent. */
+  close?(): void | Promise<void>;
+}
+
+/** Collects events in memory — the fixture used by tests and evals. */
+export class MemoryEventSink implements EventSink {
+  readonly events: AgentEvent[] = [];
+  private closed = false;
+
+  emit(event: AgentEvent): void {
+    if (this.closed) return;
+    this.events.push(event);
+  }
+
+  get isClosed(): boolean {
+    return this.closed;
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  ofType<T extends AgentEvent['type']>(type: T): Extract<AgentEvent, { type: T }>[] {
+    return this.events.filter((e): e is Extract<AgentEvent, { type: T }> => e.type === type);
+  }
+}
+
+/**
+ * Events worth persisting for governance (report C3). Everything else is
+ * derivable from the session log or is pure streaming UI noise.
+ */
+export const PERSISTED_EVENT_TYPES = [
+  'permission.request',
+  'permission.result',
+  'tool.receipt',
+  'verification.start',
+  'verification.result',
+  'usage',
+] as const;
+
+export type PersistedEventType = (typeof PERSISTED_EVENT_TYPES)[number];
+
+export function isPersistableEvent(event: AgentEvent): event is Extract<AgentEvent, { type: PersistedEventType }> {
+  return (PERSISTED_EVENT_TYPES as readonly string[]).includes(event.type);
+}
+
+/**
+ * Session-log bucket for a persisted event. `LogEntry.type` already reserves
+ * every kind used here, so a sink can append straight to a session log.
+ */
+export type EventLogEntryType = 'permission' | 'usage' | 'checkpoint' | 'meta';
+
+export function logEntryTypeOf(event: AgentEvent): EventLogEntryType {
+  switch (event.type) {
+    case 'permission.request':
+    case 'permission.result':
+      return 'permission';
+    case 'usage':
+      return 'usage';
+    case 'tool.receipt':
+      return 'checkpoint';
+    default:
+      return 'meta';
   }
 }

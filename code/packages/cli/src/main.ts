@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { SyaoError } from '@syaocode/core';
+import { rulesFromConfig, SyaoError } from '@syaocode/core';
 import { nodeRuntime } from '@syaocode/node';
 import { usageText, parseArgs, UsageError } from './args.js';
 import { EXIT_OK, EXIT_USAGE, runPrint } from './run.js';
@@ -10,8 +10,28 @@ import { activateAgentGroup, loadSecretsIntoEnv, savedLanguage } from './model-c
 import { setLanguage, t } from './i18n/index.js';
 import { loadCliConfig } from './effective-config.js';
 import { runVerifyInit } from './verify-command.js';
+import { createCliFabric, type CliFabric } from './arf.js';
+import { createArgvApprovalPresenter, runCallArgv, runMcpArgv, runRpcArgv, runServeArgv } from './rpc-command.js';
+import { EXIT } from '@syaocode/rpc';
 
 export const VERSION = 'syao v0.2.0-dev (SYAOCode trusted foundation + Evidence MVP)';
+
+/** Wait for the stdout/stderr pipes to drain before an explicit exit. */
+async function flushOutput(): Promise<void> {
+  const streams = [process.stdout, process.stderr];
+  await Promise.all(
+    streams.map(
+      (s) =>
+        new Promise<void>((resolve) => {
+          if (s.writableLength === 0) {
+            resolve();
+            return;
+          }
+          s.once('drain', () => resolve());
+        }),
+    ),
+  );
+}
 
 async function main(argv: string[]): Promise<number> {
   // Merge ~/.syaocode/env (0600) into process env first — never overrides
@@ -49,7 +69,8 @@ async function main(argv: string[]): Promise<number> {
   }
   if (args.command === 'config') {
     const runtime = nodeRuntime();
-    const config = await loadCliConfig(args, runtime);    if (args.configSub === 'path') {
+    const config = await loadCliConfig(args, runtime);
+    if (args.configSub === 'path') {
       process.stdout.write(`user:    ${process.env.HOME ?? ''}/.syaocode/config.json\n`);
       process.stdout.write(`project: ${args.cwd ?? process.cwd()}/.syaocode/config.json\n`);
       return EXIT_OK;
@@ -66,6 +87,49 @@ async function main(argv: string[]): Promise<number> {
     }
     process.stdout.write(`${JSON.stringify(config, null, 2)}\n`);
     return EXIT_OK;
+  }
+
+  // ── ARF governance surface (v0.3): rpc / call / mcp / serve ──────────────
+  // These never enter the agent loop: each builds (or reuses) the process
+  // fabric, runs one command and exits with the kernel's exit code.
+  if (
+    args.command === 'rpc' ||
+    args.command === 'call' ||
+    args.command === 'mcp' ||
+    args.command === 'serve'
+  ) {
+    const config = await loadCliConfig(args, nodeRuntime());
+    let cliRef: CliFabric | undefined;
+    const cli = createCliFabric({
+      cwd: args.cwd ?? process.cwd(),
+      permissionMode: config.permissionMode,
+      rules: rulesFromConfig(config),
+      ...(config.limits.maxBudgetUsd !== undefined ? { maxBudgetUsd: config.limits.maxBudgetUsd } : {}),
+      presentApproval: async (record) => {
+        await createArgvApprovalPresenter(() => cliRef, io)(record);
+      },
+    });
+    cliRef = cli;
+    const io = {
+      out: (text: string) => process.stdout.write(text),
+      err: (text: string) => process.stderr.write(text),
+    };
+    try {
+      const code =
+        args.command === 'rpc' ? await runRpcArgv(args, cli, io)
+        : args.command === 'call' ? await runCallArgv(args, cli, io)
+        : args.command === 'mcp' ? await runMcpArgv(args, cli, io)
+        : await runServeArgv(args, cli, io);
+      // The kernel keeps a five-minute approval timer alive after a decision,
+      // and a mounted MCP edge keeps a child pipe open: neither may hold the
+      // shell open after the command is done, so the argv path exits itself.
+      await cli.dispose();
+      await flushOutput();
+      process.exit(code);
+    } catch (e) {
+      await cli.dispose();
+      throw e;
+    }
   }
 
   // --agents <name>: 激活已保存的 agent 群（common 角色作为执行模型）
