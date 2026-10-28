@@ -115,17 +115,26 @@
 
 ## 5. 外部事实核验更正（重要）
 
-`document/Agent-RPC/03 §3.4` 与 `README §0.5` 的 SDK 选型表基于若干**未核验**断言。本实现落地前对 npm registry 与已安装 `.d.ts` 做了实测，结论如下：
+> **2026-10-28 复核修订**：本节初版把 **v1 包名** `@modelcontextprotocol/sdk` 当成了 MCP 官方 SDK 的全部，据此得出"无 2.x 版本线 / 不支持 2026-07-28 modern 时代"的结论。该结论**不成立**：v2 使用**新的包名**发布。下表为实测更正；完整证据见 `document/Agent-RPC/05-实现评估与结论.md §6`。
 
-| 文档断言 | 实测结果 | 处置 |
+| 文档断言 | 实测结果（2026-10-28） | 处置 |
 | --- | --- | --- |
-| 「MCP 官方 SDK v2 `2.4.0`」 | **不存在**。`@modelcontextprotocol/sdk` 共 84 个版本（`0.4.0`→`1.32.2`），`dist-tags` 只有 `latest: 1.32.2`；`GET /@modelcontextprotocol%2fsdk/2.4.0` → **HTTP 404**。无任何 2.x 版本线 | **回退自研最小层**（03 §3.4 已列出的回退方案） |
-| 「MCP SDK 硬依赖 `zod ^4.2.0`，需隔离」 | 实际为 dependency **与** peerDependency 均为 `^3.25 \|\| ^4.0`；SDK 内部 `import 'zod/v4'`，本仓 `zod 3.25.76` 满足（zod 3.25.x 自带 `./v4` 子路径）。**无强制嵌套 zod** | 隔离理由不成立；但仍不引入该 SDK |
-| 「MCP SDK 支持 2026-07-28 modern 时代（`server/discover`、`resultType`、`_meta` 信封）」 | **不支持**。`LATEST_PROTOCOL_VERSION = "2025-11-25"`；`dist/` 中 `server/discover`、`resultType`、`io.modelcontextprotocol/protocolVersion` 命中数均为 **0**；Tasks 只在 `/experimental/tasks` | **自研 2026-07-28 wire 层是唯一可行路径** |
-| 「A2A 官方 `@a2a-js/sdk 1.3.0`（无 zod 依赖）」 | 属实（唯一运行时依赖 `jose`）。但：**无 stdio 传输**（仅 HTTP/JSON-RPC/gRPC）；TS 处理器接口是 **camelCase**（`sendMessage`/`resend`…），而 **wire 方法名是 PascalCase**；状态是数值枚举 + `taskStateToJSON` 序列化为 `TASK_STATE_*`；proto 生成类型要求显式写 `metadata: undefined` 等字段 | 采用自研最小层（方法名与状态映射仍按规范，见 `ir/states.ts`） |
-| 「ACP 官方 `@agentclientprotocol/sdk 2.0.2`，peer 兼容本仓 zod」 | 属实且最干净：**零运行时依赖**，peer-only `zod ^3.25.76 \|\| ^4.0.0`；反向调用（`fs/*`、`terminal/*`、`session/request_permission`）一等公民；`./` = v1 稳定，v2 在 `./experimental/v2` | 仍采用自研最小层以保证构建零外部依赖与完整可控性 |
+| 「MCP 官方 SDK v2 `2.4.0`」 | **存在**，但不在旧包名下。`@modelcontextprotocol/sdk` 是 **v1 线**（latest `1.32.2`）；v2 拆为 `@modelcontextprotocol/server@2.4.0`、`/client`、`/core`、`/node` 等；`@modelcontextprotocol/server@2.4.0` 的 `dependencies` = `{zod: ^4.2.0, @modelcontextprotocol/core: 2.4.0}` | 结论修正：SDK 存在；仍选择自研（见下） |
+| 「MCP SDK 的 zod 是 `^3.25 \|\| ^4.0`，无强制嵌套」 | 那是 **v1** 的区间。**v2** 的 `@modelcontextprotocol/core@2.4.0` 硬依赖 `zod ^4.2.0` → 与本仓 `zod 3.25.76` 会**嵌套第二份 zod** | 隔离成本确实存在 |
+| 「MCP SDK 不支持 2026-07-28 modern 时代（`server/discover`/`resultType`/`_meta` 命中数为 0）」 | **该断言不成立**。下载 `@modelcontextprotocol/server@2.4.0` tarball 实测：`server/discover` **148** 处、`resultType` **226** 处、`io.modelcontextprotocol/protocolVersion` **4** 处、`2026-07-28` **844** 处 | 结论修正：v2 **支持** modern 时代 |
+| 「A2A 官方 `@a2a-js/sdk 1.3.0`（无 zod 依赖）」 | 属实（唯一运行时依赖 `jose`）。但：**无 stdio 传输**（仅 HTTP/JSON-RPC/gRPC）；TS 处理器接口是 camelCase，wire 方法名是 PascalCase；状态需 `taskStateToJSON` 序列化 | 保留：本地 stdio 场景自研更合适 |
+| 「ACP 官方 `@agentclientprotocol/sdk 2.0.2`，peer 兼容本仓 zod」 | 属实且最干净：**零运行时依赖**，peer-only `zod ^3.25.76 \|\| ^4.0.0`；`./` = v1 稳定，v2 在 `./experimental/v2` | 保留：自研以保证零外部依赖面 |
 
-> **结论**：三个边缘统一采用**自研最小 JSON-RPC 层**（03 §3.4 已明确允许的回退路径）。收益：构建完全自洽、无嵌套 zod、无 express/hono 等传递依赖、可精确实现 2026-07-28 的无状态语义。代价：wire 细节需自行维护，故新增 `packages/protocols/test/drift.test.ts` 钉住方法名/字段清单，规范升级时立即失败。
+> **结论（修正版）**：三个边缘采用自研最小 JSON-RPC 层的**决定保留**，但理由改为：
+> 1. **零传递依赖**：不引入 express/hono/grpc/protobuf 等 peer，构建完全自洽；
+> 2. **完全可控**：可精确实现 2026-07-28 的无状态语义与 MRTR，不受 SDK 的 era/默认行为影响；
+> 3. **避免双 zod**：v2 SDK 会嵌套 `zod ^4.2.0`。
+>
+> 代价是 wire 细节需自行维护，故保留 `packages/protocols/test/drift.test.ts` 钉住方法名/字段清单。
+>
+> **两条必须记住的红线**：
+> - drift 基线目前是**实现自身的常量**，只能发现"改坏了"，**不能发现"基线钉错了"**（已发现 MCP 错误码、A2A 版本错误码两处钉错）。升级规范时必须对照 `document/Agent-RPC/04` 手工复核，并逐步换成从官方 SDK/规范快照生成的 fixture。
+> - 若将来引入任一官方 SDK，`zod` 解析值必须 **≥ 3.25.0**（v1 SDK 与 ACP SDK 运行时 `import 'zod/v4'`；MCP v2 直接要求 `zod ^4.2.0`）。本仓 `^3.24.0` 的声明区间本身不足，lockfile 的 `3.25.76` 是唯一保障——建议把声明提升为 `^3.25.76`。
 >
 > **zod 版本红线**：若将来引入 MCP 或 ACP 官方 SDK，`zod` 解析值必须 ≥ 3.25.0（两者运行时 `import 'zod/v4'`）。本仓 `^3.24.0` 的声明区间本身不足，lockfile 的 `3.25.76` 是唯一保障。
 
