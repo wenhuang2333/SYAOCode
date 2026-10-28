@@ -6,9 +6,11 @@
  * pipeline with in-memory stores, i.e. exactly the overhead the kernel adds on
  * top of a local call.
  *
- * The assertions are deliberately loose (a hard 5ms p95 would make CI flaky on
- * a loaded machine) — the test fails only when the overhead is an order of
- * magnitude off, and always prints the measured numbers for the record.
+ * The audit (05 §10.1) noted that this file asserted `p95 < 50ms` against a 5ms
+ * SLO — the SLO lived only in a comment. It is now asserted for real, with one
+ * escape hatch: `SYAO_BENCH_SLO_MS` lets a slow shared runner state its own
+ * ceiling explicitly, so the number can be relaxed deliberately instead of
+ * silently.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -92,8 +94,11 @@ describe('governance overhead (02 §15)', () => {
       `[bench] governance overhead over ${sampleCount} invocations: p50=${p50.toFixed(3)}ms p95=${p95.toFixed(3)}ms p99=${p99.toFixed(3)}ms max=${max.toFixed(3)}ms`,
     );
 
-    expect(p50).toBeLessThan(5);
-    expect(p95).toBeLessThan(50); // an order-of-magnitude guard, not the SLO itself
+    // The SLO from 02 §15, asserted rather than described.
+    const sloMs = Number(process.env.SYAO_BENCH_SLO_MS ?? 5);
+    expect(Number.isFinite(sloMs) && sloMs > 0).toBe(true);
+    expect(p50).toBeLessThan(sloMs);
+    expect(p95).toBeLessThan(sloMs);
   });
 
   it('serves a repeated idempotent call from the cache (no second pipeline pass)', async () => {
@@ -119,7 +124,8 @@ describe('governance overhead (02 §15)', () => {
     replaySamples.sort((a, b) => a - b);
     const replayP95 = percentile(replaySamples, 95);
     console.log(`[bench] idempotent replay: cold=${coldMs.toFixed(3)}ms p95=${replayP95.toFixed(3)}ms`);
-    expect(replayP95).toBeLessThan(5);
+    // A replay must not re-run the pipeline; 1ms is a generous ceiling for that.
+    expect(replayP95).toBeLessThan(Number(process.env.SYAO_BENCH_REPLAY_SLO_MS ?? 1));
   });
 
   it('decides policy from cache on the hot path', async () => {
@@ -139,6 +145,9 @@ describe('governance overhead (02 §15)', () => {
     samples.sort((a, b) => a - b);
     const p95 = percentile(samples, 95);
     console.log(`[bench] policy explain p95=${p95.toFixed(3)}ms`);
-    expect(p95).toBeLessThan(20);
+    // 02 §15: policy decision p95 <= 2ms when cached, 20ms cold. This loop is
+    // the cached path.
+    const cachedSloMs = Number(process.env.SYAO_BENCH_CACHED_SLO_MS ?? 2);
+    expect(p95).toBeLessThan(cachedSloMs);
   });
 });
