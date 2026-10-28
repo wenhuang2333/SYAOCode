@@ -297,6 +297,59 @@ describe('createFabric — the assembled governance substrate', () => {
     expect(recovered.releasedReservations).toBe(0);
   });
 
+  it('rolls back a mount whose discovery fails, and keeps serving other edges', async () => {
+    // Regression: a mounted-but-undiscoverable edge used to linger in the
+    // adapter list, so every later discover() re-threw and the whole catalogue
+    // became unavailable.
+    const calls: AuthorizedInvocation[] = [];
+    const fabric = makeFabric({
+      policy: { defaultEffect: 'deny', rules: [{ id: 'allow', priority: 1, effect: 'allow', match: { capabilities: ['**'] }, source: 'org' }] },
+    });
+    await fabric.mount(fakeAdapter(calls), { providerId: 'good', risk: 'read' });
+
+    const broken = {
+      ...fakeAdapter(calls),
+      async discover(): Promise<DiscoveredCapability[]> {
+        throw new Error('connection closed before server/discover');
+      },
+    };
+    await expect(fabric.mount(broken, { providerId: 'broken' })).rejects.toThrow(/connection closed/);
+
+    // The good edge is still discoverable and callable.
+    const caps = await fabric.discover();
+    expect(caps.map((c) => c.id)).toContain('mcp://github/tool/get_issue');
+    const result = await fabric.call({ capabilityId: 'mcp://github/tool/get_issue', input: {} });
+    expect(result.outcome).toBe('succeeded');
+
+    // The broken edge is not reported as a healthy adapter.
+    const status = await fabric.status();
+    expect(status.adapters.map((a) => a.providerId)).toEqual(['good']);
+  });
+
+  it('reports a degraded edge instead of failing when discovery breaks later', async () => {
+    const calls: AuthorizedInvocation[] = [];
+    const fabric = makeFabric({
+      policy: { defaultEffect: 'deny', rules: [{ id: 'allow', priority: 1, effect: 'allow', match: { capabilities: ['**'] }, source: 'org' }] },
+    });
+    let healthy = true;
+    const flaky = {
+      ...fakeAdapter(calls),
+      async discover(): Promise<DiscoveredCapability[]> {
+        if (!healthy) throw new Error('peer went away');
+        return [{ id: 'mcp://github/tool/get_issue', kind: 'tool' as const, displayName: 'get_issue' }];
+      },
+    };
+    await fabric.mount(flaky, { providerId: 'flaky', risk: 'read' });
+    healthy = false;
+    // discover() must not throw; it degrades the edge and keeps the catalogue.
+    await expect(fabric.discover()).resolves.toBeDefined();
+    const status = await fabric.status();
+    const entry = status.adapters.find((a) => a.providerId === 'flaky');
+    expect(entry?.health).toBe('degraded');
+    expect(entry?.unavailable).toBe(true);
+    expect(entry?.reason).toContain('peer went away');
+  });
+
   it('closes mounted edges', async () => {
     const calls: AuthorizedInvocation[] = [];
     const fabric = makeFabric();

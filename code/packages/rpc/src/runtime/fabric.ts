@@ -128,7 +128,18 @@ export interface MountedAdapter {
 
 export interface FabricStatus {
   tenantId: string;
-  adapters: { providerId: string; protocol: string; version: string; capabilities: number; health: string; lossy: string[] }[];
+  adapters: {
+    providerId: string;
+    protocol: string;
+    version: string;
+    capabilities: number;
+    health: string;
+    lossy: string[];
+    /** True when the edge is mounted but its catalogue could not be read. */
+    unavailable?: boolean;
+    /** Why the edge is unavailable (mount or discovery failure). */
+    reason?: string;
+  }[];
   capabilityCount: number;
   pendingApprovals: number;
   tasks: { total: number; unterminated: number };
@@ -334,7 +345,18 @@ export function createFabric(opts: FabricOptions): Fabric {
   }
 
   const mounted: MountedAdapter[] = [];
+  /**
+   * Executors keyed by PROVIDER ID, not by protocol: several edges of the same
+   * protocol may be mounted at once, and un-mounting one must not unroute the
+   * others. `local` is the provider id of the built-in tools.
+   */
   const executors = new Map<string, (inv: AuthorizedInvocation, ctx: DispatchContext) => Promise<InvokeResultPayload>>();
+  /**
+   * Edges whose catalogue could not be read. Kept so `status()` can report a
+   * degraded edge instead of hiding it, and so one broken peer never makes the
+   * whole capability catalogue unavailable (02 §16).
+   */
+  const edgeFailures = new Map<string, string>();
 
   const dispatcher = new GovernanceDispatcher({
     kernel,
@@ -352,11 +374,12 @@ export function createFabric(opts: FabricOptions): Fabric {
     ...(opts.redactor !== undefined ? { redactor: opts.redactor } : {}),
     ...(opts.onStep !== undefined ? { onStep: opts.onStep } : {}),
     async execute(invocation, ctx): Promise<InvokeResultPayload> {
-      const executor = executors.get(invocation.capability.protocol);
+      const providerId = invocation.capability.provider.id;
+      const executor = executors.get(providerId);
       if (executor === undefined) {
         throw new CanonicalError({
           kind: 'unsupported_capability',
-          message: `No edge is mounted for protocol '${invocation.capability.protocol}'.`,
+          message: `No edge is mounted for provider '${providerId}' (protocol '${invocation.capability.protocol}').`,
         });
       }
       return executor(invocation, ctx);
@@ -408,7 +431,7 @@ export function createFabric(opts: FabricOptions): Fabric {
       };
       mounted.push(mountedAdapter);
 
-      executors.set(adapter.protocol, async (invocation, ctx) => {
+      executors.set(providerId, async (invocation, ctx) => {
         const adapterCtx: AdapterContext = {
           runtime,
           signal: ctx.signal ?? new AbortController().signal,
@@ -436,12 +459,34 @@ export function createFabric(opts: FabricOptions): Fabric {
         // ACP reverse calls (fs/terminal) are client-owned capabilities; they
         // are discovered by the ACP adapter itself.
       }
-      await refreshCapabilities(mountedAdapter, mountOpts);
+      try {
+        await refreshCapabilities(mountedAdapter, mountOpts);
+        edgeFailures.delete(providerId);
+      } catch (e) {
+        // A mount that cannot discover anything is not usable: roll it back so
+        // the edge never lingers as a poisoned entry that breaks discover().
+        const index = mounted.indexOf(mountedAdapter);
+        if (index >= 0) mounted.splice(index, 1);
+        executors.delete(providerId);
+        edgeFailures.set(providerId, e instanceof Error ? e.message : String(e));
+        throw e;
+      }
       return mountedAdapter;
     },
 
     async discover() {
-      for (const m of mounted) await refreshCapabilities(m, {});
+      // One unreachable edge must not take the catalogue down with it: record
+      // the failure, keep serving the edges that do answer.
+      for (const m of mounted) {
+        try {
+          await refreshCapabilities(m, {});
+          edgeFailures.delete(m.providerId);
+        } catch (e) {
+          const reason = e instanceof Error ? e.message : String(e);
+          edgeFailures.set(m.providerId, reason);
+          logger.log('warn', `edge '${m.providerId}' discovery failed: ${reason}`);
+        }
+      }
       return stores.registry.list({ tenantId });
     },
 
@@ -578,14 +623,18 @@ export function createFabric(opts: FabricOptions): Fabric {
       const tasks = await stores.tasks.list({ tenantId });
       return {
         tenantId,
-        adapters: mounted.map((m) => ({
-          providerId: m.providerId,
-          protocol: m.adapter.protocol,
-          version: m.adapter.version,
-          capabilities: capabilities.filter((c) => c.provider.id === m.providerId).length,
-          health: 'healthy',
-          lossy: m.adapter.capabilities().lossy,
-        })),
+        adapters: mounted.map((m) => {
+          const failure = edgeFailures.get(m.providerId);
+          return {
+            providerId: m.providerId,
+            protocol: m.adapter.protocol,
+            version: m.adapter.version,
+            capabilities: capabilities.filter((c) => c.provider.id === m.providerId).length,
+            health: failure === undefined ? 'healthy' : 'degraded',
+            lossy: m.adapter.capabilities().lossy,
+            ...(failure !== undefined ? { unavailable: true, reason: failure } : {}),
+          };
+        }),
         capabilityCount: capabilities.length,
         pendingApprovals: pending.length,
         tasks: {

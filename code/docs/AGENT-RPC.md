@@ -272,6 +272,7 @@ const bundle = await fabric.evidence.seal(result.taskId);
 | 性能基准（p95 < 5ms） | **已实测**：十步流水线 300 次调用 p50=0.078ms / p95=0.115ms / p99=0.137ms；幂等重放 p95=0.029ms；策略解释 p95=0.013ms（`packages/rpc/test/bench.test.ts`，内存存储、无网络）。**远低于 02 §15 的 5ms 目标** |
 | 跨协议黄金 trace | **3/3 稳定**：S1（ACP 编辑器：读→批→写→证据）、S2（A2A 远端 opaque 委派 + 预算结算）、S3（MCP MRTR 补输入 + 幂等重放），见 `packages/rpc/test/golden.test.ts` |
 | 红队用例 | **11/11 通过**（02 §14.3 的可内核化子集），见 `packages/rpc/test/redteam.test.ts` |
+| 边缘故障隔离 | 02 §16「Adapter 不可用」已落实：`mount()` 是**事务性**的（发现失败即回滚，不留毒化条目），`discover()` 对单个边缘失败**降级不抛错**，`status()` 报 `health: degraded` + `unavailable` + `reason`。一个不可达的 peer 不会让整个能力目录不可用 |
 
 ---
 

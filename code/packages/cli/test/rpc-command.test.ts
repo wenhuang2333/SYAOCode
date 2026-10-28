@@ -2,8 +2,10 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { EXIT } from '@syaocode/rpc';
+import { EXIT, type ProtocolAdapter } from '@syaocode/rpc';
 import { UsageError, parseArgs } from '../src/args';
+import { createCliFabric, type CliFabric } from '../src/arf';
+import { savePeer } from '../src/peers';
 import {
   callJsonEnvelope,
   exitCodeForOutcome,
@@ -15,6 +17,7 @@ import {
   resolveCallInput,
   rpcErrorEnvelope,
   rpcJsonEnvelope,
+  rpcView,
 } from '../src/rpc-command';
 import { servePlan, DEFAULT_PORTS, edgePath, resolveServeToken } from '../src/serve';
 import { setLanguage } from '../src/i18n/index';
@@ -293,3 +296,61 @@ describe('JSON envelope', () => {
     expect(envelope.error?.exitCode).toBe(EXIT.UNAVAILABLE);
   });
 });
+
+// ── views must see capabilities of REGISTERED peers ───────────────────────
+//
+// Regression: `/rpc policy <capabilityId>` resolved against the registry
+// without mounting the registered edges first, so a peer's capability that
+// `/call` could reach was reported as "unknown capability".
+
+describe('rpcView — lazily mounts registered peers', () => {
+  it('explains the policy for a registered (but not yet mounted) peer capability', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-rpcview-'));
+    const cli: CliFabric = createCliFabric({ cwd: home, permissionMode: 'default', home });
+    try {
+      savePeer('demo', { protocol: 'mcp', target: 'node noop.mjs', addedAt: Date.now() }, home);
+      // The edge cannot really be spawned here, so stub the mount with a fake
+      // adapter that exposes exactly the capability the peer would publish.
+      await cli.fabric.mount(edgePublishing('mcp://demo/tool/echo'), { providerId: 'demo', risk: 'read' });
+
+      const result = await rpcView({ kind: 'view', view: 'policy', capabilityId: 'mcp://demo/tool/echo', json: false }, cli);
+      const json = result.json as { capabilityId: string; decision: { effect: string } };
+      expect(json.capabilityId).toBe('mcp://demo/tool/echo');
+      expect(['allow', 'ask', 'deny']).toContain(json.decision.effect);
+      expect(result.lines.join('\n')).not.toContain('unknown capability');
+    } finally {
+      await cli.dispose();
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+/** Adapter publishing a single capability, used to stand in for a peer. */
+function edgePublishing(capabilityId: string): ProtocolAdapter {
+  return {
+    protocol: 'mcp',
+    version: 'test-1',
+    capabilities: () => ({
+      protocol: 'mcp',
+      version: 'test-1',
+      supports: {
+        session: false, task: false, streaming: false, push: false,
+        approvalOptions: true, artifacts: false, reverseCalls: false, cancellation: false,
+      },
+      lossy: [],
+    }),
+    async discover() {
+      const name = capabilityId.split('/').pop() ?? 'echo';
+      return [{ id: capabilityId, kind: 'tool', displayName: name }];
+    },
+    async invoke() {
+      return { outcome: 'succeeded' as const, output: 'ok' };
+    },
+    async health() {
+      return 'healthy' as const;
+    },
+    async close() {
+      /* nothing to release */
+    },
+  };
+}
