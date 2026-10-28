@@ -22,6 +22,7 @@
 
 import type { Runtime } from '@syaocode/core';
 import {
+  type Protocol,
   CanonicalError,
   type Capability,
   type Fabric,
@@ -262,6 +263,7 @@ export function reverseGateway(opts: MountOptions): {
         capabilityId: request.capabilityId,
         input: request.input,
         direction: 'reverse',
+        protocol: 'acp',
         ...(request.taskId !== undefined ? { taskId: request.taskId } : {}),
         ...(request.sessionId !== undefined ? { sessionId: request.sessionId } : {}),
       });
@@ -282,6 +284,8 @@ async function invokeGoverned(
     capabilityId: string;
     input: unknown;
     direction: 'inbound' | 'outbound' | 'reverse';
+    /** The edge that carried the call. Recorded on the receipt (audit C-6). */
+    protocol: Protocol;
     taskId?: string;
     sessionId?: string;
   },
@@ -295,12 +299,13 @@ async function invokeGoverned(
       principal: opts.principal,
       capabilityId: input.capabilityId,
       input: input.input,
-      protocol: 'native',
+      protocol: input.protocol,
       direction: input.direction,
       ...(input.taskId !== undefined ? { taskId: input.taskId } : {}),
       ...(sessionId !== undefined ? { sessionId } : {}),
     },
     {
+      tenantId: opts.tenantId,
       cwd: opts.cwd,
       workspaceRoots: opts.workspaceRoots,
     },
@@ -326,6 +331,7 @@ export function mcpServerExecutor(opts: MountOptions): {
           capabilityId: request.capabilityId,
           input: request.input,
           direction: 'inbound',
+          protocol: 'mcp',
         });
         return {
           outcome: result.outcome,
