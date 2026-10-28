@@ -53,6 +53,7 @@ import {
 import { computeRevision, emptyBundle, isBundleExpired, layerBundles, loadBundle, rulesHash, withRevision } from '../src/governance/policy-bundle.js';
 import { hasher, TEST_TENANT } from './kernel-helpers.js';
 import { createFileStores } from '../src/runtime/file-stores.js';
+import { MemoryAuditStore } from '../src/governance/audit.js';
 import { FakeRuntime } from './kernel-helpers.js';
 import { CanonicalError, A2A_ERROR_CODES, ACP_ERROR_CODES, MCP_ERROR_CODES, defaultWireCode, retryVerdict } from '../src/ir/errors.js';
 import type { CanonicalEvent, Receipt } from '../src/ir/types.js';
@@ -447,5 +448,45 @@ describe('file-backed stores round-trip every record kind', () => {
     const checkpoint = await stores.audit.checkpoint(TEST_TENANT);
     expect(checkpoint.count).toBe(2);
     expect((await stores.audit.verify(TEST_TENANT)).ok).toBe(true);
+  });
+});
+
+describe('audit checkpoints fire on count OR time (P2)', () => {
+  it('takes a checkpoint when the interval elapses, even at low traffic', async () => {
+    let nowMs = Date.parse('2026-10-28T00:00:00.000Z');
+    const store = new MemoryAuditStore({
+      hash: hasher,
+      ids: deterministicIds(),
+      now: () => new Date(nowMs).toISOString(),
+      // A count trigger alone would never fire for a quiet process.
+      checkpointEvery: 0,
+      checkpointIntervalMs: 60_000,
+    });
+    const append = () =>
+      store.append({
+        ts: new Date(nowMs).toISOString(),
+        tenantId: TEST_TENANT,
+        actor: { type: 'user', id: 'user:local' },
+        action: 'policy.decide',
+        subject: { type: 'capability', id: 'c' },
+        outcome: 'success',
+      });
+
+    await append();
+    // The first event has no previous checkpoint to measure from.
+    expect(await store.lastCheckpoint(TEST_TENANT)).toBeUndefined();
+
+    nowMs += 30_000;
+    await append();
+    expect(await store.lastCheckpoint(TEST_TENANT)).toBeUndefined();
+
+    // The interval has now passed since the last append, so the next one
+    // checkpoints — with a count-only trigger this would never happen.
+    nowMs += 45_000;
+    await append();
+    const checkpoint = await store.lastCheckpoint(TEST_TENANT);
+    expect(checkpoint).toBeDefined();
+    expect(checkpoint?.count).toBe(3);
+    expect((await store.verify(TEST_TENANT)).ok).toBe(true);
   });
 });

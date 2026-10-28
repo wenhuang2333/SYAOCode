@@ -33,6 +33,13 @@ export interface AuditStoreOptions {
   now: () => string;
   /** Append a checkpoint every N events (0 disables auto-checkpointing). */
   checkpointEvery?: number;
+  /**
+   * Also take a checkpoint when this much wall-clock time has passed since the
+   * last one. A count-only trigger means a low-traffic or long-running process
+   * may never checkpoint at all, which is what the audit meant by checkpoints
+   * never being taken automatically.
+   */
+  checkpointIntervalMs?: number;
 }
 
 /** Body used for hashing: the event with `hash` removed (prevHash is included). */
@@ -65,12 +72,15 @@ export class MemoryAuditStore implements AuditStore {
   private readonly ids: IdGenerator;
   private readonly now: () => string;
   private readonly checkpointEvery: number;
+  private readonly checkpointIntervalMs: number;
+  private readonly lastCheckpointAt = new Map<string, number>();
 
   constructor(opts: AuditStoreOptions) {
     this.hash = opts.hash;
     this.ids = opts.ids;
     this.now = opts.now;
     this.checkpointEvery = opts.checkpointEvery ?? DEFAULT_CHECKPOINT_EVERY;
+    this.checkpointIntervalMs = opts.checkpointIntervalMs ?? 0;
   }
 
   /** Load a persisted chain, verifying each link as it is restored. */
@@ -102,7 +112,7 @@ export class MemoryAuditStore implements AuditStore {
     };
     chain.push(stamped);
     this.byTenant.set(event.tenantId, chain);
-    if (this.checkpointEvery > 0 && chain.length % this.checkpointEvery === 0) await this.checkpoint(event.tenantId);
+    if (this.shouldCheckpoint(event.tenantId, chain.length)) await this.checkpoint(event.tenantId);
     return deepClone(stamped);
   }
 
@@ -193,7 +203,10 @@ export class MemoryAuditStore implements AuditStore {
     const count = events.length;
     const lastHash = count > 0 ? events[count - 1]!.hash : '';
     const existing = list[list.length - 1];
-    if (existing !== undefined && existing.count === count && existing.lastHash === lastHash) return deepClone(existing);
+    if (existing !== undefined && existing.count === count && existing.lastHash === lastHash) {
+      this.lastCheckpointAt.set(tenantId, Date.parse(existing.at));
+      return deepClone(existing);
+    }
     const checkpoint: AuditCheckpoint = {
       tenantId,
       at: this.now(),
@@ -203,7 +216,26 @@ export class MemoryAuditStore implements AuditStore {
     };
     list.push(checkpoint);
     this.checkpoints.set(tenantId, list);
+    this.lastCheckpointAt.set(tenantId, Date.parse(checkpoint.at));
     return deepClone(checkpoint);
+  }
+
+  /**
+   * Count trigger OR time trigger, whichever fires first.
+   *
+   * The time trigger measures from the last checkpoint, and from the start of
+   * the stream before the first one exists — otherwise a tenant whose only
+   * trigger is the interval would never checkpoint at all.
+   */
+  private shouldCheckpoint(tenantId: string, count: number): boolean {
+    if (this.checkpointEvery > 0 && count % this.checkpointEvery === 0) return true;
+    if (this.checkpointIntervalMs <= 0) return false;
+    const since = this.lastCheckpointAt.get(tenantId);
+    if (since === undefined) {
+      this.lastCheckpointAt.set(tenantId, Date.parse(this.now()));
+      return false;
+    }
+    return Date.parse(this.now()) - since >= this.checkpointIntervalMs;
   }
 
   /** Newest checkpoint for a tenant, if any. */
