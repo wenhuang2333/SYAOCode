@@ -2,7 +2,7 @@
   "name": "syaocode-monorepo",
   "private": true,
   "version": "0.2.0-dev",
-  "description": "SYAOCode — TypeScript coding-agent harness library + reference CLI (v0.1 internal, M0+M1)",
+  "description": "SYAOCode \u2014 TypeScript coding-agent harness library + reference CLI (v0.1 internal, M0+M1)",
   "type": "module",
   "license": "Apache-2.0",
   "packageManager": "pnpm@12.11.2",
@@ -26,7 +26,8 @@
     "lint:rpc": "pnpm exec tsx scripts/check-rpc-boundaries.ts",
     "lint": "pnpm run lint:registry && pnpm run lint:core && pnpm run lint:rpc",
     "fixtures:gen": "pnpm exec tsx scripts/gen-wire-fixture.ts",
-    "build:check": "pnpm exec tsx scripts/check-build-artifact.ts"
+    "build:check": "pnpm exec tsx scripts/check-build-artifact.ts",
+    "test:coverage": "pnpm --filter @syaocode/rpc run test:coverage"
   },
   "devDependencies": {
     "@syaocode/core": "workspace:*",
@@ -35,6 +36,7 @@
     "@syaocode/rpc": "workspace:*",
     "@syaocode/testing": "workspace:*",
     "@syaocode/tools": "workspace:*",
+    "@vitest/coverage-v8": "3.2.7",
     "tsx": "^4.19.0"
   }
 }

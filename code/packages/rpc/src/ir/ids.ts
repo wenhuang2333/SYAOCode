@@ -87,9 +87,21 @@ export interface ParsedCapabilityId {
   name: string;
 }
 
-/** Parse a capability id; returns undefined for malformed ids. */
+/**
+ * Parse a capability id; returns undefined for malformed ids.
+ *
+ * `local://` is shaped differently from the protocol edges: a built-in tool is
+ * `local://tools/<name>` with no server/agent segment, so it needs its own
+ * branch (`owner` is the literal `local`).
+ */
 export function parseCapabilityId(id: string): ParsedCapabilityId | undefined {
-  const m = /^(mcp|a2a|acp|local):\/\/([^/]+)\/([^/]+)\/(.+)$/.exec(id);
+  const local = /^local:\/\/([^/]+)\/(.+)$/.exec(id);
+  if (local !== null) {
+    const [, kind, name] = local;
+    if (kind === undefined || name === undefined) return undefined;
+    return { protocol: 'local', owner: 'local', kind, name };
+  }
+  const m = /^(mcp|a2a|acp):\/\/([^/]+)\/([^/]+)\/(.+)$/.exec(id);
   if (m === null) return undefined;
   const [, protocol, owner, kind, name] = m;
   if (protocol === undefined || owner === undefined || kind === undefined || name === undefined) return undefined;

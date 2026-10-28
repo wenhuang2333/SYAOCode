@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
-    "prepublishOnly": "pnpm run typecheck && pnpm run build"
+    "prepublishOnly": "pnpm run typecheck && pnpm run build",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@syaocode/core": "workspace:*",
