@@ -364,6 +364,10 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
         ids: runtime.ids,
         now: () => new Date(runtime.clock.now()).toISOString(),
         hash: sha256Hasher,
+        // Checkpoint by volume AND by time: a quiet CLI run may append only a
+        // handful of links, and the count trigger alone would never fire.
+        checkpointEvery: 64,
+        checkpointIntervalMs: 5 * 60_000,
       })
     : undefined;
 

@@ -63,8 +63,10 @@ export interface FileStoreOptions {
   runtime: Runtime;
   /** Directory holding the JSONL files; created if missing. */
   dir: string;
-  /** Audit checkpoint cadence. */
+  /** Audit checkpoint cadence (by append count). */
   checkpointEvery?: number;
+  /** Audit checkpoint cadence (by wall-clock time). */
+  checkpointIntervalMs?: number;
 }
 
 // ── primitives ────────────────────────────────────────────────────────────
@@ -371,6 +373,7 @@ export function createFileAuditStore(
   ids: MemoryStoresOptions['ids'],
   now: () => string,
   checkpointEvery?: number,
+  checkpointIntervalMs?: number,
 ): AuditStore {
   const path = `${dir}/audit.jsonl`;
   const memory = new MemoryAuditStore({
@@ -378,6 +381,7 @@ export function createFileAuditStore(
     ids,
     now,
     ...(checkpointEvery !== undefined ? { checkpointEvery } : {}),
+    ...(checkpointIntervalMs !== undefined ? { checkpointIntervalMs } : {}),
   });
   let loaded = false;
   const ensureLoaded = async (): Promise<void> => {
@@ -448,7 +452,10 @@ export interface FileStoresOptions extends MemoryStoresOptions {
   runtime: Runtime;
   /** Directory for the JSONL files. */
   dir: string;
+  /** Audit checkpoint cadence (by append count). */
   checkpointEvery?: number;
+  /** Audit checkpoint cadence (by wall-clock time). */
+  checkpointIntervalMs?: number;
 }
 
 /**
@@ -472,7 +479,15 @@ export function createFileStores(opts: FileStoresOptions): ReturnType<typeof cre
     budget: createFileBudgetStore(runtime, dir),
     idempotency: createFileIdempotencyStore(runtime, dir),
     receipts: createFileReceiptStore(runtime, dir, opts.hash),
-    audit: createFileAuditStore(runtime, dir, opts.hash, opts.ids, opts.now, opts.checkpointEvery),
+    audit: createFileAuditStore(
+      runtime,
+      dir,
+      opts.hash,
+      opts.ids,
+      opts.now,
+      opts.checkpointEvery,
+      opts.checkpointIntervalMs,
+    ),
     events: createFileEventLog(runtime, dir, opts.ids, opts.now),
   };
 }
