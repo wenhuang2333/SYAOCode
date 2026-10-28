@@ -22,6 +22,7 @@ import type {
 } from '@syaocode/rpc';
 import { CanonicalError, EXIT } from '@syaocode/rpc';
 import { UsageError, type CliArgs } from './args.js';
+import { buildCliContext } from './context.js';
 import { errorText, exitCodeForError, type CliFabric } from './arf.js';
 import { t } from './i18n/index.js';
 import {
@@ -799,10 +800,70 @@ export async function runServeArgv(args: CliArgs, cli: CliFabric, io: CliIo): Pr
         const session = await cli.ensureSession();
         return { id: session.id, budgetId: session.budgetId };
       },
+      // ACP prompt turns (C-3): only the ACP edge runs agent turns, so the
+      // runner is built here (where the model config lives) and only then.
+      ...(cmd.protocol === 'acp' && cli.tools !== undefined
+        ? { runTurn: await buildAcpTurnRunner(args, cli) }
+        : {}),
     },
     io,
     ...(token !== undefined ? { token } : {}),
   });
+}
+
+/**
+ * Build the ACP prompt-turn runner (audit C-3).
+ *
+ * The ACP edge previously had no `runTurn`, so `session/prompt` always failed.
+ * A turn now runs the governed agent path — the same tools, policy, budget and
+ * receipts as `syao -p` — with the editor as the approval authority.
+ */
+async function buildAcpTurnRunner(
+  args: CliArgs,
+  cli: CliFabric,
+): Promise<NonNullable<import('./serve.js').ServeFabricContext['runTurn']>> {
+  const [{ createAcpTurnRunner }, { createAgent }, config, select, { MockProvider }] = await Promise.all([
+    import('./acp-turn.js'),
+    import('@syaocode/core'),
+    import('./effective-config.js'),
+    import('./provider-select.js'),
+    import('@syaocode/testing'),
+  ]);
+  const runtime = cli.runtime;
+  const loaded = await config.loadCliConfig(args, runtime);
+  const spec = config.cliModelSpec(args, loaded);
+  const redactor = config.createCliRedactor();
+  const provider = select.resolveProvider(
+    args,
+    { mockProvider: (script) => new MockProvider({ script }) },
+    { spec },
+  );
+
+  const runner = createAcpTurnRunner({
+    runtime,
+    tools: cli.tools!.list(),
+    fileState: cli.fileState,
+    permissionMode: cli.permissionMode,
+    rules: [],
+    cwd: cli.cwd,
+    redactor,
+    ...(loaded.limits.maxBudgetUsd !== undefined ? { maxBudgetUsd: loaded.limits.maxBudgetUsd } : {}),
+    createAgentFor: (tools, governor) =>
+      createAgent({
+        provider,
+        model: provider.model,
+        cwd: cli.cwd,
+        context: buildCliContext(cli.cwd, { model: `${spec.provider}:${spec.model}` }),
+        tools,
+        permissionMode: cli.permissionMode,
+        permissionHandler: async () => ({ decision: 'deny', message: 'ACP: awaiting the editor' }),
+        runtime,
+        redactor,
+        governor,
+      }),
+  });
+  return (request: Parameters<NonNullable<import('./serve.js').ServeFabricContext['runTurn']>>[0]) =>
+    runner.runTurn(request);
 }
 
 // ── slash-command handlers (shared by REPL and TUI) ───────────────────────

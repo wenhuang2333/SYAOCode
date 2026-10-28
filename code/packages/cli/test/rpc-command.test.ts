@@ -19,7 +19,7 @@ import {
   rpcJsonEnvelope,
   rpcView,
 } from '../src/rpc-command';
-import { servePlan, DEFAULT_PORTS, edgePath, resolveServeToken } from '../src/serve';
+import { servePlan, DEFAULT_PORTS, edgePath, framingFor, resolveServeToken } from '../src/serve';
 import { setLanguage } from '../src/i18n/index';
 
 // ── argv: the subcommand swallows the rest of the line ────────────────────
@@ -354,3 +354,29 @@ function edgePublishing(capabilityId: string): ProtocolAdapter {
     },
   };
 }
+
+// ── wire framing is per BINDING (C-3 regression) ──────────────────────────
+//
+// A single global framing broke real peers twice: HTTP reused stdio
+// Content-Length framing and the official MCP client died with
+// `SyntaxError: Unexpected token 'C'`; then stdio was switched wholesale to
+// newline-delimited JSON, which MCP does not speak. Both are pinned here.
+describe('framingFor — each binding gets the framing its protocol speaks', () => {
+  it('MCP over stdio is Content-Length framed', () => {
+    expect(framingFor('mcp', 'stdio')).toBe('content-length');
+  });
+
+  it('ACP over stdio is newline-delimited JSON (04 C16)', () => {
+    expect(framingFor('acp', 'stdio')).toBe('json-lines');
+  });
+
+  it('every HTTP binding is bare JSON in the response body, never stdio framing', () => {
+    for (const protocol of ['mcp', 'acp', 'a2a'] as const) {
+      expect(framingFor(protocol, 'http')).toBe('json-lines');
+    }
+  });
+
+  it('A2A over stdio is newline-delimited JSON', () => {
+    expect(framingFor('a2a', 'stdio')).toBe('json-lines');
+  });
+});
