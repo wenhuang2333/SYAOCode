@@ -64,15 +64,16 @@
 
 ### 0.5 落地顺序（建议）
 
-| 阶段 | 周期（单人估算） | 交付 | 退出条件 |
+| 阶段 | 人天（单人估算） | 交付 | 退出条件 |
 | --- | --- | --- | --- |
-| **M0 内核** | 2 周 | `@syaocode/rpc` IR + 状态机 + 治理接口 + 黄金样例 | 所有对象有 Zod schema；状态机性质测试通过 |
-| **M1 MCP + serve** | 3 周 | MCP client adapter（2026-07-28 + legacy 双形态）、`syao serve`、TaskStore/Approval/Budget/Audit | 真实 MCP server 端到端；治理开销 p95 < 5ms |
-| **M2 ACP** | 3 周 | ACP server adapter（编辑器可 spawn）、fs/terminal 反向能力、权限桥 | Zed/Neovim 任一客户端真实跑通"读→批→改→证据" |
-| **M3 A2A** | 3 周 | A2A client/server adapter、AgentCard、Task/Artifact、in-task auth | 与官方 SDK 互通；Task 状态与产物一致 |
-| **M4 证据与合规** | 2 周 | 跨协议 Receipt/Evidence Bundle、审计链、一致性套件、红队 | 0 critical/high；3 个跨协议场景黄金 trace 稳定 |
+| **M0 内核** | ≈ 21 | `@syaocode/rpc` IR + 状态机 + 治理接口 + 黄金样例 | 所有对象有 Zod schema；状态机性质测试通过 |
+| **M1 MCP + serve** | ≈ 31 | SDK 选型 PoC；MCP client/server（2026-07-28 + legacy 双形态）、`syao serve`、TaskStore/Approval/Budget/Audit | 真实 MCP server 端到端；治理开销 p95 < 5ms |
+| **M2 ACP** | ≈ 15 | ACP server adapter（官方 SDK 包装，编辑器可 spawn）、fs/terminal 反向能力、权限桥 | Zed/Neovim 任一客户端真实跑通"读→批→改→证据" |
+| **M3 A2A** | ≈ 14 | A2A client/server adapter（官方 `@a2a-js/sdk`）、AgentCard、Task/Artifact、in-task auth | 与官方 SDK 互通；Task 状态与产物一致 |
+| **M4 证据与合规** | ≈ 12 | 跨协议 Receipt/Evidence Bundle、审计链、一致性套件、红队 | 0 critical/high；3 个跨协议场景黄金 trace 稳定 |
 
-> 合计约 13 人周（65 人天），不含产品化 UI 与企业控制面。详细拆解见 [03-工程实现与落地路线.md](03-工程实现与落地路线.md)。
+> 合计约 **92.5 人天**（单人全职 ≈ 19 周；按兼职 2.5 人天/周 ≈ 37 周），不含产品化 UI 与企业控制面。  
+> **SDK 策略（2026-10-28 修订）**：边缘优先用官方 SDK——A2A 用 `@a2a-js/sdk 1.3.0`（无 zod 依赖）、ACP 用 `@agentclientprotocol/sdk 2.0.2`（peer 兼容本仓 `zod 3.25.76`）、MCP 隔离使用 SDK v2 `2.4.0`（其 `zod ^4.2.0` 硬依赖需隔离，PoC 不通过则回退自研最小层）；治理层始终自研。详见 [04 §5](04-外部事实核验记录.md)。
 
 ### 0.6 不做什么（anti-roadmap）
 
