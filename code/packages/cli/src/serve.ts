@@ -87,6 +87,14 @@ export const EDGE_PATHS: Readonly<Record<ServeProtocol, string>> = {
   acp: '/acp',
 };
 
+/**
+ * Where an A2A client looks for our self-description (A2A 1.0 / SDK
+ * `AGENT_CARD_PATH`). Serving it is what makes the edge *discoverable*: a
+ * compliant client resolves the card before it will talk to us at all, so
+ * without this endpoint no official SDK client can reach the edge.
+ */
+export const AGENT_CARD_PATH = '/.well-known/agent-card.json';
+
 export function edgePath(protocol: ServeProtocol): string {
   return EDGE_PATHS[protocol];
 }
@@ -559,6 +567,74 @@ async function startHttpServer(
     void handle(req, res);
   };
 
+  /**
+   * Fold the A2A HTTP headers into the JSON-RPC params metadata.
+   *
+   * Only for the A2A edge, only for a single request object: a batch or a
+   * notification is passed through untouched.
+   */
+  function bridgeA2aHeaders(protocol: ServeProtocol, req: IncomingMessage, body: string): string {
+    if (protocol !== 'a2a') return body;
+    const version = headerValue(req, 'a2a-version');
+    const tenant = headerValue(req, 'a2a-tenant');
+    if (version === undefined && tenant === undefined) return body;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body) as unknown;
+    } catch {
+      return body;
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return body;
+    const message = parsed as { method?: unknown; params?: unknown };
+    // Notifications carry no params we can annotate; leave them alone.
+    if (typeof message.method !== 'string') return body;
+    const params = (message.params ?? {}) as Record<string, unknown>;
+    const metadata = { ...((params.metadata ?? {}) as Record<string, unknown>) };
+    if (version !== undefined && metadata['A2A-Version'] === undefined) metadata['A2A-Version'] = version;
+    if (tenant !== undefined && metadata['tenantId'] === undefined) metadata['tenantId'] = tenant;
+    message.params = { ...params, metadata };
+    return JSON.stringify(message);
+  }
+
+  function headerValue(req: IncomingMessage, name: string): string | undefined {
+    const raw = req.headers[name];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    return typeof value === 'string' && value !== '' ? value : undefined;
+  }
+
+  /**
+   * The AgentCard this edge advertises, or undefined for non-A2A protocols.
+   *
+   * `supportedInterfaces[].url` points at the edge path so a client that
+   * resolved the card knows exactly where to send `SendMessage`.
+   */
+  function agentCardFor(activePlan: ServePlan): Record<string, unknown> | undefined {
+    if (activePlan.protocol !== 'a2a') return undefined;
+    const base = `http://${activePlan.host}:${activePlan.port}`;
+    return {
+      name: 'syaocode',
+      description: 'SYAOCode governance fabric (experimental preview)',
+      version: '0.4.0-dev',
+      supportedInterfaces: [
+        {
+          url: `${base}${EDGE_PATHS.a2a}`,
+          protocolBinding: 'JSONRPC',
+          protocolVersion: '1.0',
+        },
+      ],
+      capabilities: { streaming: true, pushNotifications: false, extensions: [] },
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      // The edge does not execute agent turns in this build, so it advertises
+      // no skills rather than promising work it will refuse (see the A2A edge
+      // note in mountServerEdge).
+      skills: [],
+      securitySchemes: {},
+      securityRequirements: [],
+      metadata: { tenantId: deps.ctx.tenantId, execution: 'not-implemented' },
+    };
+  }
+
   async function readBody(req: IncomingMessage): Promise<string> {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk as Buffer));
@@ -580,6 +656,17 @@ async function startHttpServer(
       });
       return;
     }
+    // A2A discovery. Unauthenticated by design: the card is public metadata
+    // (it carries no secret), and a client needs it to learn HOW to authenticate.
+    if (url === AGENT_CARD_PATH) {
+      const card = agentCardFor(plan);
+      if (card === undefined) {
+        json(res, 404, { error: { code: 'SY-SRV-004', message: 'this edge does not serve an agent card' } });
+        return;
+      }
+      json(res, 200, card);
+      return;
+    }
     if (plan.tokenConfigured && deps.token !== undefined) {
       if (!tokenMatches(deps.token, req.headers.authorization)) {
         json(res, 401, { error: { code: 'SY-SRV-001', message: t('serve.unauthorized') } });
@@ -598,7 +685,13 @@ async function startHttpServer(
       const body = await readBody(req);
       let replies: string[];
       try {
-        replies = await edge.handle(body.endsWith('\n') ? body : `${body}\n`);
+        // A2A 1.0 carries the protocol version in the HTTP `A2A-Version` HEADER
+        // (and the tenant may ride along), while the edge reads both from the
+        // request's `metadata`. Without this bridge a compliant client's header
+        // is ignored, the edge falls back to 0.3, and EVERY request from a real
+        // A2A SDK is rejected as an unsupported version.
+        const bridged = bridgeA2aHeaders(plan.protocol, req, body);
+        replies = await edge.handle(bridged.endsWith('\n') ? bridged : `${bridged}\n`);
       } catch (e) {
         json(res, 500, {
           jsonrpc: '2.0',
