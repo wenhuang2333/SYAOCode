@@ -57,6 +57,7 @@ import type {
 import { BudgetExceededError, DEFAULT_MAX_PER_INVOCATION_USD } from './budget.js';
 import { derivedKey, idempotencyKeyOf, requestHash } from './idempotency.js';
 import { retryVerdict } from '../ir/errors.js';
+import { canTransitionTask, isTaskTerminal } from '../ir/states.js';
 import { redactError } from './redactor-bridge.js';
 
 export interface DispatcherOptions extends DispatcherDeps {
@@ -446,6 +447,9 @@ export class GovernanceDispatcher implements Dispatcher {
       ...(reservationId !== undefined ? { reservationId } : {}),
     };
 
+    // The task leaves `submitted` the moment work actually starts, so a
+    // long-running call is visible as `working` rather than stuck.
+    await this.transitionTask(task, 'working', principal, req.protocol, ctx);
     await this.emit(task, principal, req.protocol, 'invocation.started', { invocationId, capabilityId: capability.id }, ctx, invocationId);
 
     let payload: InvokeResultPayload;
@@ -497,6 +501,7 @@ export class GovernanceDispatcher implements Dispatcher {
       delegationChain,
     }, ctx);
 
+
     await this.writeAudit(
       `invocation.${outcome}`,
       tenantId,
@@ -511,6 +516,13 @@ export class GovernanceDispatcher implements Dispatcher {
       receiptId: receipt.id,
       outcome,
     }, ctx, invocationId);
+
+    // Close the task: a task this invocation created ends with it. A task the
+    // caller supplied is left `working` — its owner decides when the work is
+    // done (a shared task can host many invocations).
+    if (req.taskId === undefined) {
+      await this.transitionTask(task, terminalTaskState(outcome), principal, req.protocol, ctx);
+    }
 
     if (outcome === 'succeeded') {
       await idempotency.complete(key, {
@@ -893,6 +905,39 @@ export class GovernanceDispatcher implements Dispatcher {
       payload: safePayload,
     });
     ctx.emit?.(event);
+    // The event log owns `seq`; mirror it onto the task so a reader can tell
+    // how far the task's stream has advanced (it used to stay 0 forever).
+    if (event.seq > task.lastSeq) task.lastSeq = event.seq;
+  }
+
+  /**
+   * Move a task to a new state, persist it and emit the matching event.
+   *
+   * Illegal edges throw in `assertTaskTransition`, so a bug surfaces here
+   * rather than producing a task in an impossible state.
+   */
+  private async transitionTask(
+    task: Task,
+    to: TaskState,
+    principal: Principal,
+    protocol: InvokeRequest['protocol'],
+    ctx: DispatchContext,
+  ): Promise<void> {
+    if (task.state === to) return;
+    if (!canTransitionTask(task.state, to)) return;
+    const eventType: CanonicalEvent['type'] =
+      to === 'completed' ? 'task.completed'
+      : to === 'failed' ? 'task.failed'
+      : to === 'cancelled' ? 'task.cancelled'
+      : 'task.state_changed';
+    // Emit first: the event log assigns the seq that the persisted row records.
+    await this.emit(task, principal, protocol, eventType, { state: to }, ctx);
+    task.state = to;
+    task.updatedAt = this.now();
+    await this.deps.tasks.put({
+      ...task,
+      ...(isTaskTerminal(to) ? { terminalReason: to } : {}),
+    });
   }
 
   private now(): string {
@@ -937,6 +982,16 @@ function firstUnsupportedObligation(obligations: Obligation[]): string | undefin
     }
   }
   return undefined;
+}
+
+/** The task state an invocation outcome leaves behind. */
+function terminalTaskState(outcome: InvocationState): TaskState {
+  switch (outcome) {
+    case 'succeeded': return 'completed';
+    case 'denied': return 'rejected';
+    case 'cancelled': return 'cancelled';
+    default: return 'failed';
+  }
 }
 
 function normalizeOutcome(outcome: InvokeResultPayload['outcome']): InvocationState {

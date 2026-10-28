@@ -126,15 +126,18 @@ describe('golden trace S1 — IDE: read → approve → write → evidence (ACP 
     expect(bundle.receipts).toHaveLength(2);
 
     const trace = await traceOf(fabric, read.taskId);
-    // Golden order: task → reserve → start → settle → receipt, twice, plus the
-    // approval lifecycle in between.
+    // Golden order: task → reserve → working → start → settle → receipt →
+    // invocation done → task done, twice (the second call reuses the task, so
+    // only the first one closes it).
     expect(trace).toEqual([
       'task.created',
       'budget.reserved',
+      'task.state_changed',
       'invocation.started',
       'budget.settled',
       'receipt.issued',
       'invocation.completed',
+      'task.completed',
       'budget.reserved',
       'invocation.started',
       'budget.settled',
@@ -209,10 +212,12 @@ describe('golden trace S2 — platform delegates to a remote A2A agent (opaque)'
     expect(trace).toEqual([
       'task.created',
       'budget.reserved',
+      'task.state_changed',
       'invocation.started',
       'budget.settled',
       'receipt.issued',
       'invocation.completed',
+      'task.completed',
     ]);
   });
 });
