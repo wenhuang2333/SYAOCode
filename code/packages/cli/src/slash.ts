@@ -19,7 +19,14 @@ export interface CommandDoc {
   name: string;
   usage: string;
   summary: string;
-  since: 'v0.1' | 'M2+' | 'M3+' | 'M4+';
+  since: 'v0.1' | 'v0.3' | 'M2+' | 'M3+' | 'M4+';
+  /** True when the command name is an alias of another command. */
+  aliasOf?: string;
+}
+
+/** Commands a user can run today (implemented), as opposed to planned ones. */
+export function isAvailableDoc(doc: CommandDoc): boolean {
+  return doc.since === 'v0.1' || doc.since === 'v0.3';
 }
 
 /** Commands available in v0.1 (implemented) plus planned ones (stubbed). */
@@ -42,8 +49,15 @@ export function commandDocs(): CommandDoc[] {
     { name: '/setting', usage: t('cmd.setting.usage'), summary: t('cmd.setting.summary'), since: 'v0.1' },
     { name: '/language', usage: t('cmd.language.usage'), summary: t('cmd.language.summary'), since: 'v0.1' },
     { name: '/exit', usage: t('cmd.exit.usage'), summary: t('cmd.exit.summary'), since: 'v0.1' },
+    // ── ARF governance surface (v0.3) ────────────────────────────────────
+    { name: '/rpc', usage: t('cmd.rpc.usage'), summary: t('cmd.rpc.summary'), since: 'v0.3' },
+    { name: '/peer', usage: t('cmd.peer.usage'), summary: t('cmd.peer.summary'), since: 'v0.3' },
+    { name: '/call', usage: t('cmd.call.usage'), summary: t('cmd.call.summary'), since: 'v0.3' },
+    { name: '/serve', usage: t('cmd.serve.usage'), summary: t('cmd.serve.summary'), since: 'v0.3' },
+    { name: '/approve', usage: t('cmd.approve.usage'), summary: t('cmd.approve.summary'), since: 'v0.3' },
+    // /mcp keeps working: it is now an alias of /peer for MCP servers.
+    { name: '/mcp', usage: t('cmd.mcpAlias.usage'), summary: t('cmd.mcpAlias.summary'), since: 'v0.3', aliasOf: '/peer' },
     { name: '/agents', usage: t('cmd.agents.usage'), summary: t('cmd.agents.summary'), since: 'M3+' },
-    { name: '/mcp', usage: t('cmd.mcp.usage'), summary: t('cmd.mcp.summary'), since: 'M4+' },
     { name: '/goal', usage: t('cmd.goal.usage'), summary: t('cmd.goal.summary'), since: 'M3+' },
     { name: '/rewind', usage: t('cmd.rewind.usage'), summary: t('cmd.rewind.summary'), since: 'M2+' },
   ];
@@ -197,14 +211,15 @@ export function parsePermissionAnswer(raw: string): PermissionAnswer {
 
 export function helpText(filter?: string): string {
   const docs = commandDocs();
-  const available = docs.filter((c) => c.since === 'v0.1');
-  const planned = docs.filter((c) => c.since !== 'v0.1');
+  const available = docs.filter(isAvailableDoc);
+  const planned = docs.filter((c) => !isAvailableDoc(c));
   if (filter !== undefined) {
     const cmd = docs.find((c) => c.name === filter || c.name === `/${filter}`);
     if (cmd === undefined) return t('help.unknown', { filter });
     return t('help.detail', { usage: cmd.usage, summary: cmd.summary, since: cmd.since });
   }
-  const line = (c: CommandDoc) => `  ${c.usage.padEnd(46)} ${c.summary}`;
+  const line = (c: CommandDoc) =>
+    `  ${c.usage.padEnd(46)} ${c.summary}${c.aliasOf !== undefined ? ` ${t('help.aliasOf', { target: c.aliasOf })}` : ''}`;
   return [
     t('help.available'),
     ...available.map(line),

@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import type { ContentBlock, ToolResultContent } from './types.js';
 import type { Runtime } from './runtime/index.js';
+import type { SandboxLevel, TrustLevel } from './evidence.js';
 
 /** Tool contract (DD-4). Zod is the single schema source (ADR-07). */
 export type ToolRisk = 'read' | 'write' | 'exec' | 'network' | 'meta';
@@ -21,8 +22,14 @@ export interface ToolResultMeta {
   command?: string;
   paths?: string[];
   testStats?: { total: number; passed: number; failed: number; skipped: number };
-  trust?: 'trusted' | 'workspace' | 'untrusted';
+  /** Result provenance; MCP/web tools must declare 'untrusted' (BR-007, C4). */
+  trust?: TrustLevel;
+  /** Isolation the tool actually ran under; defaults to 'none' (C4). */
+  sandbox?: SandboxLevel;
 }
+
+/** Provenance ladder for tool results (mirrors evidence.TrustLevel). */
+export type { SandboxLevel, TrustLevel };
 
 export interface PromptContext {
   cwd: string;
@@ -45,6 +52,12 @@ export interface Tool<I = unknown> {
   readOnly: boolean;
   concurrencySafe: boolean;
   timeoutMs?: number;
+  /**
+   * Result provenance declared by the tool (report C4). MCP/web sourced tools
+   * must declare `trust: 'untrusted'` so downstream consumers never treat
+   * remote content as first-party (BR-007).
+   */
+  trust?: TrustLevel;
   /** Parameters used for permission rule matching (path / command / url). */
   permissionSubject?(input: I): PermissionSubject;
   execute(input: I, ctx: ToolContext): Promise<ToolOutput> | AsyncGenerator<ToolProgress, ToolOutput>;

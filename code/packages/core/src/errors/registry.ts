@@ -11,11 +11,17 @@
 
 export type ErrorDomain =
   | 'CFG' | 'PRV' | 'LOOP' | 'TOOL' | 'PERM' | 'FS' | 'CTX' | 'SES' | 'SEC'
-  | 'MCP' | 'ACP' | 'PLG' | 'HOOK' | 'DEC' | 'AGT' | 'RUN' | 'SRV' | 'CLI' | 'INT';
+  | 'MCP' | 'A2A' | 'ACP' | 'PLG' | 'HOOK' | 'DEC' | 'AGT' | 'RUN' | 'SRV' | 'CLI' | 'INT';
+
+/** Runtime view of the closed domain union (lint scripts iterate this). */
+export const ERROR_DOMAINS: readonly ErrorDomain[] = [
+  'CFG', 'PRV', 'LOOP', 'TOOL', 'PERM', 'FS', 'CTX', 'SES', 'SEC',
+  'MCP', 'A2A', 'ACP', 'PLG', 'HOOK', 'DEC', 'AGT', 'RUN', 'SRV', 'CLI', 'INT',
+];
 
 export type ErrorCategory =
   | 'config' | 'provider' | 'loop' | 'tool' | 'permission' | 'fs' | 'context'
-  | 'session' | 'security' | 'mcp' | 'acp' | 'plugin' | 'hook' | 'decision'
+  | 'session' | 'security' | 'mcp' | 'a2a' | 'acp' | 'plugin' | 'hook' | 'decision'
   | 'agent' | 'run' | 'server' | 'cli' | 'internal';
 
 export type Severity = 'info' | 'warning' | 'error' | 'fatal';
@@ -33,10 +39,10 @@ export interface ErrorCodeEntry {
   readonly status?: 'active' | 'deprecated';
 }
 
-const DOMAIN_CATEGORY: Record<ErrorDomain, ErrorCategory> = {
+export const DOMAIN_CATEGORY: Record<ErrorDomain, ErrorCategory> = {
   CFG: 'config', PRV: 'provider', LOOP: 'loop', TOOL: 'tool', PERM: 'permission',
   FS: 'fs', CTX: 'context', SES: 'session', SEC: 'security', MCP: 'mcp',
-  ACP: 'acp', PLG: 'plugin', HOOK: 'hook', DEC: 'decision', AGT: 'agent',
+  A2A: 'a2a', ACP: 'acp', PLG: 'plugin', HOOK: 'hook', DEC: 'decision', AGT: 'agent',
   RUN: 'run', SRV: 'server', CLI: 'cli', INT: 'internal',
 };
 
@@ -107,6 +113,14 @@ const TABLE: readonly Row[] = [
   { code: 'SY-MCP-003', name: 'McpToolCallFailed', severity: 'error', retryable: false, recovery: 'fix_input', description: 'Server returned an error.' },
   { code: 'SY-MCP-004', name: 'McpAuthFailed', severity: 'error', retryable: false, recovery: 'ask_user', description: 'OAuth expired or rejected.' },
   { code: 'SY-MCP-005', name: 'McpTimeout', severity: 'warning', retryable: true, recovery: 'retry', description: 'Exceeded timeoutMs.' },
+  { code: 'SY-MCP-006', name: 'McpRequestStateCorrupted', severity: 'error', retryable: false, recovery: 'ask_user', description: 'MRTR requestState failed its integrity check or was replayed with mismatched input; the retry is refused (fail closed, 03 §5.1).' },
+  // ── SY-A2A A2A 协议 ──────────────────────────────────────────
+  { code: 'SY-A2A-001', name: 'A2aTaskNotFound', severity: 'error', retryable: false, recovery: 'fix_input', description: 'The peer has no task for the given task id (JSON-RPC -32001).' },
+  { code: 'SY-A2A-002', name: 'A2aTaskNotCancelable', severity: 'error', retryable: false, recovery: 'fix_input', description: 'The task is already in a terminal state and cannot be cancelled (JSON-RPC -32002).' },
+  { code: 'SY-A2A-003', name: 'A2aPushNotificationNotSupported', severity: 'warning', retryable: false, recovery: 'reconfigure', description: 'The peer has no push-notification capability; polling fallback is used (JSON-RPC -32003).' },
+  { code: 'SY-A2A-004', name: 'A2aUnsupportedOperation', severity: 'error', retryable: false, recovery: 'reconfigure', description: 'The peer rejected the requested method or capability (JSON-RPC -32004).' },
+  { code: 'SY-A2A-005', name: 'A2aVersionNotSupported', severity: 'error', retryable: false, recovery: 'abort', description: 'No common A2A protocol version with the peer (JSON-RPC -32022); the call is abandoned.' },
+  { code: 'SY-A2A-006', name: 'A2aAgentCardInvalid', severity: 'error', retryable: false, recovery: 'ask_user', description: 'AgentCard failed schema/JWS validation, or its signature does not match the pinned key.' },
   // ── SY-ACP ACP 协议 ──────────────────────────────────────────
   { code: 'SY-ACP-001', name: 'AcpVersionMismatch', severity: 'fatal', retryable: false, recovery: 'abort', description: 'No common protocol version between client and server.' },
   { code: 'SY-ACP-002', name: 'AcpInvalidRequest', severity: 'error', retryable: false, recovery: 'none', description: 'Invalid JSON-RPC params; protocol-level error returned.' },
@@ -143,6 +157,7 @@ const TABLE: readonly Row[] = [
   { code: 'SY-SRV-001', name: 'ServiceAuthFailed', severity: 'error', retryable: false, recovery: 'reconfigure', description: 'Invalid/expired bearer token or unauthorized client (BR-041).' },
   { code: 'SY-SRV-002', name: 'UnsafeListenAddress', severity: 'error', retryable: false, recovery: 'reconfigure', description: 'Attempted remote listen without safety params (BR-041).' },
   { code: 'SY-SRV-003', name: 'PermissionRequestStale', severity: 'warning', retryable: false, recovery: 'none', description: 'One-shot PermissionRequest answered twice or expired.' },
+  { code: 'SY-SRV-004', name: 'CapabilityUnsupported', severity: 'error', retryable: false, recovery: 'reconfigure', description: 'The requested capability is not offered by any registered protocol edge (unsupported_capability, 03 §5.5 exit code 7).' },
   // ── SY-CLI CLI ───────────────────────────────────────────────
   { code: 'SY-CLI-001', name: 'CliUsageOrProtocolInvalid', severity: 'error', retryable: false, recovery: 'fix_input', description: 'Invalid CLI args or unsupported input schemaVersion (BR-042).' },
   { code: 'SY-CLI-002', name: 'NonInteractivePermissionDenied', severity: 'warning', retryable: false, recovery: 'ask_user', description: 'Headless ask→deny left the task incomplete (BR-042).' },

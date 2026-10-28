@@ -3,7 +3,10 @@
   "compilerOptions": {
     "paths": {
       "@syaocode/core": ["../core/src/index.ts"],
+      "@syaocode/protocols": ["../protocols/src/index.ts"],
+      "@syaocode/protocols/*": ["../protocols/src/*/index.ts"],
       "@syaocode/providers": ["../providers/src/index.ts"],
+      "@syaocode/rpc": ["../rpc/src/index.ts"],
       "@syaocode/tools": ["../tools/src/index.ts"]
     }
   },

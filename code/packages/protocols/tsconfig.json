@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@syaocode/core": ["../core/src/index.ts"],
+      "@syaocode/rpc": ["../rpc/src/index.ts"],
+      "@syaocode/protocols/mcp": ["./src/mcp/index.ts"],
+      "@syaocode/protocols/a2a": ["./src/a2a/index.ts"],
+      "@syaocode/protocols/acp": ["./src/acp/index.ts"],
+      "@syaocode/protocols/shared": ["./src/shared/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

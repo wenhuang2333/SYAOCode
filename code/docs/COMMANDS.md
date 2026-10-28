@@ -1,4 +1,4 @@
-# SYAOCode 指令集手册（v0.2-dev）
+# SYAOCode 指令集手册（v0.3-dev）
 
 `syao` 终端命令与交互模式完整参考。对应需求：FR-130/134/135/137/173/174。
 
@@ -15,6 +15,10 @@
 | `syao doctor` | 环境与配置诊断（无需任何密钥） |
 | `syao config list \| get <key> \| path` | 查看生效配置 / 单项 / 配置文件路径 |
 | `syao verify init [--force]` | 自动发现验证命令并写入 `.syaocode/verify.json`（已存在需 `--force`） |
+| `syao rpc <...>` | **治理运维**：任务 / 审批 / 预算 / 审计 / 策略解释 / 总览（见第 5 节治理底座） |
+| `syao call <capabilityId>` | 发起一次受治理调用并打印回执 |
+| `syao serve --mcp\|--acp\|--a2a [--stdio\|--http]` | 把 SYAOCode 作为协议服务暴露给外部客户端 |
+| `syao mcp list\|add\|remove` | MCP server 配置管理（`/peer` 的子命令形态） |
 | `syao --version` / `syao --help` | 版本 / 帮助 |
 
 当前目录即工作区（可用 `--cwd` 覆盖）。首次使用建议先跑 `syao doctor`，再用 `/model config` 配置模型。
@@ -357,13 +361,52 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 
 规则语义（不可绕过）：`deny > ask > allow`；危险命令任何档位默认拒绝；项目级配置不能放宽用户级 deny（BR-024）；**任何模型输出都不能提升权限**。档位（strict/yao/si）只是改变"哪些操作免确认"，不改变这些硬规则。
 
+### 治理底座（ARF）：`/rpc` · `/peer` · `/call` · `/serve` · `/approve`
+
+> 新增于 v0.3。对应 `document/Agent-RPC/` 的治理底座：一次授权跨协议通用、一份预算跨 Agent 不超支、一条证据链跨客户端可核验。命名刻意取短、动词化：治理面统一挂在 `/rpc`，协议边缘统一挂在 `/peer`。
+
+| 命令 | 用法 | 功能 |
+| --- | --- | --- |
+| `/rpc` | `/rpc` | **治理总览面板**：租户、策略版本、能力数、任务、待批审批、审计链、协议边缘、预算、最近回执 |
+| | `/rpc tasks` | 任务列表（状态 / 会话 / 创建时间） |
+| | `/rpc task <id>` | 单任务详情 + 事件轨迹（回执、审批、降级标记） |
+| | `/rpc approvals` | 待批审批列表（含 subject、风险、过期时间） |
+| | `/rpc approve <id> [once\|session\|always]` | 批准（`once` 一次性 / `session` 本会话 / `always` 永久，永久项必须绑定能力与范围） |
+| | `/rpc deny <id>` | 拒绝 |
+| | `/rpc budget` | 预算账户与预留/已用（进度条） |
+| | `/rpc audit` | 审计链完整性校验 + 最近事件 |
+| | `/rpc policy <capabilityId>` | 策略解释：命中的规则、谁拒绝的、为何询问（`PolicyTrace`） |
+| | `/rpc status` | 同无参数总览 |
+| `/peer` | `/peer` / `/peer list` | 协议边缘列表：MCP server / A2A agent / ACP client，能力数、健康、**`lossy` 降级提示** |
+| | `/peer add <id> <url\|command>` | 注册一个边缘（`/mcp` 为别名） |
+| | `/peer remove <id>` / `/peer ping <id>` | 移除 / 探活 |
+| `/call` | `/call <capabilityId> [json]` | 发起一次**受治理调用**：输出结果、回执 ID、成本、审批与降级轨迹 |
+| `/serve` | `/serve` | 协议服务状态面板（端点 / token / 监听地址） |
+| | `/serve [mcp\|acp\|a2a] [--stdio\|--http] [--port N]` | 启动/查看对应边缘服务 |
+| `/approve` | `/approve <id> [once\|session\|always\|deny]` | 按 ID 裁决待批审批（`/rpc approve` 的快捷方式） |
+| `/mcp` | 同 `/peer` | 兼容旧名，保留为 `/peer` 的别名 |
+
+**退出码**（子命令与 `-p` 共用）：`0` 成功 / `1` 一般错误 / `2` 参数或协议格式 / `3` 权限拒绝（含审批被拒）/ `4` 限额 / `5` 未验证 / `6` 验证失败 / **`7` 能力或协议不可用**（`unsupported_capability`、`version_mismatch`、`capability_not_found`）/ `130` 中断。
+
+**子命令等价形式**：
+
+```bash
+syao rpc status --json            # 机读输出，便于脚本/CI
+syao rpc audit                    # 审计链校验
+syao rpc policy mcp://github/tool/get_issue
+syao call local://tools/read --input '{"path":"README.md"}'
+syao serve --mcp --stdio
+syao mcp list
+```
+
+> 治理语义不可绕过：策略先于派发（无决策不派发）、审批超时即拒绝（fail-closed）、预算先预留后派发、非幂等调用结果未知时标 `indeterminate` 且不自动重试、每个调用恰好一张回执。详见 `docs/AGENT-RPC.md`。
+
 ### 计划中的命令（当前为占位提示）
 
 | 命令 | 计划 | 功能 |
 | --- | --- | --- |
 | `/agents` | M3+ | 三角色编排（hyaki 摘要 / sota 规划 / common 执行） |
 | `/goal` | M3+ | 目标设定与确定性验收（BR-050） |
-| `/mcp` | M4+ | MCP 服务器管理（`mcp__{server}__{tool}`） |
 | `/rewind` | M2+ | 检查点回滚 |
 
 ## 6. 非交互输出协议（`-p` 模式）

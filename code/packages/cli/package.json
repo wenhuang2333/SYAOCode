@@ -18,7 +18,9 @@
   "dependencies": {
     "@syaocode/core": "workspace:*",
     "@syaocode/node": "workspace:*",
+    "@syaocode/protocols": "workspace:*",
     "@syaocode/providers": "workspace:*",
+    "@syaocode/rpc": "workspace:*",
     "@syaocode/testing": "workspace:*",
     "@syaocode/tools": "workspace:*",
     "zod": "^3.24.0"
