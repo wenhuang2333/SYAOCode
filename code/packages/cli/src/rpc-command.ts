@@ -510,6 +510,11 @@ export async function rpcView(cmd: Extract<RpcCommand, { kind: 'view' }>, cli: C
     }
     case 'policy': {
       const capabilityId = cmd.capabilityId ?? '';
+      // A peer's capabilities only exist once the edge is mounted; `/call` does
+      // this lazily, so the explainer must too or it reports a registered
+      // capability as unknown.
+      await cli.mountRegisteredPeers();
+      await cli.fabric.discover();
       const decision = await cli.fabric.policyExplain({ capabilityId });
       return { lines: policyPanel(decision, capabilityId), json: { capabilityId, decision } };
     }

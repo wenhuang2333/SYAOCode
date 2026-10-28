@@ -304,7 +304,20 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
   async function mountOne(id: string, peer: PeerConfig): Promise<MountReport> {
     const existing = mountedPeers.get(id);
     if (existing !== undefined && existing.ok) return existing;
-    const outcome = await mountPeerEdge(peer, id, mountOptions);
+    // One unreachable peer must never take the whole console down: a dead
+    // server, a bad command or a protocol edge missing from this build all
+    // degrade to a failed report that `/peer list` can show.
+    let outcome: Awaited<ReturnType<typeof mountPeerEdge>>;
+    try {
+      outcome = await mountPeerEdge(peer, id, mountOptions);
+    } catch (e) {
+      outcome = {
+        providerId: id,
+        ok: false,
+        capabilities: 0,
+        reason: e instanceof Error ? e.message : String(e),
+      };
+    }
     const report: MountReport = {
       id,
       protocol: peer.protocol,
