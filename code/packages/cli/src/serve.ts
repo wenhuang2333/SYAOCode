@@ -59,6 +59,21 @@ export interface ServeIo {
 export const A2A_EXECUTION_UNSUPPORTED_MESSAGE =
   'SYAOCode A2A edge accepts discovery and task bookkeeping but does not execute agent turns in this build; the task was recorded and cancelled rather than reported as completed.';
 
+/**
+ * The wire framing for one binding.
+ *
+ * Getting this wrong breaks every real peer, and the failure is silent to a
+ * self-test that shares the mistake:
+ *   - MCP stdio is `Content-Length` framed (LSP-style);
+ *   - ACP stdio is newline-delimited JSON (04 C16);
+ *   - HTTP carries the payload in the response BODY, so it is bare JSON.
+ * The official MCP client failed with `SyntaxError: Unexpected token 'C'` when
+ * HTTP reused the stdio framing.
+ */
+export function framingFor(protocol: ServeProtocol, transport: ServeTransport): 'content-length' | 'json-lines' {
+  return transport === 'stdio' && protocol === 'mcp' ? 'content-length' : 'json-lines';
+}
+
 export const DEFAULT_PORTS: Readonly<Record<ServeProtocol, number>> = {
   mcp: 8787,
   a2a: 8788,
@@ -171,6 +186,22 @@ export interface ServeFabricContext {
    * never fails with "budget account does not exist".
    */
   ensureSession(): Promise<{ id: string; budgetId: string }>;
+  /**
+   * Run one ACP prompt turn (audit C-3).
+   *
+   * Without it the ACP edge can `initialize` and open sessions but every
+   * `session/prompt` fails with "this agent has no prompt handler". The host
+   * supplies the runner because it owns the model configuration.
+   */
+  runTurn?: (request: {
+    /** The ACP content blocks of this turn (flattened by the runner). */
+    prompt: readonly { type: string; text?: string }[];
+    sessionId: string;
+    taskId: string;
+    update(update: { sessionUpdate: string; [key: string]: unknown }): void;
+    requestPermission(request: unknown): Promise<{ outcome: 'selected'; optionId: string } | { outcome: 'cancelled' }>;
+    signal?: AbortSignal;
+  }) => Promise<{ stopReason: 'end_turn' | 'max_tokens' | 'max_turn_requests' | 'refusal' | 'cancelled' }>;
 }
 
 export interface MountedServerEdge {
@@ -189,7 +220,13 @@ export interface MountedServerEdge {
 export async function mountServerEdge(
   protocol: ServeProtocol,
   ctx: ServeFabricContext,
-  opts: { serverId?: string; bufferStdout?: boolean; timeoutMs?: number } = {},
+  opts: {
+    serverId?: string;
+    bufferStdout?: boolean;
+    timeoutMs?: number;
+    /** The binding in use; it decides the wire framing. */
+    transport?: ServeTransport;
+  } = {},
 ): Promise<MountedServerEdge | undefined> {
   const mod = await loadProtocolModule(protocol);
   if (mod === undefined) return undefined;
@@ -211,10 +248,13 @@ export async function mountServerEdge(
   const useStdout = opts.bufferStdout !== true;
   const { channel, push, end } = createCallbackChannel({
     describe: `${protocol}:serve`,
-    // HTTP carries the JSON-RPC payload in the response BODY, so it must be
-    // newline-delimited, not stdio `Content-Length` framed: writing stdio
-    // framing into an HTTP body makes every real peer fail to parse it.
-    framing: 'json-lines',
+    // Framing is per BINDING, and getting it wrong makes every real peer fail:
+    //   - MCP stdio is `Content-Length` framed (LSP-style);
+    //   - ACP stdio is newline-delimited JSON (04 C16);
+    //   - HTTP carries the payload in the response BODY, so it is bare JSON —
+    //     writing stdio framing there is what made the official MCP client fail
+    //     with `SyntaxError: Unexpected token 'C'`.
+    framing: framingFor(protocol, opts.transport ?? 'stdio'),
     onSend: (chunk) => {
       outbox.push(chunk);
       if (useStdout) stdout.write(chunk);
@@ -341,6 +381,9 @@ export async function mountServerEdge(
         clientId: serverId,
         gateway,
         agentInfo: { name: 'syaocode', version: '0.3.0-dev' },
+        // ACP is the editor edge: the turn runs through the governed agent
+        // path, and the editor is the approval authority.
+        ...(ctx.runTurn !== undefined ? { runTurn: ctx.runTurn } : {}),
       });
       close = async () => {
         await edge.server.close();
@@ -472,7 +515,10 @@ export async function runServe(
     }
     // stdio: the protocol messages own stdout, so the panel goes to stderr.
     io.err(`${servePanel(effective, { listening: true, endpoints: effective.endpoints }).join('\n')}\n`);
-    const edge = await mountServerEdge(plan.protocol, ctx, { serverId: deps.serverId ?? 'syaocode' });
+    const edge = await mountServerEdge(plan.protocol, ctx, {
+      serverId: deps.serverId ?? 'syaocode',
+      transport: plan.transport,
+    });
     if (edge === undefined) return 7;
     // Raw stdin chunks feed the edge verbatim: the framer in the protocol
     // layer owns Content-Length parsing, so the bytes must not be line-split.
@@ -504,7 +550,11 @@ async function startHttpServer(
 ): Promise<Server | undefined> {
   const edge = plan.edgeUnavailable
     ? undefined
-    : await mountServerEdge(plan.protocol, deps.ctx, { serverId: deps.serverId ?? 'syaocode', bufferStdout: false });
+    : await mountServerEdge(plan.protocol, deps.ctx, {
+        serverId: deps.serverId ?? 'syaocode',
+        bufferStdout: false,
+        transport: plan.transport,
+      });
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
     void handle(req, res);
   };
