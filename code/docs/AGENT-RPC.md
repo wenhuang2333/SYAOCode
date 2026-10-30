@@ -180,6 +180,8 @@
 > 真实互通合计发现并修掉 **6 个**自指测试漏过的缺陷：MCP 的 HTTP 体写了 stdio 帧、列表缺 `resultType`、列表缺 `ttlMs`/`cacheScope` 与工具缺 `inputSchema`、内置工具被 TTL 判死；A2A 的**完全没有 AgentCard**（官方客户端无法发现边缘）、`A2A-Version` 走 HTTP 头却从 body 读（把每个真实客户端当成版本不支持）。
 >
 > 仍未完成（**不要在对外材料中宣称**）：MCP `subscriptions/listen` 与 `notifications/message`（已登记 `knownGaps`）、A2A 保留键覆盖、ACP `session/update` 其余 9 类变体、审计留存策略（retention/轮转/多进程并发）、`detailHash`、吞吐未测。
+>
+> **多进程写入是当前最高风险**：文件 store 没有跨进程写锁，"读全量→改→重写全量"会在两个进程同时写同一租户目录时丢更新、覆盖预算、把审计链写出分叉。完整设计见 [`document/Agent-RPC/06-多进程写入与审计留存设计.md`](../../document/Agent-RPC/06-多进程写入与审计留存设计.md)，排期见 `07` 的 WP-1。**在 WP-1 完成前，本项目只能宣称"单进程可用"。**
 
 ### 5.2 对外口径（截至本版本）
 
@@ -323,11 +325,14 @@ const bundle = await fabric.evidence.seal(result.taskId);
 
 ## 9. 已知边界与未实现项
 
+> **2026-10-30 更新**：本表下方"持久化"一行已过时——CLI 现在默认使用文件 store 并跨进程可读（C-4）。**但文件 store 没有跨进程写锁**：同一租户目录只能由**一个进程**写。多进程写入协议见
+> [`document/Agent-RPC/06-多进程写入与审计留存设计.md`](../../document/Agent-RPC/06-多进程写入与审计留存设计.md)，排期见 `07` WP-1。**在该 WP 完成前，不得宣称多进程安全。**
+
 | 项 | 状态 |
 | --- | --- |
-| 持久化存储（JSONL/SQLite/Postgres） | 内核提供**内存实现** + 完整接口；`@syaocode/node` 已提供文件实现（`createFileTaskStore` / `createFileBudgetStore` / `createFileIdempotencyStore` / `createFileAuditStore`，审计链可校验）。CLI 目前仍用内存实现，接缝见 `packages/cli/src/arf.ts` 的 `// PERSISTENCE SEAM` |
+| 持久化存储（JSONL/SQLite/Postgres） | 内核提供**内存实现** + 完整接口；`packages/rpc/src/runtime/file-stores.ts` 提供文件实现（tasks/sessions/approvals/budget/idempotency/receipts/audit/events，加载时校验回执链与审计链），CLI 默认启用、跨进程可读。**限制：无跨进程写锁、无 retention/轮转、`writeAll` 非原子**，因此只支持单进程写；设计见 `06` |
 | **MCP 端到端（真实对端）** | **已跑通，双向**：① SYAOCode 作 MCP **client** 调用外部真实 MCP server（`mcp add` → 发现 1 个能力 → `call mcp://demo/tool/echo` 返回 `echo:{"msg":"hi"}` + 回执）；② SYAOCode 作 MCP **server**（`syao serve --mcp --stdio`）被第三方 client 驱动：`server/discover`（supportedVersions `2026-07-28` / ttlMs / cacheScope / serverInfo）→ `tools/list`（6 个受治理工具）→ `tools/call read`（真实文件内容） |
-| A2A / ACP 适配器 | 实现完整，测试走进程内 loopback 与契约套件；**真实第三方编辑器/Agent 联调未做**。A2A/ACP 的 server 边缘已接线但未真机验证 |
+| A2A / ACP 适配器 | 实现完整；**已用官方 SDK 实测互通**（A2A `@a2a-js/sdk@1.3.0` 5/5；ACP `@agentclientprotocol/sdk@2.0.2` 6/6，见 §14）。**未做**：真实第三方编辑器（Zed/Neovim）的长期联调、真实跨组织 A2A 对端 |
 | AgentCard 签名（JWS/Ed25519） | 结构已预留（`signatures` 字段与 `lossy` 标注），签名算法未实现 |
 | OAuth 2.1 / PRM 发现 | 未实现（属协议侧传输安全，ARF 只做其上的治理） |
 | MCP Tasks 扩展的长任务跟踪 | 状态映射已就绪（`TASK_TO_MCP`），扩展方法未实现 |
