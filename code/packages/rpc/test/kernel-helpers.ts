@@ -34,7 +34,18 @@ export const hasher: Hasher = { sha256: sha256Hex };
 /** Minimal in-memory Runtime with a controllable clock. */
 export class FakeRuntime implements Runtime {
   clockValue = Date.parse(TEST_NOW);
+  /** Monotonic companion: advances with sleeps, never with wall-clock jumps. */
+  monoValue = 0;
   readonly files = new Map<string, string>();
+  /** Per-path mtime; bumped on every write so fingerprints can detect change. */
+  readonly mtimes = new Map<string, number>();
+  /** Seed with clock advances so a rewrite always produces a new mtime. */
+  private mtimeSeq = 0;
+
+  private touch(path: string): void {
+    this.mtimeSeq += 1;
+    this.mtimes.set(path, this.mtimeSeq);
+  }
 
   readonly fs = {
     readFile: async (path: string): Promise<string> => {
@@ -44,15 +55,83 @@ export class FakeRuntime implements Runtime {
     },
     writeFile: async (path: string, data: string): Promise<void> => {
       this.files.set(path, data);
+      this.touch(path);
     },
     appendFile: async (path: string, data: string): Promise<void> => {
       this.files.set(path, `${this.files.get(path) ?? ''}${data}`);
+      this.touch(path);
     },
-    stat: async () => ({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
-    readdir: async () => [],
+    rename: async (from: string, to: string): Promise<void> => {
+      const v = this.files.get(from);
+      if (v === undefined) throw new Error(`ENOENT ${from}`);
+      this.files.set(to, v);
+      this.files.delete(from);
+      this.touch(to);
+    },
+    fsyncFile: async (path: string): Promise<void> => {
+      if (!this.files.has(path)) throw new Error(`ENOENT ${path}`);
+    },
+    fsyncDir: async (): Promise<void> => undefined,
+    stat: async (path: string) => {
+      const v = this.files.get(path);
+      if (v === undefined) throw new Error(`ENOENT ${path}`);
+      return { size: v.length, mtimeMs: this.mtimes.get(path) ?? 0, isFile: true, isDirectory: false };
+    },
+    /**
+     * List a directory from the flat key map. The write lease's queue depends
+     * on this: a readdir that always returned [] would make every writer think
+     * it was alone at the head of the queue.
+     */
+    readdir: async (path: string) => {
+      const prefix = path.endsWith('/') ? path : `${path}/`;
+      const seen = new Map<string, { isFile: boolean; isDirectory: boolean }>();
+      for (const key of this.files.keys()) {
+        if (!key.startsWith(prefix)) continue;
+        const rest = key.slice(prefix.length);
+        if (rest === '') continue;
+        const first = rest.split('/')[0]!;
+        // A key deeper than one level means `first` is a directory.
+        seen.set(first, { isFile: !rest.includes('/'), isDirectory: rest.includes('/') });
+      }
+      if (seen.size === 0 && !this.files.has(path)) throw new Error(`ENOENT: ${path}`);
+      return [...seen.entries()].map(([name, kind]) => ({ name, ...kind }));
+    },
     realpath: async (path: string): Promise<string> => path,
-    mkdir: async (): Promise<void> => undefined,
-    rmdir: async (): Promise<void> => undefined,
+    /**
+     * `mkdir(2)` semantics: without `recursive`, an existing path throws
+     * EEXIST. The write lease relies on exactly that to decide who wins the
+     * lock, so a permissive fake would make the lease untestable.
+     */
+    mkdir: async (path: string, opts?: { recursive?: boolean }): Promise<void> => {
+      if (this.files.has(path)) {
+        if (opts?.recursive === true) return;
+        throw new Error(`EEXIST: ${path}, mkdir '${path}'`);
+      }
+      if (opts?.recursive === true) {
+        const parts = path.split('/').filter((p) => p !== '');
+        let acc = '';
+        for (const part of parts) {
+          acc += `/${part}`;
+          if (!this.files.has(acc)) {
+            this.files.set(acc, '');
+            this.touch(acc);
+          }
+        }
+        return;
+      }
+      this.files.set(path, '');
+      this.touch(path);
+    },
+    /** `rmdir(2)`: refuses a directory that still has children. */
+    rmdir: async (path: string): Promise<void> => {
+      if (!this.files.has(path)) throw new Error(`ENOENT: ${path}, rmdir '${path}'`);
+      const prefix = `${path}/`;
+      for (const key of this.files.keys()) {
+        if (key.startsWith(prefix)) throw new Error(`ENOTEMPTY: ${path}, rmdir '${path}'`);
+      }
+      this.files.delete(path);
+      this.touch(path);
+    },
     unlink: async (path: string): Promise<void> => {
       this.files.delete(path);
     },
@@ -73,9 +152,30 @@ export class FakeRuntime implements Runtime {
 
   readonly clock = {
     now: (): number => this.clockValue,
-    sleep: async (ms: number): Promise<void> => {
+    /**
+     * Move the WALL clock (an NTP-style jump). Lease TTLs are judged against
+     * this, so a forward jump is how a test simulates "the holder went away".
+     */
+    advance: (ms: number): void => {
       this.clockValue += ms;
     },
+    /**
+     * Wait for real, and move the clock by the REAL elapsed time.
+     *
+     * Advancing by the requested amount would be wrong under concurrency: N
+     * writers sleeping 50 ms each overlap in real time, so the clock should
+     * move ~50 ms in total, not N×50 ms. Charging each sleep its full
+     * duration fast-forwards lease time enormously and expires healthy
+     * tickets — which is exactly the bug this clock must not have.
+     */
+    sleep: async (ms: number): Promise<void> => {
+      const started = performance.now();
+      await new Promise<void>((resolve) => setTimeout(resolve, ms));
+      const elapsed = Math.round(performance.now() - started);
+      this.clockValue += elapsed;
+      this.monoValue += elapsed;
+    },
+    monotonicNow: (): number => this.monoValue,
   };
 
   readonly logger = {

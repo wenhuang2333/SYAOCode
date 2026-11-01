@@ -58,6 +58,34 @@ class NodeFileSystem implements FileSystem {
       return false;
     }
   }
+  /**
+   * `rename(2)`: atomic replace within one filesystem.
+   *
+   * A rename across devices fails with EXDEV, which the store layer surfaces
+   * as a store error rather than silently falling back to a non-atomic copy —
+   * a half-copied budget file is worse than a loud failure.
+   */
+  async rename(from: string, to: string): Promise<void> {
+    await fsp.rename(from, to);
+  }
+  /** `fsync(2)` on a file: open, flush, close. */
+  async fsyncFile(path: string): Promise<void> {
+    const handle = await fsp.open(path, 'r+');
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  }
+  /** `fsync(2)` on a directory: makes a preceding rename durable. */
+  async fsyncDir(path: string): Promise<void> {
+    const handle = await fsp.open(path, 'r');
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  }
 }
 
 class NodeShell implements Shell {
@@ -187,6 +215,15 @@ class NodeHttpClient implements HttpClient {
 class NodeClock implements Clock {
   now(): number {
     return Date.now();
+  }
+  /**
+   * `performance.now()`: monotonic, unaffected by wall-clock steps.
+   *
+   * Lease heartbeats use this so an NTP correction cannot make a healthy
+   * holder look expired (or a dead one look alive).
+   */
+  monotonicNow(): number {
+    return performance.now();
   }
   sleep(ms: number, signal?: AbortSignal): Promise<void> {
     if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));

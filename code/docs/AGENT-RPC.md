@@ -179,9 +179,11 @@
 
 > 真实互通合计发现并修掉 **6 个**自指测试漏过的缺陷：MCP 的 HTTP 体写了 stdio 帧、列表缺 `resultType`、列表缺 `ttlMs`/`cacheScope` 与工具缺 `inputSchema`、内置工具被 TTL 判死；A2A 的**完全没有 AgentCard**（官方客户端无法发现边缘）、`A2A-Version` 走 HTTP 头却从 body 读（把每个真实客户端当成版本不支持）。
 >
-> 仍未完成（**不要在对外材料中宣称**）：MCP `subscriptions/listen` 与 `notifications/message`（已登记 `knownGaps`）、A2A 保留键覆盖、ACP `session/update` 其余 9 类变体、审计留存策略（retention/轮转/多进程并发）、`detailHash`、吞吐未测。
+> 仍未完成（**不要在对外材料中宣称**）：MCP `subscriptions/listen` 与 `notifications/message`（已登记 `knownGaps`）、ACP `session/update` 其余 9 类变体、审计留存策略（retention/轮转/导出）、吞吐未测。
 >
-> **多进程写入是当前最高风险**：文件 store 没有跨进程写锁，"读全量→改→重写全量"会在两个进程同时写同一租户目录时丢更新、覆盖预算、把审计链写出分叉。完整设计见 [`document/Agent-RPC/06-多进程写入与审计留存设计.md`](../../document/Agent-RPC/06-多进程写入与审计留存设计.md)，排期见 `07` 的 WP-1。**在 WP-1 完成前，本项目只能宣称"单进程可用"。**
+> v0.5 已关闭：**多进程并发写安全**（同机、本地文件系统）、`detailHash`、A2A 保留键覆盖、审计 checkpoint 双触发。见 [`V0.5-MULTIPROCESS.md`](V0.5-MULTIPROCESS.md)。
+>
+> **多进程写入（v0.5 已解决）**：文件 store 现在由**租户目录写租约**串行化（`runtime/lock.ts`），并配合"租约内重读 + 原子替换 + epoch fencing"。4 个真实进程并发写同一目录的验证见 [`V0.5-MULTIPROCESS.md`](V0.5-MULTIPROCESS.md)。设计见 [`document/Agent-RPC/06-…`](../../document/Agent-RPC/06-多进程写入与审计留存设计.md)。**仍不能说"跨主机/分布式安全"**——只支持本机文件系统。
 
 ### 5.2 对外口径（截至本版本）
 
@@ -261,7 +263,10 @@ MRTR 的 `requestState` 在**两侧**都做逐字节校验且一次性使用；�
 | --- | --- |
 | `syao serve --mcp\|--acp\|--a2a [--stdio\|--http] [--port N] [--host H]` | 启动协议服务；默认只监听 `127.0.0.1`，非回环地址无 token → `SY-SRV-002` |
 | `syao call <capabilityId> [--input @file\|json] [--json]` | 受治理调用，输出回执 |
-| `syao rpc <tasks\|task\|approvals\|approve\|deny\|budget\|audit\|policy\|status> [--json]` | 治理运维 |
+| `syao rpc <tasks\|task\|approvals\|approve\|deny\|budget\|audit\|policy\|status\|store> [--json]` | 治理运维 |
+| `syao rpc audit [--details]` | 审计链校验；`--details` 额外重算每条的明细 sidecar（`ok/missing/mismatch`） |
+| `syao rpc store [--json]` | **写租约与存储状态**：租户目录、epoch、当前持有者、心跳新旧、排队者（06 §10.3） |
+| `syao rpc store unlock` | 强制释放一份"持有者已死"的租约；**会 bump epoch**，旧持有者从此被 fencing 拒绝 |
 | `syao mcp <list\|add\|remove>` | MCP server 配置管理 |
 
 ### 7.3 退出码
@@ -282,6 +287,44 @@ MRTR 的 `requestState` 在**两侧**都做逐字节校验且一次性使用；�
 
 ---
 
+## 7.4 多进程（同机）
+
+v0.5 起，同一租户目录的写入由**租户目录写租约**串行化（`packages/rpc/src/runtime/lock.ts`）。
+
+```text
+写者想写
+  → 取号（seq.lock，<1ms）
+  → 排队（priority, seq；默认 FIFO）
+  → 拿租约（mkdir + epoch + owner.json）
+  → 重读（stat 指纹变化 → reload；链式文件校验链头）
+  → 写组（每次落盘前 assertHeld 校验 epoch）
+  → flush/fsync（默认 batch）
+  → 释放（删 owner + 删票据）
+```
+
+规则：
+
+- **默认 FIFO**：未声明 intent 的写一律 `execution/L2/P3`，严格按票据 `seq` 服务。
+- **只有安全/证据可插队**：`safety` 可声明 P0，`safety`/`evidence` 可声明 P1；其他 workKind 声明会被**降级**到其允许的最高级别。
+- **等待有上限**：超过 `lockTimeoutMs`（默认 10s）返回 `SY-SRV-005 StoreLocked`，不无限自旋。
+- **被接管即失效**：epoch 变化后旧写者落盘前会收到 `SY-SRV-007 LeaseLost`，必须放弃并重跑。
+- **读不加锁**，允许读到上一瞬间的快照（W10）。
+
+| 配置 | 默认 | 说明 |
+| --- | --- | --- |
+| `lockTimeoutMs` | 10_000 | 租约等待上限 |
+| `leaseTtlMs` | 5_000 | 心跳失效阈值 |
+| `heartbeatIntervalMs` | `leaseTtlMs / 3` | 心跳间隔 |
+| `agingMs` | 2_000 | 等待多久开始老化提权 |
+| `fsyncMode` | `batch` | `always` / `batch` / `never` |
+| `maxRecordBytes` | 1 MiB | 单条记录上限 |
+
+**排障**：`syao rpc store` 看持有者与队列；确认持有者已死时用 `syao rpc store unlock`。
+
+**不支持**：NFS/SMB 等网络文件系统（`mkdir`/`rename` 不保证原子，"看起来有锁、实际不互斥"比没锁更危险）；跨主机一致性。
+
+---
+
 ## 8. 快速上手
 
 ```bash
@@ -298,6 +341,7 @@ corepack pnpm start
 #   /peer list           → 协议边缘与能力
 #   /call local://tools/read {"path":"README.md"}
 #   /rpc audit           → 审计链校验
+#   /rpc store           → 写租约：谁在写、等了多久、为什么
 ```
 
 ```ts
@@ -325,8 +369,9 @@ const bundle = await fabric.evidence.seal(result.taskId);
 
 ## 9. 已知边界与未实现项
 
-> **2026-10-30 更新**：本表下方"持久化"一行已过时——CLI 现在默认使用文件 store 并跨进程可读（C-4）。**但文件 store 没有跨进程写锁**：同一租户目录只能由**一个进程**写。多进程写入协议见
-> [`document/Agent-RPC/06-多进程写入与审计留存设计.md`](../../document/Agent-RPC/06-多进程写入与审计留存设计.md)，排期见 `07` WP-1。**在该 WP 完成前，不得宣称多进程安全。**
+> **2026-11-01 更新**：CLI 默认使用文件 store，跨进程**可读可写**（C-4 + v0.5 写租约）。
+> 同一租户目录的写入由租约串行化，实现与验证见 [`V0.5-MULTIPROCESS.md`](V0.5-MULTIPROCESS.md)。
+> 仍未做的是审计**留存**（轮转/保留/导出）与**吞吐基准**，因此"企业级留存"与"吞吐达标"仍不可宣称。
 
 | 项 | 状态 |
 | --- | --- |

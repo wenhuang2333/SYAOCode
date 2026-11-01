@@ -48,6 +48,10 @@ type Waiter = {
 export class MemoryEventLog implements EventLog {
   private readonly byTask = new Map<string, CanonicalEvent[]>();
 
+  reset(): void {
+    this.byTask.clear();
+  }
+
   /**
    * Load persisted events. Sequence numbers come from the rows themselves, so
    * a restart continues a task's stream without a gap or a duplicate.

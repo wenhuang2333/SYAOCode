@@ -771,16 +771,24 @@ export class GovernanceDispatcher implements Dispatcher {
       visibility: input.visibility,
       ...(input.error !== undefined ? { error: input.error } : {}),
     } as Omit<Receipt, 'hash' | 'prevHash'>;
-    const receipt = await this.deps.receipts.put(draft);
-    await this.emit(
-      input.task,
-      input.principal,
-      input.protocol,
-      'receipt.issued',
-      { receiptId: receipt.id, outcome: input.outcome, error: input.error?.kind },
-      ctx,
-    );
-    return receipt;
+    // The receipt and its audit-facing event are one write group: a crash
+    // between them would leave evidence of a side effect with no receipt, or a
+    // receipt with no audit link (06 §5.4).
+    const write = async (): Promise<Receipt> => {
+      const receipt = await this.deps.receipts.put(draft);
+      await this.emit(
+        input.task,
+        input.principal,
+        input.protocol,
+        'receipt.issued',
+        { receiptId: receipt.id, outcome: input.outcome, error: input.error?.kind },
+        ctx,
+      );
+      return receipt;
+    };
+    return this.deps.withWriteGroup !== undefined
+      ? this.deps.withWriteGroup({ workKind: 'evidence', reason: 'receipt.seal' }, write)
+      : write();
   }
 
   private async writeReceipt(input: {

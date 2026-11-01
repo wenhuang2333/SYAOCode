@@ -19,7 +19,8 @@ import {
 } from '../shared/index.js';
 import { JsonRpcConnection, JsonRpcRemoteError, JsonRpcTimeoutError, isFinalStreamResult, isJsonRpcResponse, type JsonRpcId } from '../shared/jsonrpc.js';
 import { A2A_LOSSY, A2A_VISIBILITY, inputToMessage, isA2aTerminal, a2aStateToTaskState, type A2aArtifact, type A2aMessage, type A2aStreamEvent, type A2aTask, type A2aTaskStatusUpdateEvent } from './artifacts.js';
-import { a2aUnsupportedOperation, a2aVersionNotSupported } from './errors.js';
+import { a2aReservedMetadataError, a2aUnsupportedOperation, a2aVersionNotSupported } from './errors.js';
+import { A2A_METADATA_TENANT_KEY, A2A_METADATA_VERSION_KEY, findReservedMetadataConflict } from './metadata.js';
 import { agentCardCapabilities, parseAgentCard, type A2aAgentCard } from './card.js';
 
 export const A2A_METHODS = [
@@ -90,9 +91,24 @@ export class A2aClient {
     return this.options.version ?? A2A_VERSION;
   }
 
-  /** Metadata attached to every request (tenant + protocol version pin). */
+  /**
+   * Metadata attached to every request (tenant + protocol version pin).
+   *
+   * The reserved keys are spread **last**, so `extra` can never shadow them.
+   * A caller that supplies a *different* value for a reserved key is rejected
+   * here, before anything reaches the peer: silently honouring one of the two
+   * values would either cross tenants or speak the wrong protocol version.
+   * Repeating the authoritative value is allowed (it only confirms it).
+   */
   private metadata(extra?: Record<string, unknown>): Record<string, unknown> {
-    return { tenantId: this.options.tenantId, 'A2A-Version': this.version, ...(extra ?? {}) };
+    const authoritative = { tenantId: this.options.tenantId, version: this.version };
+    const conflict = findReservedMetadataConflict(extra, authoritative);
+    if (conflict !== undefined) throw a2aReservedMetadataError(conflict);
+    return {
+      ...(extra ?? {}),
+      [A2A_METADATA_TENANT_KEY]: this.options.tenantId,
+      [A2A_METADATA_VERSION_KEY]: this.version,
+    };
   }
 
   async getExtendedAgentCard(opts?: A2aCallOptions): Promise<A2aAgentCard> {

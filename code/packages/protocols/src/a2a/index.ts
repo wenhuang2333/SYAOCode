@@ -38,6 +38,20 @@ export type {
 } from './artifacts.js';
 
 export {
+  A2A_INVALID_PARAMS,
+  a2aReservedMetadataError,
+} from './errors.js';
+
+export {
+  A2A_METADATA_TENANT_KEY,
+  A2A_METADATA_VERSION_KEY,
+  A2A_RESERVED_METADATA_KEYS,
+  findReservedMetadataConflict,
+  readReservedMetadata,
+} from './metadata.js';
+export type { A2aAuthoritativeMetadata, ReservedMetadataConflict } from './metadata.js';
+
+export {
   A2A_ERROR_CODES,
   A2A_PUSH_NOT_SUPPORTED,
   A2A_TASK_NOT_CANCELABLE,
@@ -84,9 +98,16 @@ export type { A2aAdapterOptions, A2aCallOptions, A2aClientOptions, A2aListResult
 export {
   A2A_SERVER_METHODS,
   A2aServer,
+  DEFAULT_A2A_VERSION,
   MemoryA2aTaskStore,
 } from './server.js';
-export type { A2aCallerContext, A2aSendInput, A2aServerOptions, A2aTaskStore } from './server.js';
+export type {
+  A2aCallerContext,
+  A2aSendInput,
+  A2aServerOptions,
+  A2aTaskStore,
+  A2aTransportContext,
+} from './server.js';
 
 import type { Logger, Runtime } from '@syaocode/core';
 import type { DuplexChannel } from '../shared/transport.js';

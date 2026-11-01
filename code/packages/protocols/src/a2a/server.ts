@@ -17,12 +17,26 @@ import type { Logger, Runtime } from '@syaocode/core';
 import { type CanonicalErrorShape, type DiscoveredCapability, type InvokeResultPayload } from '@syaocode/rpc';
 import { AdapterBase, type DuplexChannel } from '../shared/index.js';
 import { NO_RESPONSE, JsonRpcConnection, type JsonRpcHandlerResult, type JsonRpcId, type SseSink } from '../shared/jsonrpc.js';
-import { a2aPushUnsupported, a2aTaskNotCancelable, a2aTaskNotFound, a2aUnsupportedOperation, a2aVersionNotSupported } from './errors.js';
+import {
+  a2aPushUnsupported,
+  a2aReservedMetadataError,
+  a2aTaskNotCancelable,
+  a2aTaskNotFound,
+  a2aUnsupportedOperation,
+  a2aVersionNotSupported,
+} from './errors.js';
+import { findReservedMetadataConflict, readReservedMetadata } from './metadata.js';
 import { isA2aTerminal, type A2aMessage, type A2aTask, type A2aTaskStatusUpdateEvent } from './artifacts.js';
 import { agentCardCapabilities, type A2aAgentCard } from './card.js';
 
 /** Methods answered with the `text/event-stream` binding (01 §5.3). */
 export const A2A_STREAMING_METHODS: readonly string[] = ['SendStreamingMessage', 'SubscribeToTask'];
+
+/**
+ * The version assumed when the peer sends none (01 §2.2: an empty
+ * `A2A-Version` is treated as 0.3).
+ */
+export const DEFAULT_A2A_VERSION = '0.3';
 
 export const A2A_SERVER_METHODS: readonly string[] = [
   'SendMessage',
@@ -37,6 +51,19 @@ export const A2A_SERVER_METHODS: readonly string[] = [
   'DeleteTaskPushNotificationConfig',
   'GetExtendedAgentCard',
 ];
+
+/**
+ * Facts the transport established before the JSON-RPC body was parsed.
+ *
+ * `A2A-Version` is authoritative from the HTTP header; body metadata may only
+ * confirm it. `tenantId` is authoritative when the transport authenticated the
+ * caller.
+ */
+export interface A2aTransportContext {
+  tenantId?: string;
+  /** `Major.Minor` from the `A2A-Version` header. */
+  version?: string;
+}
 
 export interface A2aCallerContext {
   tenantId: string;
@@ -122,6 +149,16 @@ export interface A2aServerOptions {
   store?: A2aTaskStore;
   /** Host-owned authentication; the default reads `metadata.tenantId`. */
   resolveCaller?: (params: unknown) => A2aCallerContext | undefined;
+  /**
+   * The context the transport already established for the request (e.g. the
+   * `A2A-Version` HTTP header and the authenticated tenant).
+   *
+   * It is **authoritative**: the body's `metadata` may only confirm these
+   * values. A body that contradicts one is rejected with JSON-RPC `-32602`
+   * and `data.reason: 'reserved_metadata_key'` — never silently overwritten
+   * (WP-6 / 06 §13).
+   */
+  transportContext?: (params: unknown) => A2aTransportContext | undefined;
   supportedVersions?: string[];
   /** Poll interval used to project task updates onto subscribers. */
   pollIntervalMs?: number;
@@ -148,7 +185,7 @@ export class A2aServer extends AdapterBase {
       streamingMethods: A2A_STREAMING_METHODS,
       handlers: {
         request: (method, params, ctx) => this.handleRequest(method, params, ctx.id),
-        stream: (method, params, _ctx, sink) => this.handleStream(method, params, caller(params), sink),
+        stream: (method, params, _ctx, sink) => this.handleStream(method, params, this.caller(params), sink),
       },
     });
     this.connection.start();
@@ -205,14 +242,34 @@ export class A2aServer extends AdapterBase {
     }
   }
 
+  /**
+   * Resolve the caller context of an inbound request.
+   *
+   * Precedence: the host's `resolveCaller` (authentication) and the
+   * transport's `transportContext` (headers) are authoritative; the body's
+   * `metadata` only *confirms* them. A reserved key that contradicts an
+   * authoritative value is rejected (-32602, `reserved_metadata_key`) rather
+   * than silently overwritten.
+   *
+   * With neither hook installed the body is the only source (in-process
+   * use); the version still defaults to `0.3` when absent, per the spec's
+   * empty-version compatibility rule.
+   */
   private caller(params: unknown): A2aCallerContext | undefined {
-    if (this.options.resolveCaller !== undefined) return this.options.resolveCaller(params);
-    const metadata = (params as { metadata?: unknown } | null)?.metadata;
-    if (metadata === null || typeof metadata !== 'object') return undefined;
-    const tenantId = (metadata as { tenantId?: unknown }).tenantId;
-    if (typeof tenantId !== 'string' || tenantId.length === 0) return undefined;
-    const version = (metadata as { 'A2A-Version'?: unknown })['A2A-Version'];
-    return { tenantId, version: typeof version === 'string' ? version : '0.3' };
+    const metadata = metadataOf(params);
+    const declared = readReservedMetadata(metadata);
+    const transport = this.options.transportContext?.(params);
+    const resolved = this.options.resolveCaller?.(params);
+
+    const tenantId = resolved?.tenantId ?? transport?.tenantId ?? declared.tenantId;
+    if (tenantId === undefined || tenantId.length === 0) return undefined;
+
+    const version = resolved?.version ?? transport?.version ?? declared.version ?? DEFAULT_A2A_VERSION;
+
+    const conflict = findReservedMetadataConflict(metadata, { tenantId, version });
+    if (conflict !== undefined) throw a2aReservedMetadataError(conflict).toShape();
+
+    return { tenantId, version };
   }
 
   private assertVersion(version: string): void {
@@ -385,13 +442,11 @@ export class A2aServer extends AdapterBase {
   }
 }
 
-function caller(params: unknown): A2aCallerContext | undefined {
+/** The `metadata` record of a request, when it is an object. */
+function metadataOf(params: unknown): Record<string, unknown> | undefined {
   const metadata = (params as { metadata?: unknown } | null)?.metadata;
-  if (metadata === null || typeof metadata !== 'object') return undefined;
-  const tenantId = (metadata as { tenantId?: unknown }).tenantId;
-  if (typeof tenantId !== 'string' || tenantId.length === 0) return undefined;
-  const version = (metadata as { 'A2A-Version'?: unknown })['A2A-Version'];
-  return { tenantId, version: typeof version === 'string' ? version : '0.3' };
+  if (metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined;
+  return metadata as Record<string, unknown>;
 }
 
 function isTask(value: A2aTask | A2aMessage): value is A2aTask {

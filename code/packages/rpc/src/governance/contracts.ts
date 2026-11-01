@@ -296,12 +296,63 @@ export interface EvidenceSealer {
 
 // ── audit ─────────────────────────────────────────────────────────────────
 
+/**
+ * Sidecar seam for `AuditEvent.detailHash` (06 §8).
+ *
+ * The chain only commits to a digest; the redacted detail itself lives here so
+ * it can be retained, redacted and pruned independently of the chain. The
+ * in-memory implementation is `MemoryAuditDetailStore` in `audit.ts`; the
+ * file-backed one belongs to the file-store work.
+ */
+export interface AuditDetailStore {
+  /** Store one sidecar record. Content-addressed by `sidecar.hash`. */
+  put(sidecar: import('../ir/types.js').AuditDetailSidecar): Promise<void>;
+  /** Read one sidecar record; `tenantId` narrows the read (I8). */
+  get(hash: string, tenantId?: string): Promise<import('../ir/types.js').AuditDetailSidecar | undefined>;
+  /** Retention: drop the payload but keep a `pruned` tombstone. */
+  prune?(hash: string, tenantId?: string): Promise<boolean>;
+}
+
+/** Options for {@link AuditStore.verify} (06 §8.3). */
+export interface AuditVerifyOptions {
+  /** Also re-verify detail sidecars (`audit verify --details`). */
+  details?: boolean;
+  /** Resume after this checkpoint hash (the legacy second-argument form). */
+  fromCheckpoint?: string;
+}
+
+/**
+ * Extra knobs for `append(event, detail?, options?)` when a detail payload is
+ * supplied (06 §8.2).
+ */
+export interface AuditDetailOptions {
+  /**
+   * Sensitivity. `secret` stores the hash only — the payload never reaches the
+   * sidecar. Defaults to `internal`.
+   */
+  dataClass?: import('../ir/types.js').DataClass;
+  /** Per-record cap; the store's `maxDetailBytes` is the hard ceiling. */
+  maxBytes?: number;
+}
+
 export interface AuditStore {
   /** `id` is assigned by the store when omitted (02 §10.1). */
-  append(event: Omit<AuditEvent, 'prevHash' | 'hash' | 'id'> & { id?: string }): Promise<AuditEvent>;
+  append(
+    event: Omit<AuditEvent, 'prevHash' | 'hash' | 'id'> & { id?: string },
+    /** Redacted detail payload; see {@link AuditDetailOptions}. */
+    detail?: unknown,
+    options?: AuditDetailOptions,
+  ): Promise<AuditEvent>;
   list(filter?: { tenantId?: string; from?: string; limit?: number }): Promise<AuditEvent[]>;
-  verify(tenantId: string, fromCheckpoint?: string): Promise<AuditVerifyResult>;
+  verify(tenantId: string, opts?: string | AuditVerifyOptions): Promise<AuditVerifyResult>;
   checkpoint(tenantId: string): Promise<import('../ir/types.js').AuditCheckpoint>;
+  /**
+   * Bind the redactor applied to details before they are hashed (06 §8.2).
+   *
+   * Optional so a minimal store can omit detail storage entirely; a store that
+   * accepts `detail` SHOULD implement it.
+   */
+  setRedactor?(redactor: SecretRedactor): void;
 }
 
 // ── registry / routing ────────────────────────────────────────────────────
@@ -519,8 +570,28 @@ export interface DispatcherDeps {
   redactor?: SecretRedactor;
   /** Executes an authorized invocation; the only path to a real side effect. */
   execute: (invocation: AuthorizedInvocation, ctx: DispatchContext) => Promise<InvokeResultPayload>;
+  /**
+   * Run a group of writes under one lease (06 §5.4).
+   *
+   * The terminal writes — budget settle, receipt, audit link, event, task state
+   * — must land together. Without this each store call takes its own lease, so
+   * another process can interleave a receipt with a *different* audit link and
+   * the two records disagree about what happened.
+   *
+   * Optional: an in-memory host has nothing to group.
+   */
+  withWriteGroup?: <T>(intent: WriteIntent, fn: () => Promise<T>) => Promise<T>;
   /** Optional hook so tests and the CLI can observe each pipeline step. */
   onStep?: (step: DispatchStep, detail: Record<string, unknown>) => void;
+}
+
+/** What a write is (06 §5.1); only the fields the kernel sets. */
+export interface WriteIntent {
+  workKind?: 'safety' | 'evidence' | 'governance' | 'execution' | 'telemetry' | 'maintenance';
+  layer?: 'L0' | 'L1' | 'L2' | 'L3';
+  priority?: 0 | 10 | 20 | 30 | 40 | 50;
+  /** Required when claiming a priority above the default; lands in the audit. */
+  reason?: string;
 }
 
 export interface InvokeResultPayload {

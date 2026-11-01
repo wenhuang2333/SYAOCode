@@ -314,6 +314,48 @@ export {
   createFileTaskStore,
 } from './runtime/file-stores.js';
 export type { FileStoreOptions, FileStoresOptions } from './runtime/file-stores.js';
+
+// Detail sidecars for `detailHash` (06 §8): hosts that back them with a file
+// store need the same types and helpers the memory store uses.
+export {
+  DEFAULT_MAX_DETAIL_BYTES,
+  DETAIL_HASH_PREFIX,
+  DETAIL_REF_PREFIX,
+  MemoryAuditDetailStore,
+  canonicalBytes,
+  detailHashOf,
+  detailRefOf,
+  redactAuditDetail,
+} from './governance/audit.js';
+export type {
+  AuditDetailOptions,
+  AuditDetailStore,
+  AuditVerifyOptions,
+} from './governance/contracts.js';
+export { auditDetailSchema, auditDetailVerdictSchema } from './ir/schemas.js';
+export type { AuditDetailClass, AuditDetailSidecar, AuditDetailVerdict } from './ir/types.js';
+
+export type { FileStoreBundle, FsyncMode, LeaseStatus } from './runtime/file-stores.js';
+
+// Cross-process write lease (06 §3): hosts and diagnostics need the primitives.
+export {
+  DEFAULT_AGING_MS,
+  DEFAULT_LEASE_TTL_MS,
+  DEFAULT_LOCK_TIMEOUT_MS,
+  DEFAULT_MAX_AGING_STEPS,
+  DEFAULT_WRITE_INTENT,
+  LeaseLostError,
+  MIN_PRIORITY_BY_WORK_KIND,
+  StoreLockedError,
+  acquireWriteLease,
+  agedPriority,
+  effectivePriority,
+  forceUnlock,
+  readEpoch,
+  readLeaseOwner,
+  readLeaseQueue,
+} from './runtime/lock.js';
+export type { Layer, LeaseOptions, LeaseOwner, Priority, WorkKind, WriteIntent } from './runtime/lock.js';
 export type { EventDraft, EventLogOptions } from './runtime/eventlog.js';
 
 export { applyEvent, projectTask } from './runtime/projection.js';

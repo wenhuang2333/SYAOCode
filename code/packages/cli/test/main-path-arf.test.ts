@@ -165,6 +165,7 @@ describe('main path → ARF kernel (task-8)', () => {
       rules: [],
       cwd: tmp,
       runtime,
+      persist: false,
     });
     const provider = new MockProvider({ script: readCall('note.txt') });
     const agent = createAgent({
@@ -218,6 +219,7 @@ describe('main path → ARF kernel (task-8)', () => {
       rules: [],
       cwd: tmp,
       runtime,
+      persist: false,
     });
     const provider = new MockProvider({
       script: [mockToolUse('a1', [{ id: 'c1', name: 'write', input: { path: 'x.txt', content: 'no' } }]), mockText('a2', 'ok')],
@@ -264,6 +266,7 @@ describe('main path → ARF kernel (task-8)', () => {
       rules: [],
       cwd: tmp,
       runtime,
+      persist: false,
     });
     let prompts = 0;
     const allowOnce: PermissionHandler = async () => {
@@ -316,6 +319,7 @@ describe('main path → ARF kernel (task-8)', () => {
       rules: [],
       cwd: tmp,
       runtime,
+      persist: false,
     });
     // The kernel scrubs what LEAVES it; the input of a local tool is the
     // model's own instruction and must arrive byte-for-byte. `API_KEY=…` is
@@ -379,6 +383,7 @@ describe('main path → ARF kernel (task-8)', () => {
       rules: [],
       cwd: tmp,
       runtime,
+      persist: false,
     });
     const agent = createAgent({
       provider: new MockProvider({
@@ -419,6 +424,7 @@ describe('main path → ARF kernel (task-8)', () => {
       rules: [],
       cwd: tmp,
       runtime,
+      persist: false,
     });
     let prompts = 0;
     const denyAll: PermissionHandler = async () => {

@@ -67,6 +67,11 @@ function byCreatedAtThenId<T extends { createdAt: string; id: string }>(a: T, b:
 export class MemoryTaskStore implements TaskStore {
   private readonly rows = new Map<string, Task>();
 
+  /** Drop every row so a reload can replace the in-memory view. */
+  reset(): void {
+    this.rows.clear();
+  }
+
   /** Load persisted rows without re-validating (see `createFileStores`). */
   hydrate(tasks: readonly Task[]): void {
     for (const task of tasks) this.rows.set(task.id, deepClone(task));
@@ -123,6 +128,10 @@ export class MemoryTaskStore implements TaskStore {
 export class MemorySessionStore implements SessionStore {
   private readonly rows = new Map<string, Session>();
 
+  reset(): void {
+    this.rows.clear();
+  }
+
   hydrate(sessions: readonly Session[]): void {
     for (const session of sessions) this.rows.set(session.id, deepClone(session));
   }
@@ -163,6 +172,10 @@ export class MemorySessionStore implements SessionStore {
 export class MemoryApprovalStore implements ApprovalStore {
   private readonly rows = new Map<string, ApprovalRecord>();
 
+  reset(): void {
+    this.rows.clear();
+  }
+
   hydrate(records: readonly ApprovalRecord[]): void {
     for (const record of records) this.rows.set(record.id, deepClone(record));
   }
@@ -200,6 +213,18 @@ export class MemoryApprovalStore implements ApprovalStore {
   async decide(id: string, expectedRevision: number, patch: Partial<ApprovalRecord>): Promise<boolean> {
     const record = this.rows.get(id);
     if (record === undefined || record.revision !== expectedRevision) return false;
+    // I9, single winner: an approval is decidable exactly once. Without this
+    // an already-answered record could be "decided" again to the same state —
+    // silently bumping the revision and re-running the side effect.
+    if (record.state !== 'pending') {
+      const clean = definedOnly(patch);
+      // A real transition attempt from a decided record is still an error (the
+      // state machine says so); a repeat of the same decision is just a loss.
+      if (clean.state !== undefined && clean.state !== record.state) {
+        assertApprovalTransition(record.state, clean.state);
+      }
+      return false;
+    }
     const clean = definedOnly(patch);
     if (clean.state !== undefined && clean.state !== record.state) {
       assertApprovalTransition(record.state, clean.state);
@@ -231,6 +256,11 @@ export class MemoryApprovalStore implements ApprovalStore {
 export class MemoryBudgetStore implements BudgetStore {
   private readonly accounts = new Map<string, BudgetAccount>();
   private readonly reservations = new Map<string, BudgetReservation>();
+
+  reset(): void {
+    this.accounts.clear();
+    this.reservations.clear();
+  }
 
   hydrate(state: { accounts?: readonly BudgetAccount[]; reservations?: readonly BudgetReservation[] }): void {
     for (const account of state.accounts ?? []) this.accounts.set(account.id, deepClone(account));

@@ -205,7 +205,10 @@ export interface Fabric {
 
   readonly audit: {
     list(filter?: { limit?: number }): Promise<import('../ir/types.js').AuditEvent[]>;
-    verify(tenantId?: string): Promise<import('../ir/types.js').AuditVerifyResult>;
+    verify(
+      tenantId?: string,
+      opts?: import('../governance/contracts.js').AuditVerifyOptions,
+    ): Promise<import('../ir/types.js').AuditVerifyResult>;
   };
 
   readonly evidence: {
@@ -235,6 +238,12 @@ export function createFabric(opts: FabricOptions): Fabric {
   };
   if (opts.stores?.idempotency === undefined) {
     stores.idempotency = new MemoryIdempotencyStore({ ids: runtime.ids, now });
+  }
+  // A store bundle created outside here (the file-backed one) may not know the
+  // fabric's redactor. Details are redacted BEFORE hashing (06 §8.2), so the
+  // binding has to happen here or a secret would reach the sidecar.
+  if (opts.redactor !== undefined && stores.audit.setRedactor !== undefined) {
+    stores.audit.setRedactor(opts.redactor);
   }
 
   // ── policy ───────────────────────────────────────────────────────────
@@ -390,6 +399,19 @@ export function createFabric(opts: FabricOptions): Fabric {
     events: stores.events,
     ...(opts.redactor !== undefined ? { redactor: opts.redactor } : {}),
     ...(opts.onStep !== undefined ? { onStep: opts.onStep } : {}),
+    // A durable store bundle can group writes; an in-memory one has nothing to
+    // group, so the hook is simply absent.
+    ...((stores as { withWrite?: unknown }).withWrite !== undefined
+      ? {
+          withWriteGroup: <T,>(
+            intent: { workKind?: string; layer?: string; priority?: number; reason?: string },
+            fn: () => Promise<T>,
+          ): Promise<T> =>
+            (stores as unknown as {
+              withWrite: <U>(i: typeof intent, f: () => Promise<U>) => Promise<U>;
+            }).withWrite(intent, fn),
+        }
+      : {}),
     async execute(invocation, ctx): Promise<InvokeResultPayload> {
       const providerId = invocation.capability.provider.id;
       const executor = executors.get(providerId);
@@ -598,7 +620,7 @@ export function createFabric(opts: FabricOptions): Fabric {
     audit: {
       // Always tenant-scoped: an unfiltered audit list would merge tenants.
       list: (filter) => stores.audit.list({ tenantId, ...(filter ?? {}) }),
-      verify: (id) => stores.audit.verify(id ?? tenantId),
+      verify: (id, opts) => stores.audit.verify(id ?? tenantId, opts),
     },
 
     evidence: {

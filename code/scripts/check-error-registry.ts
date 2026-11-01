@@ -41,6 +41,7 @@ for (const code of [
   'SY-A2A-001', 'SY-A2A-002', 'SY-A2A-003', 'SY-A2A-004', 'SY-A2A-005', 'SY-A2A-006',
   'SY-ACP-001', 'SY-ACP-002',
   'SY-SRV-001', 'SY-SRV-002', 'SY-SRV-003', 'SY-SRV-004',
+  'SY-SRV-005', 'SY-SRV-006', 'SY-SRV-007',
 ]) {
   if (!seen.has(code)) failures.push(`reserved Agent RPC code ${code} must exist (03 §4 C7)`);
 }
@@ -60,9 +61,10 @@ for (const mustBeRetryable of ['SY-PRV-002', 'SY-PRV-003', 'SY-PRV-007', 'SY-PRV
 for (const mustBeFatal of ['SY-CTX-002', 'SY-ACP-001', 'SY-INT-001']) {
   if (!expectedFatal.has(mustBeFatal)) failures.push(`${mustBeFatal} must be fatal`);
 }
-// A tampered MRTR requestState and an unsupported capability are never
-// retryable: retrying would replay a rejected request or loop on a wall.
-for (const mustNotRetry of ['SY-MCP-006', 'SY-SRV-004']) {
+// A tampered MRTR requestState, an unsupported capability and a corrupt store
+// are never retryable: retrying would replay a rejected request, loop on a
+// wall, or re-read the same broken file (06 §6.3 W4).
+for (const mustNotRetry of ['SY-MCP-006', 'SY-SRV-004', 'SY-SRV-006']) {
   if (expectedRetryable.has(mustNotRetry)) failures.push(`${mustNotRetry} must not be retryable`);
 }
 const fatalButNotRetryable = [...expectedFatal].filter((c) => expectedRetryable.has(c));

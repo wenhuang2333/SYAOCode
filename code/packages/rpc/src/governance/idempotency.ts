@@ -63,6 +63,11 @@ export interface IdempotencyStoreOptions {
 /** In-memory idempotency store. Hosts may swap in a durable one. */
 export class MemoryIdempotencyStore implements IdempotencyStore {
   readonly records = new Map<string, IdempotencyRecord>();
+
+  /** Drop every record so a reload can replace the in-memory view. */
+  reset(): void {
+    this.records.clear();
+  }
   private readonly ids: IdGenerator;
   private readonly now: () => string;
   private readonly defaultTtlMs: number;

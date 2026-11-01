@@ -28,6 +28,44 @@ describe('error registry governance (09 §9.10)', () => {
     expect(ALL_ERROR_CODES).toContain('SY-DEC-008');
   });
 
+  it('store-lock codes are resolvable with their contract shape (06 §14)', () => {
+    // W8: a lock wait that exceeds lockTimeoutMs is retryable by the caller.
+    const locked = ERROR_REGISTRY.get('SY-SRV-005');
+    expect(locked).toMatchObject({
+      name: 'StoreLocked',
+      domain: 'SRV',
+      category: 'server',
+      severity: 'error',
+      retryable: true,
+      recovery: 'retry',
+    });
+    // W4: beyond a torn tail the store is fail-closed and needs a human.
+    const corrupt = ERROR_REGISTRY.get('SY-SRV-006');
+    expect(corrupt).toMatchObject({
+      name: 'StoreCorrupt',
+      domain: 'SRV',
+      category: 'server',
+      severity: 'error',
+      retryable: false,
+      recovery: 'ask_user',
+    });
+    // W6: a taken-over lease invalidates the writer; re-run the whole flow.
+    const lost = ERROR_REGISTRY.get('SY-SRV-007');
+    expect(lost).toMatchObject({
+      name: 'LeaseLost',
+      domain: 'SRV',
+      category: 'server',
+      severity: 'error',
+      retryable: true,
+      recovery: 'retry',
+    });
+    for (const code of ['SY-SRV-005', 'SY-SRV-006', 'SY-SRV-007']) {
+      expect(MESSAGES_ZH_CN[code], code).toBeDefined();
+      // Constructing a SyaoError proves the code is registered end to end.
+      expect(new SyaoError({ code }).code).toBe(code);
+    }
+  });
+
   it('every active code has a zh-CN message and vice versa', () => {
     for (const code of ALL_ERROR_CODES) {
       expect(MESSAGES_ZH_CN[code], code).toBeDefined();
@@ -54,6 +92,11 @@ describe('error registry governance (09 §9.10)', () => {
     }
     expect(retryable.has('SY-PRV-001')).toBe(false);
     expect(retryable.has('SY-PERM-001')).toBe(false);
+    // Store lease codes: a lock timeout and a lost lease are retryable, a
+    // corrupt store is not (retrying cannot repair the file).
+    expect(retryable.has('SY-SRV-005')).toBe(true);
+    expect(retryable.has('SY-SRV-007')).toBe(true);
+    expect(retryable.has('SY-SRV-006')).toBe(false);
   });
 });
 

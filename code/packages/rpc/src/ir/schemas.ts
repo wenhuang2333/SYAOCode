@@ -411,10 +411,33 @@ export const auditEventSchema = z.object({
   subject: z.object({ type: z.string(), id: z.string() }),
   outcome: z.enum(['success', 'failure', 'denied']),
   policyRevision: z.string().optional(),
+  /** `sha256:<hex>` over the redacted, canonicalised detail (06 §8.2). */
   detailHash: z.string().optional(),
+  detailRef: z.string().optional(),
+  detailBytes: z.number().int().nonnegative().optional(),
+  detailTruncated: z.boolean().optional(),
+  detailStored: z.boolean().optional(),
+  detailRedacted: z.boolean().optional(),
   prevHash: z.string(),
   hash: z.string().min(1),
 });
+
+/** One audit detail sidecar record (06 §8.2). */
+export const auditDetailSchema = z.object({
+  hash: z.string().min(1),
+  eventId: z.string().min(1),
+  tenantId: z.string().min(1),
+  detail: z.unknown().optional(),
+  bytes: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  hashOnly: z.boolean().optional(),
+  redacted: z.boolean(),
+  pruned: z.boolean().optional(),
+  createdAt: z.string().min(1),
+});
+
+/** `audit verify --details` verdict (06 §8.3). */
+export const auditDetailVerdictSchema = z.enum(['ok', 'missing', 'mismatch']);
 
 // ── events ────────────────────────────────────────────────────────────────
 

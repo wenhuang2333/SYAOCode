@@ -704,3 +704,70 @@ export function capabilityListPanel(providerId: string, caps: readonly Capabilit
 export function maxVisibleWidth(lines: readonly string[], cols = 100): boolean {
   return lines.every((l) => displayWidth(l) <= cols);
 }
+
+// ── store / write-lease panel (06 §10.3) ──────────────────────────────────
+
+/** What `syao rpc store` reports. */
+export interface StoreStatus {
+  /** Tenant directory, or null when the process is not persistent. */
+  dir: string | null;
+  persisted: boolean;
+  holder: {
+    leaseId: string;
+    pid?: number;
+    epoch: number;
+    heartbeatAt: string;
+    ttlMs: number;
+    ageMs: number;
+  } | null;
+  epoch: number;
+  queue: { ticketId: string; seq: number; priority: number; workKind: string; enqueuedAt: string }[];
+}
+
+/**
+ * Render the write-lease state.
+ *
+ * The point of this panel is to answer "why is my write waiting?" without
+ * reading files by hand: who holds the lease, how stale their heartbeat is, and
+ * who is queued behind them.
+ */
+export function storePanel(status: StoreStatus): string[] {
+  if (!status.persisted) {
+    return panel(t('rpc.panel.store'), [
+      kv(t('rpc.store.mode'), t('rpc.store.inMemory')),
+      '',
+      `· ${t('rpc.store.inMemoryHint')}`,
+    ]);
+  }
+  const lines: string[] = [
+    kv(t('rpc.store.dir'), status.dir ?? '—'),
+    kv(t('rpc.store.epoch'), String(status.epoch)),
+    kv(
+      t('rpc.store.holder'),
+      status.holder === null
+        ? t('rpc.store.noHolder')
+        : `${status.holder.leaseId} · pid ${status.holder.pid ?? '?'}`,
+    ),
+  ];
+  if (status.holder !== null) {
+    const stale = status.holder.ageMs > status.holder.ttlMs;
+    lines.push(
+      kv(
+        t('rpc.store.heartbeat'),
+        `${status.holder.ageMs}ms ${stale ? t('rpc.store.stale') : t('rpc.store.fresh')} (ttl ${status.holder.ttlMs}ms)`,
+      ),
+    );
+  }
+  lines.push('', section(t('rpc.store.queue', { count: String(status.queue.length) })));
+  if (status.queue.length === 0) {
+    lines.push(`· ${t('rpc.store.queueEmpty')}`);
+  } else {
+    for (const ticket of status.queue.slice(0, 10)) {
+      lines.push(
+        `· #${ticket.seq} ${ticket.workKind} P${ticket.priority} — ${ticket.ticketId}`,
+      );
+    }
+    if (status.queue.length > 10) lines.push(`· ${t('common.more', { count: String(status.queue.length - 10) })}`);
+  }
+  return panel(t('rpc.panel.store'), lines);
+}

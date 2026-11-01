@@ -3,6 +3,7 @@
  */
 
 import { A2A_ERROR_CODES, CanonicalError, canonicalFromJsonRpcError, type CanonicalErrorShape } from '@syaocode/rpc';
+import type { ReservedMetadataConflict } from './metadata.js';
 
 export { A2A_ERROR_CODES };
 
@@ -11,6 +12,14 @@ export const A2A_TASK_NOT_CANCELABLE = A2A_ERROR_CODES.taskNotCancelable;
 export const A2A_PUSH_NOT_SUPPORTED = A2A_ERROR_CODES.pushNotificationNotSupported;
 export const A2A_UNSUPPORTED_OPERATION = A2A_ERROR_CODES.unsupportedOperation;
 export const A2A_VERSION_NOT_SUPPORTED = A2A_ERROR_CODES.versionNotSupported;
+
+/**
+ * JSON-RPC `Invalid Params`.
+ *
+ * A malformed request is not an A2A *task* failure, so it keeps the standard
+ * JSON-RPC code rather than one of the `-32001..-32009` A2A codes (04 A16).
+ */
+export const A2A_INVALID_PARAMS = -32602;
 
 /** Map an A2A JSON-RPC error object onto a CanonicalError. */
 export function a2aError(error: unknown): CanonicalError {
@@ -62,6 +71,33 @@ export function a2aUnsupportedOperation(message: string): CanonicalError {
     retryable: false,
     wireCode: A2A_UNSUPPORTED_OPERATION,
     protocolError: { code: A2A_UNSUPPORTED_OPERATION, message: 'UnsupportedOperationError' },
+  });
+}
+
+/**
+ * A reserved metadata key contradicted the authoritative transport context.
+ *
+ * The request is malformed: the body claims a different tenant or protocol
+ * version than the transport already established. It must be rejected rather
+ * than silently overwritten (WP-6 / 06 §13), so the wire carries JSON-RPC
+ * `-32602` with `data.reason: 'reserved_metadata_key'`.
+ *
+ * `wireCode` is pinned explicitly because `defaultWireCode('a2a', 'invalid_request')`
+ * maps to TaskNotCancelable (-32002) — the generic derivation is wrong here.
+ */
+export function a2aReservedMetadataError(conflict: ReservedMetadataConflict): CanonicalError {
+  return new CanonicalError({
+    kind: 'invalid_request',
+    message: `A2A metadata key '${conflict.key}' is reserved and may not be overridden (expected '${conflict.expected}', received '${String(conflict.received)}')`,
+    protocol: 'a2a',
+    retryable: false,
+    wireCode: A2A_INVALID_PARAMS,
+    details: {
+      reason: 'reserved_metadata_key',
+      key: conflict.key,
+      expected: conflict.expected,
+      received: conflict.received,
+    },
   });
 }
 

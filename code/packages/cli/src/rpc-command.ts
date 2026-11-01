@@ -38,6 +38,8 @@ import {
   approvalsPanel,
   approvalDecisionPanel,
   auditPanel,
+  storePanel,
+  type StoreStatus,
   budgetPanel,
   callResultPanel,
   capabilityListPanel,
@@ -59,11 +61,23 @@ import { readFileSync } from 'node:fs';
 
 // ── argv parsing (pure) ───────────────────────────────────────────────────
 
-export type RpcView = 'overview' | 'tasks' | 'task' | 'approvals' | 'budget' | 'audit' | 'policy' | 'status';
+export type RpcView =
+  | 'overview'
+  | 'tasks'
+  | 'task'
+  | 'approvals'
+  | 'budget'
+  | 'audit'
+  | 'policy'
+  | 'status'
+  /** Write-lease and store health (06 §10.3). */
+  | 'store';
 
 export type RpcCommand =
-  | { kind: 'view'; view: RpcView; id?: string; capabilityId?: string; json: boolean }
-  | { kind: 'decide'; approvalId: string; optionId: string; json: boolean };
+  | { kind: 'view'; view: RpcView; id?: string; capabilityId?: string; json: boolean; details?: boolean }
+  | { kind: 'decide'; approvalId: string; optionId: string; json: boolean }
+  /** `syao rpc store unlock` — operator recovery for a dead holder. */
+  | { kind: 'unlock'; json: boolean };
 
 export interface CallCommand {
   capabilityId: string;
@@ -92,6 +106,7 @@ const RPC_VIEWS: Readonly<Record<string, RpcView>> = {
   budget: 'budget',
   audit: 'audit',
   status: 'status',
+  store: 'store',
 };
 
 /** Map the short user-facing option word onto the kernel's option id. */
@@ -150,7 +165,10 @@ function takeBool(argv: readonly string[], flag: string): { found: boolean; rest
 
 /** Parse `syao rpc <sub> [...] [--json]` (throws UsageError on bad input). */
 export function parseRpcCommand(argv: readonly string[]): RpcCommand {
-  const json = takeBool(argv, '--json');
+  // Strip every boolean flag up front so a view's own flag (`--details`) never
+  // looks like a positional argument.
+  const details = takeBool(argv, '--details');
+  const json = takeBool(details.rest, '--json');
   const rest = json.rest;
   const sub = rest[0];
   if (sub === undefined) return { kind: 'view', view: 'overview', json: json.found };
@@ -158,7 +176,23 @@ export function parseRpcCommand(argv: readonly string[]): RpcCommand {
   const view = RPC_VIEWS[sub];
   if (view !== undefined) {
     if (rest.length > 1) throw new UsageError(t('rpc.usage'));
-    return { kind: 'view', view, json: json.found };
+    return {
+      kind: 'view',
+      view,
+      json: json.found,
+      ...(details.found && view === 'audit' ? { details: true } : {}),
+    };
+  }
+
+  // `syao rpc store` shows the write lease; `syao rpc store unlock` recovers a
+  // lease whose holder is known to be gone.
+  if (sub === 'store') {
+    if (rest[1] === 'unlock') {
+      if (rest.length > 2) throw new UsageError(t('rpc.usage'));
+      return { kind: 'unlock', json: json.found };
+    }
+    if (rest.length > 1) throw new UsageError(t('rpc.usage'));
+    return { kind: 'view', view: 'store', json: json.found };
   }
 
   if (sub === 'task') {
@@ -506,8 +540,16 @@ export async function rpcView(cmd: Extract<RpcCommand, { kind: 'view' }>, cli: C
     }
     case 'audit': {
       const events: AuditEvent[] = await cli.fabric.audit.list({ limit: 50 });
-      const verify = await cli.fabric.audit.verify();
+      // `--details` re-hashes every stored sidecar (06 §7.5); without it the
+      // chain is still verified, just not the payloads.
+      const verify = await cli.fabric.audit.verify(undefined, {
+        ...(cmd.details === true ? { details: true } : {}),
+      });
       return { lines: auditPanel(events, verify), json: { verify, events } };
+    }
+    case 'store': {
+      const status = await readStoreStatus(cli);
+      return { lines: storePanel(status), json: status };
     }
     case 'policy': {
       const capabilityId = cmd.capabilityId ?? '';
@@ -667,9 +709,14 @@ export async function runRpcArgv(args: CliArgs, cli: CliFabric, io: CliIo): Prom
     }
     throw e;
   }
-  const view = cmd.kind === 'view' ? cmd.view : 'approve';
+  const view = cmd.kind === 'view' ? cmd.view : cmd.kind === 'unlock' ? 'store' : 'approve';
   try {
-    const result = cmd.kind === 'view' ? await rpcView(cmd, cli) : await rpcDecide(cmd, cli);
+    const result =
+      cmd.kind === 'view'
+        ? await rpcView(cmd, cli)
+        : cmd.kind === 'unlock'
+          ? await rpcUnlock(cli)
+          : await rpcDecide(cmd, cli);
     if (cmd.json) io.out(`${JSON.stringify(rpcJsonEnvelope(view, result.json))}\n`);
     else io.out(`${result.lines.join('\n')}\n`);
     return EXIT.OK;
@@ -678,6 +725,60 @@ export async function runRpcArgv(args: CliArgs, cli: CliFabric, io: CliIo): Prom
     else io.err(`${errorText(e)}\n`);
     return exitCodeForError(e);
   }
+}
+
+/**
+ * Read the write-lease state.
+ *
+ * The file-backed bundle can report it; an in-memory bundle cannot, and that is
+ * reported as `null` rather than faked — "no lease" and "no persistence" are
+ * different answers and an operator must be able to tell them apart.
+ */
+async function readStoreStatus(cli: CliFabric): Promise<import('./rpc-views.js').StoreStatus> {
+  const stores = cli.fabric.stores as unknown as {
+    leaseStatus?: () => Promise<{
+      holder?: { leaseId: string; pid?: number; epoch: number; heartbeatAt: string; ttlMs: number; ageMs: number };
+      epoch: number;
+      queue: { ticketId: string; seq: number; priority: number; workKind: string; enqueuedAt: string }[];
+    }>;
+  };
+  const dir = cli.storeDir;
+  if (typeof stores.leaseStatus !== 'function') {
+    return { dir: dir ?? null, persisted: false, holder: null, epoch: 0, queue: [] };
+  }
+  const live = await stores.leaseStatus();
+  return {
+    dir: dir ?? null,
+    persisted: true,
+    holder: live.holder ?? null,
+    epoch: live.epoch,
+    queue: live.queue,
+  };
+}
+
+/** `syao rpc store unlock` — force-release a lease whose holder is gone. */
+async function rpcUnlock(cli: CliFabric): Promise<PanelResult> {
+  const stores = cli.fabric.stores as unknown as { leaseStatus?: () => Promise<unknown> };
+  const dir = cli.storeDir;
+  if (typeof stores.leaseStatus !== 'function' || dir === undefined) {
+    throw new CanonicalError({
+      kind: 'invalid_request',
+      code: 'SY-RPC-001',
+      message: t('rpc.store.notPersisted'),
+    });
+  }
+  const { forceUnlock } = await import('@syaocode/rpc');
+  const before = await readStoreStatus(cli);
+  const epoch = await forceUnlock(cli.runtime, dir);
+  const after = await readStoreStatus(cli);
+  return {
+    lines: [
+      `${t('rpc.store.unlocked')} → epoch ${epoch}`,
+      ...(before.holder !== null ? [`  ${t('rpc.store.holderWas')}: ${before.holder.leaseId} (pid ${before.holder.pid ?? '?'})`] : []),
+      `  ${t('rpc.store.queued')}: ${after.queue.length}`,
+    ],
+    json: { unlocked: true, epoch, before, after },
+  };
 }
 
 /** `syao call <capabilityId> [--input ...] [--json]` */
@@ -901,7 +1002,8 @@ export async function handleRpcSlash(args: string[], c: SlashConsole): Promise<v
     throw e;
   }
   try {
-    const result = cmd.kind === 'view' ? await rpcView(cmd, c.cli) : await rpcDecide(cmd, c.cli);
+    const result =
+      cmd.kind === 'view' ? await rpcView(cmd, c.cli) : cmd.kind === 'unlock' ? await rpcUnlock(c.cli) : await rpcDecide(cmd, c.cli);
     emit(c, result.lines);
   } catch (e) {
     c.printError(errorText(e));

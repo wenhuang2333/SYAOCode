@@ -41,6 +41,12 @@ export function fakeRuntime(
         files.delete(norm(p));
       },
       exists: async (p) => files.has(norm(p)),
+      rename: async (from, to) => {
+        const content = files.get(norm(from));
+        if (content === undefined) throw new Error(`ENOENT ${from}`);
+        files.set(norm(to), content);
+        files.delete(norm(from));
+      },
     },
     shell: {
       spawn: (command, args) => {

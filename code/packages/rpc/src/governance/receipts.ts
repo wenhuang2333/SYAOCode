@@ -121,6 +121,12 @@ export class MemoryReceiptStore implements ReceiptStore {
     return [...this.byId.values()].map((receipt) => deepClone(receipt));
   }
 
+  /** Drop the chain so a reload can rebuild it from disk. */
+  reset(): void {
+    this.byId.clear();
+    this.chains.clear();
+  }
+
   async put(receipt: UnsealedReceipt): Promise<Receipt> {
     if (this.byId.has(receipt.id)) throw new Error(`receipt ${receipt.id} already exists (append-only)`);
     const chain = this.chains.get(receipt.taskId) ?? [];

@@ -23,6 +23,29 @@ export interface FileSystem {
   writeFile(path: string, data: string): Promise<void>;
   /** Atomic-ish append; used for the JSONL session log (no read-rewrite). */
   appendFile(path: string, data: string): Promise<void>;
+  /**
+   * Atomically rename `from` to `to` within one filesystem.
+   *
+   * This is what makes a store update crash-safe (06 §6.2): a writer creates
+   * `<target>.tmp.<pid>.<epoch>`, flushes it, then renames it over the target.
+   * A reader therefore always sees either the complete old file or the
+   * complete new one — never a half-written file. A plain in-place
+   * `writeFile` cannot offer that, which is why this is required.
+   */
+  rename(from: string, to: string): Promise<void>;
+  /**
+   * Flush one file's contents to stable storage.
+   *
+   * Optional: an in-memory host has nothing to flush and omits it, which puts
+   * the store in `fsync: 'never'` mode.
+   */
+  fsyncFile?(path: string): Promise<void>;
+  /**
+   * Flush a directory entry so a preceding `rename` survives a power cut.
+   *
+   * Optional for the same reason as `fsyncFile`.
+   */
+  fsyncDir?(path: string): Promise<void>;
   stat(path: string): Promise<FileStat>;
   readdir(path: string): Promise<DirEntry[]>;
   realpath(path: string): Promise<string>;
@@ -132,6 +155,15 @@ export interface HttpClient {
 export interface Clock {
   now(): number;
   sleep(ms: number, signal?: AbortSignal): Promise<void>;
+  /**
+   * Monotonic milliseconds, unaffected by wall-clock changes.
+   *
+   * Lease heartbeats must not be fooled by an NTP step or a manual clock
+   * change (06 §3.7): `now()` decides *what time it is*, `monotonicNow()`
+   * decides *how long something took*. Optional so a minimal host keeps
+   * working; the lease falls back to `now()` with a warning when absent.
+   */
+  monotonicNow?(): number;
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

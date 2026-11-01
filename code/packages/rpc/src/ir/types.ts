@@ -504,10 +504,58 @@ export interface AuditEvent {
   subject: { type: string; id: string };
   outcome: 'success' | 'failure' | 'denied';
   policyRevision?: string;
+  /**
+   * Content address of the redacted detail: `sha256:<hex>` over
+   * `canonicalJson(detail)` (06 §8). The chain commits to it, so the detail
+   * itself can live outside the chain and still be verified later.
+   */
   detailHash?: string;
+  /** Sidecar address, e.g. `audit-details/<hex>.json`. */
+  detailRef?: string;
+  /** Canonical UTF-8 byte length of the redacted detail (before truncation). */
+  detailBytes?: number;
+  /** True when the detail exceeded `maxDetailBytes`: only hash + size are kept. */
+  detailTruncated?: boolean;
+  /**
+   * False when the payload was intentionally not stored (secret data class).
+   * Absent means "stored" for every event that carries a `detailHash`.
+   */
+  detailStored?: boolean;
+  /** True when redaction was applied before the digest was computed. */
+  detailRedacted?: boolean;
   prevHash: string;
   hash: string;
 }
+
+/** Sensitivity of an audit detail payload (06 §8.2: `secret` keeps the hash only). */
+export type AuditDetailClass = DataClass;
+
+/**
+ * One detail sidecar record (06 §8.2). The payload is optional: `truncated`
+ * records keep only the hash and the size, `hashOnly` records never had one.
+ */
+export interface AuditDetailSidecar {
+  /** `sha256:<hex>` over `canonicalJson(detail)`. */
+  hash: string;
+  eventId: string;
+  tenantId: string;
+  /** Redacted, canonicalisable detail — absent when truncated or hash-only. */
+  detail?: unknown;
+  /** Canonical UTF-8 byte length of the redacted detail. */
+  bytes: number;
+  /** True when the payload was over `maxDetailBytes` and was not stored. */
+  truncated: boolean;
+  /** True when the payload was never stored because of its data class. */
+  hashOnly?: boolean;
+  /** True when redaction was applied before hashing. */
+  redacted: boolean;
+  /** Retention tombstone: the payload was pruned, the record remains. */
+  pruned?: boolean;
+  createdAt: string;
+}
+
+/** Detail verification verdict (06 §8.3). */
+export type AuditDetailVerdict = 'ok' | 'missing' | 'mismatch';
 
 export interface AuditCheckpoint {
   tenantId: string;
@@ -518,10 +566,24 @@ export interface AuditCheckpoint {
 }
 
 export interface AuditVerifyResult {
+  /**
+   * Chain verdict. A `missing` detail sidecar is a retention fact, not a chain
+   * break (06 §8.3); a `mismatch` is tampering and therefore fails the result.
+   */
   ok: boolean;
   checked: number;
   brokenAt?: string;
   reason?: string;
+  /**
+   * Detail-sidecar verdict — always present, because the CLI prints it.
+   * `ok` when every referenced sidecar re-hashes to the committed digest (and
+   * when there was nothing to check).
+   */
+  details?: AuditDetailVerdict;
+  /** Detail payloads dropped by retention (0 for the in-memory store). */
+  pruned?: number;
+  /** Event ids whose detail sidecar failed verification. */
+  detailBroken?: string[];
 }
 
 // ── canonical errors ──────────────────────────────────────────────────────

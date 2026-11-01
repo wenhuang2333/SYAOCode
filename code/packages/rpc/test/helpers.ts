@@ -37,6 +37,7 @@ export function inertRuntime(ids: IdGenerator, logger: Logger = noopLogger): Run
       readFile: deny('fs.readFile'),
       writeFile: deny('fs.writeFile'),
       appendFile: deny('fs.appendFile'),
+      rename: deny('fs.rename'),
       stat: deny('fs.stat'),
       readdir: deny('fs.readdir'),
       realpath: deny('fs.realpath'),

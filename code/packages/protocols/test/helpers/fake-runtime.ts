@@ -61,6 +61,13 @@ function memoryFs(seed: Record<string, string>, now: () => number, writes: strin
       writes.push(path);
       files.set(norm(path), `${files.get(norm(path)) ?? ''}${data}`);
     },
+    async rename(from, to) {
+      writes.push(to);
+      const value = files.get(norm(from));
+      if (value === undefined) throw new Error(`ENOENT: ${from}`);
+      files.set(norm(to), value);
+      files.delete(norm(from));
+    },
     async stat(path): Promise<FileStat> {
       const value = files.get(norm(path));
       if (value === undefined) throw new Error(`ENOENT: ${path}`);

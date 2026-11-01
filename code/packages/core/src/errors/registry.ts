@@ -158,6 +158,9 @@ const TABLE: readonly Row[] = [
   { code: 'SY-SRV-002', name: 'UnsafeListenAddress', severity: 'error', retryable: false, recovery: 'reconfigure', description: 'Attempted remote listen without safety params (BR-041).' },
   { code: 'SY-SRV-003', name: 'PermissionRequestStale', severity: 'warning', retryable: false, recovery: 'none', description: 'One-shot PermissionRequest answered twice or expired.' },
   { code: 'SY-SRV-004', name: 'CapabilityUnsupported', severity: 'error', retryable: false, recovery: 'reconfigure', description: 'The requested capability is not offered by any registered protocol edge (unsupported_capability, 03 §5.5 exit code 7).' },
+  { code: 'SY-SRV-005', name: 'StoreLocked', severity: 'error', retryable: true, recovery: 'retry', description: 'Another writer holds the tenant write lease and the wait exceeded lockTimeoutMs; the write was not applied and the caller decides whether to retry (06 §3.4 W8).' },
+  { code: 'SY-SRV-006', name: 'StoreCorrupt', severity: 'error', retryable: false, recovery: 'ask_user', description: 'A store file failed validation (torn or garbled JSON beyond the recoverable last line); fail-closed until the store is repaired or restored (06 §6.3 W4).' },
+  { code: 'SY-SRV-007', name: 'LeaseLost', severity: 'error', retryable: true, recovery: 'retry', description: 'The write lease epoch changed because the lease was taken over; this write must be abandoned and the whole flow re-run (06 §3.5 W6).' },
   // ── SY-CLI CLI ───────────────────────────────────────────────
   { code: 'SY-CLI-001', name: 'CliUsageOrProtocolInvalid', severity: 'error', retryable: false, recovery: 'fix_input', description: 'Invalid CLI args or unsupported input schemaVersion (BR-042).' },
   { code: 'SY-CLI-002', name: 'NonInteractivePermissionDenied', severity: 'warning', retryable: false, recovery: 'ask_user', description: 'Headless ask→deny left the task incomplete (BR-042).' },

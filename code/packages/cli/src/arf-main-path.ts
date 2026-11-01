@@ -54,6 +54,16 @@ export interface MainPathGovernanceOptions {
   maxBudgetUsd?: number;
   /** Label of the kernel task that groups the session's invocations. */
   taskLabel?: string;
+  /**
+   * Persist governance records under `~/.syaocode/arf/<tenant>/`.
+   *
+   * Defaults to ON for the real CLI. A test MUST pass `false`: persistence is
+   * a cross-process lease over one directory, so two test files sharing the
+   * developer's home would contend for the same lease (and write into it).
+   */
+  persist?: boolean;
+  /** Home override for the store directory (tests pass a temp dir). */
+  home?: string;
 }
 
 export interface MainPathGovernance {
@@ -105,6 +115,8 @@ export function installMainPathGovernance(opts: MainPathGovernanceOptions): Main
       tools: registry,
       fileState: opts.fileState,
       runtime: opts.runtime,
+      ...(opts.persist !== undefined ? { persist: opts.persist } : {}),
+      ...(opts.home !== undefined ? { home: opts.home } : {}),
       ...(opts.redactor !== undefined ? { redactor: opts.redactor } : {}),
       ...(opts.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
       // The kernel's `ask` is answered by the agent's own permission handler

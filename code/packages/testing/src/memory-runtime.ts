@@ -28,11 +28,23 @@ interface MemNode {
 
 class MemoryFileSystem implements FileSystem {
   private files = new Map<string, MemNode>();
+  /**
+   * Last mtime handed out. Real filesystems give sub-millisecond mtimes; the
+   * fake clock does not, and a fingerprint that cannot distinguish two writes
+   * would silently defeat the lease's re-read check. Mtimes are therefore
+   * strictly increasing even when the clock stands still.
+   */
+  private lastMtime = 0;
 
   constructor(seed: Record<string, string> = {}, private clock: { now(): number }) {
     for (const [path, content] of Object.entries(seed)) {
-      this.files.set(this.norm(path), { content, mtimeMs: clock.now(), isDir: false });
+      this.files.set(this.norm(path), { content, mtimeMs: this.nextMtime(), isDir: false });
     }
+  }
+
+  private nextMtime(): number {
+    this.lastMtime = Math.max(this.clock.now(), this.lastMtime + 1);
+    return this.lastMtime;
   }
 
   private norm(path: string): string {
@@ -54,12 +66,15 @@ class MemoryFileSystem implements FileSystem {
     return node.content;
   }
   async writeFile(path: string, data: string): Promise<void> {
-    this.files.set(this.norm(path), { content: data, mtimeMs: this.clock.now(), isDir: false });
+    this.files.set(this.norm(path), { content: data, mtimeMs: this.nextMtime(), isDir: false });
   }
   async appendFile(path: string, data: string): Promise<void> {
     const node = this.files.get(this.norm(path));
-    if (node === undefined) this.files.set(this.norm(path), { content: data, mtimeMs: this.clock.now(), isDir: false });
-    else node.content += data;
+    if (node === undefined) this.files.set(this.norm(path), { content: data, mtimeMs: this.nextMtime(), isDir: false });
+    else {
+      node.content += data;
+      node.mtimeMs = this.nextMtime();
+    }
   }
   async stat(path: string): Promise<FileStat> {
     const node = this.files.get(this.norm(path));
@@ -85,11 +100,58 @@ class MemoryFileSystem implements FileSystem {
   async realpath(path: string): Promise<string> {
     return this.norm(path);
   }
-  async mkdir(path: string): Promise<void> {
-    this.files.set(this.norm(path), { content: '', mtimeMs: this.clock.now(), isDir: true });
+  /**
+   * `mkdir(2)` semantics, which the write lease depends on:
+   * without `recursive`, creating an existing path throws EEXIST — that
+   * "did I win the lock?" test has to behave the same as on a real disk.
+   */
+  async mkdir(path: string, opts?: { recursive?: boolean }): Promise<void> {
+    const target = this.norm(path);
+    const existed = this.files.has(target);
+    if (existed) {
+      if (opts?.recursive === true) return;
+      throw new Error(`EEXIST: ${path}, mkdir '${path}'`);
+    }
+    if (opts?.recursive === true) {
+      const parts = target.split('/').filter((p) => p !== '');
+      let acc = '';
+      for (const part of parts) {
+        acc += `/${part}`;
+        if (!this.files.has(acc)) {
+          this.files.set(acc, { content: '', mtimeMs: this.nextMtime(), isDir: true });
+        }
+      }
+      return;
+    }
+    this.files.set(target, { content: '', mtimeMs: this.nextMtime(), isDir: true });
   }
+  /** `rmdir(2)`: refuses a directory that still has children. */
   async rmdir(path: string): Promise<void> {
-    this.files.delete(this.norm(path));
+    const target = this.norm(path);
+    if (!this.files.has(target)) throw new Error(`ENOENT: ${path}, rmdir '${path}'`);
+    const prefix = `${target}/`;
+    for (const key of this.files.keys()) {
+      if (key.startsWith(prefix)) throw new Error(`ENOTEMPTY: ${path}, rmdir '${path}'`);
+    }
+    this.files.delete(target);
+  }
+  /**
+   * Atomic within this Map: the target key is re-pointed at the source node in
+   * one step, so a concurrent reader sees either the old or the new node.
+   */
+  async rename(from: string, to: string): Promise<void> {
+    const src = this.files.get(this.norm(from));
+    if (src === undefined) throw new Error(`ENOENT: ${from}`);
+    src.mtimeMs = this.nextMtime();
+    this.files.set(this.norm(to), src);
+    this.files.delete(this.norm(from));
+  }
+  /** Nothing to flush in memory; present so the store can report fsync support. */
+  async fsyncFile(path: string): Promise<void> {
+    if (!this.files.has(this.norm(path))) throw new Error(`ENOENT: ${path}`);
+  }
+  async fsyncDir(path: string): Promise<void> {
+    if (!this.files.has(this.norm(path))) throw new Error(`ENOENT: ${path}`);
   }
   async unlink(path: string): Promise<void> {
     this.files.delete(this.norm(path));
@@ -161,11 +223,22 @@ class MemoryHttpClient implements HttpClient {
 
 class FakeClock implements Clock {
   private current = 1_700_000_000_000;
+  /**
+   * Monotonic companion to `current`: it only ever moves forward, so a test
+   * that winds the wall clock backwards still gets a sane "how long did this
+   * take" reading (06 §3.7).
+   */
+  private monotonic = 0;
   now(): number {
     return this.current;
   }
+  monotonicNow(): number {
+    return this.monotonic;
+  }
   advance(ms: number): void {
     this.current += ms;
+    // Negative advances model a clock step; monotonic time must not follow it.
+    if (ms > 0) this.monotonic += ms;
   }
   async sleep(ms: number, signal?: AbortSignal): Promise<void> {
     this.current += ms;

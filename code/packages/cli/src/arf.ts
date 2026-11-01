@@ -147,6 +147,15 @@ export interface CliFabric {
   /** Pending approvals seen by the `presentApproval` hook. */
   readonly pendingApprovals: ApprovalRecord[];
   /**
+   * The tenant directory the governance records live in, or `undefined` when
+   * this process runs on in-memory stores (`persist: false`).
+   *
+   * `syao rpc store` reports it so an operator can see WHICH directory two
+   * processes are contending for — "no lease" and "not persistent" must not
+   * look the same.
+   */
+  readonly storeDir?: string;
+  /**
    * Re-stamp the policy bundle for a new tier (`/permission si|yao|strict`).
    *
    * The preset already reads the live engine, so local tool decisions follow
@@ -494,6 +503,7 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
     tools,
     fileState,
     pendingApprovals,
+    ...(persist ? { storeDir } : {}),
     decidedApprovals,
     approvalHistory,
     failedPeers,
