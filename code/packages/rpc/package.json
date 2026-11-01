@@ -13,7 +13,8 @@
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm run typecheck && pnpm run build",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:multiprocess": "vitest run test/store-concurrency.test.ts"
   },
   "dependencies": {
     "@syaocode/core": "workspace:*",

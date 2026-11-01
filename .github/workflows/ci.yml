@@ -35,6 +35,10 @@ jobs:
       # The kernel's coverage thresholds (03 §7.1) are enforced here: the audit
       # found the >=85% target was unverifiable because no tooling existed.
       - run: corepack pnpm --filter @syaocode/rpc run test:coverage
+      # Real child processes sharing one tenant directory (06 §11.2). This is
+      # the only job that proves the write lease actually excludes across
+      # processes; it is separate so a flake here is visible on its own.
+      - run: corepack pnpm test:multiprocess
       # The audit (05 §10.1 C-5) found `lint:rpc` and `build` were not gated,
       # and that a green build did not prove the artifact runs. Both are now
       # required, and build:check starts the built CLI the way a user would.
