@@ -2,7 +2,7 @@
   "name": "syaocode-monorepo",
   "private": true,
   "version": "0.2.0-dev",
-  "description": "SYAOCode \u2014 TypeScript coding-agent harness library + reference CLI (v0.1 internal, M0+M1)",
+  "description": "SYAOCode — TypeScript coding-agent harness library + reference CLI (v0.1 internal, M0+M1)",
   "type": "module",
   "license": "Apache-2.0",
   "packageManager": "pnpm@12.11.2",
@@ -24,11 +24,13 @@
     "lint:registry": "pnpm exec tsx scripts/check-error-registry.ts",
     "lint:core": "pnpm exec tsx scripts/check-core-purity.ts",
     "lint:rpc": "pnpm exec tsx scripts/check-rpc-boundaries.ts",
-    "lint": "pnpm run lint:registry && pnpm run lint:core && pnpm run lint:rpc",
+    "lint": "pnpm run lint:registry && pnpm run lint:core && pnpm run lint:rpc && pnpm run lint:dhp && pnpm run lint:docs",
     "fixtures:gen": "pnpm exec tsx scripts/gen-wire-fixture.ts",
     "build:check": "pnpm exec tsx scripts/check-build-artifact.ts",
     "test:coverage": "pnpm --filter @syaocode/rpc run test:coverage",
-    "test:multiprocess": "pnpm --filter @syaocode/rpc run test:multiprocess"
+    "test:multiprocess": "pnpm --filter @syaocode/rpc run test:multiprocess",
+    "lint:docs": "pnpm exec tsx scripts/check-docs.ts",
+    "lint:dhp": "node scripts/check-dhp-code-tables.mjs"
   },
   "devDependencies": {
     "@syaocode/core": "workspace:*",
