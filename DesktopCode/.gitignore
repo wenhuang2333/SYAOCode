@@ -1,0 +1,9 @@
+node_modules/
+dist/
+release/
+*.tsbuildinfo
+.DS_Store
+*.log
+
+# Host 打包产物（由 build 生成）
+packages/host/dist/

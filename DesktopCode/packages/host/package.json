@@ -1,0 +1,35 @@
+{
+  "name": "@syaocode/host",
+  "version": "0.1.0",
+  "description": "SYAOCode Desktop Host: DHP server, session/agent manager, services",
+  "type": "module",
+  "license": "Apache-2.0",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@syaocode/core": "link:../../../code/packages/core",
+    "@syaocode/dhp": "workspace:*",
+    "@syaocode/node": "link:../../../code/packages/node",
+    "@syaocode/providers": "link:../../../code/packages/providers",
+    "@syaocode/testing": "link:../../../code/packages/testing",
+    "@syaocode/tools": "link:../../../code/packages/tools",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4",
+    "esbuild": "^0.25.0"
+  },
+  "bin": {
+    "syao-host": "./src/main.ts"
+  }
+}

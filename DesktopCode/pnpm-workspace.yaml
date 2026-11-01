@@ -1,0 +1,17 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
+# pnpm ≥10 默认拦截依赖的 postinstall。esbuild 是 tsx/vitest 的构建依赖，需放行。
+# electron 需要下载二进制、node-pty 需要编译 —— 同样必须放行，否则
+# "pnpm i 成功退出但什么都没装"（这是桌面端最隐蔽的一个坑）。
+allowBuilds:
+  esbuild: true
+  electron: true
+  node-pty: true
+  electron-winstaller: true
+onlyBuiltDependencies:
+  - esbuild
+  - electron
+  - node-pty
+  - electron-winstaller

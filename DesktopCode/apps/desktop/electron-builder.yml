@@ -1,0 +1,23 @@
+appId: app.syaocode.desktop
+productName: SYAOCode
+directories:
+  output: release
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: ../host/dist
+    to: host
+asar: true
+# 原生模块必须 unpack（否则运行时 dlopen 失败）
+asarUnpack:
+  - "**/node_modules/node-pty/**"
+mac:
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  target: [dmg, zip]
+win:
+  target: [nsis]
+linux:
+  target: [AppImage, deb]
+  category: Development
