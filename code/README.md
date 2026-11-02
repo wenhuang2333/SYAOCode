@@ -80,4 +80,4 @@ for p in core node providers tools testing cli; do (cd packages/$p && corepack p
 - All IO goes through the injected Runtime (ADR-03); core depends on nothing but zod.
 - Zod is the single schema source (ADR-07); `exports` are ESM-only (ADR-08).
 
-Docs live outside this repo (`../document/SYAOCode/`). Test report: `docs/TEST-REPORT-v0.1.md`. v0.2 report alignment: `docs/V0.2-REPORT-ALIGNMENT.md`.
+This repository carries code and README only; the specification/design document set is maintained locally and is not published here. Engineering notes that belong with the code: `docs/TEST-REPORT-v0.1.md`, `docs/V0.2-REPORT-ALIGNMENT.md`, `docs/V0.4-AUDIT-FIXES.md`, `docs/V0.5-MULTIPROCESS.md`.

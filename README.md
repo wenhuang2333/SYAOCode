@@ -12,8 +12,9 @@ TypeScript 原生、模型中立、可嵌入、可审计的 coding-agent harness
 | [`code/README.md`](code/README.md) | 源码总览、命令、发布就绪度与设计不变量 |
 | [`code/docs/COMMANDS.md`](code/docs/COMMANDS.md) | `syao` 命令与 TUI 交互完整手册 |
 | [`code/docs/TEST-REPORT-v0.1.md`](code/docs/TEST-REPORT-v0.1.md) | v0.1 测试报告 |
-| [`document/`](document/) | 项目文档集：立项、预研、需求（SRS）、业务规则、概要/详细设计、错误体系、测试计划、对外交付，以及单文件合并版 |
-| [`document/SYAOCode.md`](document/SYAOCode.md) | 同上文档集的单文件版本 |
+| [`DesktopCode/`](DesktopCode/) | 桌面端（Electron）客户端源码 |
+
+> **本仓库只放代码与 README。** 规格、需求、设计与交付文档集在本地工作区维护，不进公开仓库。
 
 ## 快速开始
 

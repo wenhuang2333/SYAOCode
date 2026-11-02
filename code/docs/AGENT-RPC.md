@@ -138,7 +138,7 @@
 
 ### 5.1 v0.4 审计后的修复状态
 
-审计报告：[`document/Agent-RPC/05-实现评估与结论.md`](../../document/Agent-RPC/05-实现评估与结论.md)。下表只记录**已在本仓代码中修复并有测试**的项。
+审计报告：`document/Agent-RPC/05-实现评估与结论.md`（该设计文档在本地工作区维护，不随本仓库发布）。下表只记录**已在本仓代码中修复并有测试**的项。
 
 | 审计项 | 状态 | 证据 |
 | --- | --- | --- |
@@ -183,7 +183,7 @@
 >
 > v0.5 已关闭：**多进程并发写安全**（同机、本地文件系统）、`detailHash`、A2A 保留键覆盖、审计 checkpoint 双触发。见 [`V0.5-MULTIPROCESS.md`](V0.5-MULTIPROCESS.md)。
 >
-> **多进程写入（v0.5 已解决）**：文件 store 现在由**租户目录写租约**串行化（`runtime/lock.ts`），并配合"租约内重读 + 原子替换 + epoch fencing"。4 个真实进程并发写同一目录的验证见 [`V0.5-MULTIPROCESS.md`](V0.5-MULTIPROCESS.md)。设计见 [`document/Agent-RPC/06-…`](../../document/Agent-RPC/06-多进程写入与审计留存设计.md)。**仍不能说"跨主机/分布式安全"**——只支持本机文件系统。
+> **多进程写入（v0.5 已解决）**：文件 store 现在由**租户目录写租约**串行化（`runtime/lock.ts`），并配合"租约内重读 + 原子替换 + epoch fencing"。4 个真实进程并发写同一目录的验证见 [`V0.5-MULTIPROCESS.md`](V0.5-MULTIPROCESS.md)。设计见 `document/Agent-RPC/06-多进程写入与审计留存设计.md`（该设计文档在本地工作区维护，不随本仓库发布）。**仍不能说"跨主机/分布式安全"**——只支持本机文件系统。
 
 ### 5.2 对外口径（截至本版本）
 
