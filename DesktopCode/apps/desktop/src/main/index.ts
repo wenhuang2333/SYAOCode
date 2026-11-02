@@ -3,13 +3,23 @@
  *
  * 三条硬规则（`00-基线` §6.3 / §7.3.2）：
  *  1. 主进程**不含业务逻辑**——它只负责拉起并守护 Host。
- *  2. Host 用 `utilityProcess` 以 **`ELECTRON_RUN_AS_NODE=1`** 启动
- *     （用 Electron 自带的 Node，不额外打包 Node）。
+ *  2. Host 以 **`ELECTRON_RUN_AS_NODE=1`** 用 Electron 自带的 Node 启动
+ *     （`child_process.spawn` + `ipc` 通道，不额外打包 Node）。
  *  3. `electronFuses.runAsNode` **必须保持启用** —— 关掉后 Host 起不来，
  *     且报错极其晦涩。这是 Fuses 里唯一一个不能碰的开关。
  */
 
-import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  Tray,
+  dialog,
+  ipcMain,
+  nativeImage,
+  session,
+  shell,
+} from 'electron';
 import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 
@@ -71,7 +81,10 @@ function startHost(cwd: string): void {
     {
       cwd,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // 第 4 个 'ipc' 槽是**必需的**：Host 用 `process.send({type:'ready'})`
+      // 回报端口与令牌（`packages/host/src/main.ts`）。缺了它 `process.send`
+      // 是 undefined，ready 帧被静默丢弃 → 窗口永远停在"正在连接本地运行时…"。
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     },
   );
   hostProcess = child;
@@ -83,30 +96,53 @@ function startHost(cwd: string): void {
     stderrTail = (stderrTail + text).slice(-64 * 1024);
     if (!app.isPackaged) process.stderr.write(`[host:err] ${text}`);
   });
+
+  const settle = (msg: unknown): void => {
+    const m = msg as { type?: string; port?: number; token?: string; workspaceRoot?: string };
+    if (m?.type === 'ready' && m.port !== undefined && m.token !== undefined) {
+      if (host !== undefined) return; // 只接受第一帧 ready
+      const handle: HostHandle = {
+        port: m.port,
+        token: m.token,
+        workspaceRoot: m.workspaceRoot ?? cwd,
+      };
+      host = handle;
+      console.log(`[main] host ready on port ${handle.port}`);
+      installHostAuthHeader(handle);
+      resolveHost?.(handle);
+    }
+  };
+
+  // 首选通道：IPC（Host 的 ready 帧）。
+  child.on('message', settle);
+
   // 开发期把 Host 的日志透传到终端 —— 否则"应用起来了但连不上"无从排查。
-  if (!app.isPackaged) {
-    child.stdout?.on('data', (chunk: Buffer) => process.stdout.write(`[host] ${chunk.toString()}`));
-  }
+  // 顺带兼容"stdout 上一行裸 JSON"的旧握手方式（端口/令牌不经日志行泄露）。
   child.stdout?.on('data', (chunk: Buffer) => {
-    // Host 用一行 JSON 回报 ready。
-    const line = chunk.toString().trim();
-    if (!line.startsWith('{')) return;
-    try {
-      const msg = JSON.parse(line) as { type?: string; port?: number; token?: string; workspaceRoot?: string };
-      if (msg.type === 'ready' && msg.port !== undefined && msg.token !== undefined) {
-        console.log(`[main] host ready on port ${msg.port}`);
-        resolveHost?.({
-          port: msg.port,
-          token: msg.token,
-          workspaceRoot: msg.workspaceRoot ?? cwd,
-        });
+    const text = chunk.toString();
+    if (!app.isPackaged) process.stdout.write(`[host] ${text}`);
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('{')) continue;
+      try {
+        settle(JSON.parse(trimmed));
+      } catch {
+        /* 非 JSON 行忽略 */
       }
-    } catch {
-      /* 非 JSON 行忽略 */
     }
   });
 
+  // Host 起不来时必须**大声失败**，不能让 UI 无限等待。
+  const readyTimer = setTimeout(() => {
+    if (host !== undefined) return;
+    rejectHost?.(
+      new Error(`Host 在 30s 内未报告 ready。stderr 尾部：\n${stderrTail.slice(-2000)}`),
+    );
+  }, 30_000);
+  readyTimer.unref?.();
+
   child.on('exit', (code, signal) => {
+    clearTimeout(readyTimer);
     hostProcess = undefined;
     host = undefined;
     const err = new Error(
@@ -118,6 +154,29 @@ function startHost(cwd: string): void {
     }
   });
 }
+
+/**
+ * 给渲染层发往本地 Host 的 WebSocket 握手补上 `Authorization: Bearer`。
+ *
+ * 为什么必须在这里做：浏览器/渲染层的 `WebSocket` 构造器**不支持自定义请求头**
+ * （`new WebSocket(url, { headers })` 在 Chromium 里直接抛 TypeError，第二个参数
+ * 只接受子协议）。DHP 又硬性要求令牌走 header、不进 query string（`06` §3）。
+ * 桥就在主进程的 session 层：请求头在发出前被注入，令牌既不出现在 URL 里，
+ * 也不进渲染层的 JS 堆。
+ */
+function installHostAuthHeader(handle: HostHandle): void {
+  const prefix = `ws://127.0.0.1:${handle.port}`;
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    if (details.url.startsWith(prefix)) {
+      callback({
+        requestHeaders: { ...details.requestHeaders, Authorization: `Bearer ${handle.token}` },
+      });
+      return;
+    }
+    callback({});
+  });
+}
+
 
 // ── 窗口 ────────────────────────────────────────────────────────────────
 

@@ -68,6 +68,31 @@ describe('Electron 壳配置', () => {
   });
 });
 
+describe('渲染层 ↔ Host 的握手链路', () => {
+  // 这三条都是**曾经真实发生过的故障**，代价是"窗口起来了但永远连不上"：
+  //   ① 缺 'ipc' stdio → Host 的 ready 帧被静默丢弃 → UI 永远停在"正在连接…"
+  //   ② 渲染层给 WebSocket 传 { headers } → Chromium 直接抛 TypeError
+  //   ③ 令牌既不进 URL 也不进渲染层 JS 堆 → 只能由主进程在 session 层注入
+  it('Host 必须带 ipc 通道启动（ready 帧靠它）', () => {
+    const main = read('src/main/index.ts');
+    expect(main).toMatch(/stdio:\s*\[[^\]]*'ipc'/);
+    expect(main).toContain("child.on('message'");
+  });
+
+  it('渲染层不得给 WebSocket 传 headers（Chromium 会抛 TypeError）', () => {
+    const renderer = read('src/renderer/index.tsx');
+    expect(renderer).not.toMatch(/new WebSocket\([^)]*headers/);
+  });
+
+  it('令牌由主进程在 session 层注入请求头（不进 URL、不进渲染层）', () => {
+    const main = read('src/main/index.ts');
+    expect(main).toContain('onBeforeSendHeaders');
+    expect(main).toMatch(/Authorization:\s*`Bearer/);
+    const renderer = read('src/renderer/index.tsx');
+    expect(renderer).not.toContain('Bearer');
+  });
+});
+
 describe('Host 打包产物', () => {
   it('build.mjs 外部化 node 内置与原生模块', () => {
     const b = fs.readFileSync(path.resolve(ROOT, '../../packages/host/build.mjs'), 'utf8');

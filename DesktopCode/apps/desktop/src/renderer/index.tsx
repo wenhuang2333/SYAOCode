@@ -82,11 +82,10 @@ function App(): React.JSX.Element {
         const conn = new DhpConnection({
           url: `ws://127.0.0.1:${info.port}`,
           token: info.token,
-          // 桌面端由 preload 注入令牌 → 用请求头，不进 URL。
-          socketFactory: (url, token): WebSocketLike => {
-            const ws = new WebSocket(url, { headers: { authorization: `Bearer ${token}` } } as never);
-            return ws as unknown as WebSocketLike;
-          },
+          // 渲染层**不设**请求头：浏览器 `WebSocket` 构造器的第二个参数是**子协议**，
+          // 传 `{ headers }` 会直接抛 TypeError。令牌由主进程在 session 层注入
+          // （`main/index.ts` 的 installHostAuthHeader）—— URL 与渲染层 JS 堆里都不出现令牌。
+          socketFactory: (url): WebSocketLike => new WebSocket(url) as unknown as WebSocketLike,
           onStateChange: (state) => {
             if (state === 'ready') {
               setConnState('ready');
