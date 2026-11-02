@@ -59,6 +59,8 @@ corepack pnpm dev:host
 
 # ② 跑完整桌面应用
 corepack pnpm build && corepack pnpm dev:desktop
+#    正常应看到 [main] host ready on port <n> 与 dhp: hello；
+#    若窗口停在"正在启动本地运行时…"，先看终端有没有 [main] host ready —— 没有就是缺陷 8/9 复发。
 
 # ③ 打包（产出到 apps/desktop/release/）
 corepack pnpm package:dir      # 不生成安装包，用于快速验证 asar/资源
@@ -116,13 +118,19 @@ corepack pnpm dev:host
 | 多轮 steer | ⛔ 明确返回 `rejected` + 原因（不静默丢弃） |
 | 自动更新 / 签名公证 | ⛔ 未做（配置骨架在 `electron-builder.yml`） |
 
-实测记录（macOS，Electron 44.10.1）：
+实测记录（macOS arm64 / Node 24.15 / Electron 44.10.1，2026-11-02）：
 
 ```
-[host] info dhp: listening {"host":"127.0.0.1","port":52567}
-[host] ready url=ws://127.0.0.1:52567 workspace=.../apps/desktop
+[host] info dhp: listening {"host":"127.0.0.1","port":64717}
+[host] ready url=ws://127.0.0.1:64717 workspace=.../apps/desktop
+[main] host ready on port 64717          ← 主进程从 IPC 收到 ready 帧
+[host] info dhp: connection open {"conn":"conn_1"}
+[host] info dhp: hello {"conn":"conn_1","client":"syaocode-desktop","capabilities":13}
 [main] window ready-to-show
 ```
+
+窗口状态栏最终显示 `就绪 · mock:default · default · idle`，即
+握手 → 建会话 → 订阅 → 投影渲染整条链路跑通。
 
 ---
 
@@ -139,6 +147,9 @@ corepack pnpm dev:host
 | 5 | `z.unknown()` 接受 `undefined` | 既无 `method` 也无 `result` 的畸形帧被当成"成功响应" | `.refine(o => 'result' in o)` |
 | 6 | `tool.receipt` 未纳入不可丢事件 | 证据链在 UI 侧断链 | 补入 + 测试断言 19 类事件全覆盖 |
 | 7 | 本 shell 里 `ELECTRON_RUN_AS_NODE=1` 是**全局设置** | `electron .` 直接以 Node 模式跑，`require('electron')` 返回 undefined，应用"静默不启动" | 启动脚本显式 `env -u ELECTRON_RUN_AS_NODE` |
+| 8 | `dev-desktop.mjs` 硬编码 `DesktopCode/node_modules/.bin/electron` | Electron 是 `apps/desktop` 的 devDep，pnpm 隔离布局下根目录没有它 → `spawn ... ENOENT`，应用根本起不来 | 用 `createRequire(appDir/package.json)('electron')` 逐级解析二进制 |
+| 9 | 主进程 `spawn` Host 时 `stdio` 没有 `ipc` 槽 | Host 的 ready 帧走 `process.send()`，无 IPC 通道即被静默丢弃 → 窗口永远停在"正在启动本地运行时…" | `stdio: ['ignore','pipe','pipe','ipc']` + `child.on('message')`；另加 30s 未就绪的**大声失败** |
+| 10 | 渲染层 `new WebSocket(url, { headers })` | 浏览器 `WebSocket` 第二个参数是**子协议**，传对象直接抛 TypeError；即便不抛也无法带 `Authorization` | 渲染层建裸连接，令牌由主进程 `session.webRequest.onBeforeSendHeaders` 注入（不进 URL、不进渲染层 JS 堆） |
 
 第 7 条尤其值得记：它是**环境**问题，不是代码问题，但表现是"双击没反应"，极难定位。
 
