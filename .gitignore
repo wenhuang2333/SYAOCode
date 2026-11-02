@@ -1,6 +1,10 @@
 # 本地第三方参考快照（只读，不入库）
 /reference/
 
+# 规格与设计文档：只在本地工作区保留，不进公开仓库（仓库只留 README + 代码）
+/document/
+/DesktopDoc/
+
 # 工作区管理文件（不进公开仓库）
 /AGENTS.md
 /github 管理.md
