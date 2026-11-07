@@ -9,8 +9,14 @@
  * `-32099` 是码段边界，不是真实错误码。
  */
 
-/** L2 自定义错误码的段边界（`06` §10.2）。 */
-export const DHP_ERROR_RANGE = { min: -32025, max: -32000 } as const;
+/**
+ * L2 自定义错误码的段边界（`06` §10.2）。
+ *
+ * 2026-11-07 起按 `27-功能增补需求与实施清单` §5.2 顺延到 `-32045`：
+ * `-32026…-32029` MCP、`-32030…-32035` Git/产出/来源、
+ * `-32036…-32045` 凭据 / 联网 / OAuth / SSH。
+ */
+export const DHP_ERROR_RANGE = { min: -32045, max: -32000 } as const;
 
 /**
  * L2 错误的 `kind` —— 客户端**必须**按 `kind` 分支，绝不按数字字面量分支。
@@ -42,7 +48,30 @@ export type DhpErrorKind =
   | 'version_mismatch'
   | 'unsupported_obligation'
   | 'shutdown_in_progress'
-  | 'read_only';
+  | 'read_only'
+  // 27 §5.2：MCP
+  | 'mcp_unavailable'
+  | 'mcp_spawn_failed'
+  | 'mcp_tool_failed'
+  | 'mcp_not_trusted'
+  // 27 §5.2：Git / 产出 / 来源
+  | 'git_unavailable'
+  | 'git_not_repo'
+  | 'git_command_failed'
+  | 'git_unsafe'
+  | 'artifact_unreadable'
+  | 'source_untrusted'
+  // 27 §5.2：凭据 / 联网 / OAuth / SSH
+  | 'git_auth_required'
+  | 'git_auth_failed'
+  | 'git_offline'
+  | 'git_remote_conflict'
+  | 'git_credential_unavailable'
+  | 'git_oauth_pending'
+  | 'git_oauth_denied'
+  | 'git_oauth_unavailable'
+  | 'git_ssh_key_invalid'
+  | 'git_host_key_unverified';
 
 /** 重试语义：客户端据此决定是否可自动重试。 */
 export type DhpRetryPolicy = 'no' | 'once' | 'backoff' | 'after_turn_end' | 'after_hello' | 'never_auto';
@@ -57,8 +86,8 @@ export interface DhpErrorCodeSpec {
 }
 
 /**
- * 26 个自定义码，`-32000`~`-32025` **连续无空洞**。
- * 顺序与 `06` §10.2 完全一致；`check-dhp-code-tables.mjs` 会做差集校验。
+ * 46 个自定义码，`-32000`~`-32045` **连续无空洞**。
+ * 顺序与 `06` §10.2（+ `27` §5.2）完全一致。
  */
 export const DHP_ERROR_CODES: readonly DhpErrorCodeSpec[] = [
   { code: -32000, kind: 'frame_too_large', retry: 'once', summary: '单帧超 MAX_FRAME_BYTES' },
@@ -87,6 +116,27 @@ export const DHP_ERROR_CODES: readonly DhpErrorCodeSpec[] = [
   { code: -32023, kind: 'unsupported_obligation', retry: 'no', summary: '策略要求的义务无法履行' },
   { code: -32024, kind: 'shutdown_in_progress', retry: 'once', summary: 'Host 正在关停' },
   { code: -32025, kind: 'read_only', retry: 'no', summary: '连接为只读降级态' },
+  // ── 27 §5.2 增补（2026-11-07）────────────────────────────────────────
+  { code: -32026, kind: 'mcp_unavailable', retry: 'no', summary: 'MCP 服务不存在或未就绪' },
+  { code: -32027, kind: 'mcp_spawn_failed', retry: 'once', summary: 'MCP 进程启动失败（含超时）' },
+  { code: -32028, kind: 'mcp_tool_failed', retry: 'once', summary: 'MCP 工具调用返回错误' },
+  { code: -32029, kind: 'mcp_not_trusted', retry: 'no', summary: 'MCP 服务未列入受信清单，拒绝执行' },
+  { code: -32030, kind: 'git_unavailable', retry: 'no', summary: '本机没有可用的 git 可执行文件' },
+  { code: -32031, kind: 'git_not_repo', retry: 'no', summary: '工作区不是 Git 仓库' },
+  { code: -32032, kind: 'git_command_failed', retry: 'once', summary: 'git 命令非零退出' },
+  { code: -32033, kind: 'git_unsafe', retry: 'no', summary: '命令或参数被安全策略拒绝' },
+  { code: -32034, kind: 'artifact_unreadable', retry: 'no', summary: '产出文件不可读或超限' },
+  { code: -32035, kind: 'source_untrusted', retry: 'no', summary: '来源缺少可验证凭据' },
+  { code: -32036, kind: 'git_auth_required', retry: 'no', summary: '远端需要认证，但尚未配置凭据' },
+  { code: -32037, kind: 'git_auth_failed', retry: 'once', summary: '凭据被远端拒绝（不回显令牌内容）' },
+  { code: -32038, kind: 'git_offline', retry: 'backoff', summary: '需要联网但当前不可达' },
+  { code: -32039, kind: 'git_remote_conflict', retry: 'no', summary: '分支分叉或落后于远端，需用户决策，禁止自动 force' },
+  { code: -32040, kind: 'git_credential_unavailable', retry: 'no', summary: '系统钥匙串不可用或条目读取失败' },
+  { code: -32041, kind: 'git_oauth_pending', retry: 'backoff', summary: '浏览器授权尚未完成（按 interval 轮询）' },
+  { code: -32042, kind: 'git_oauth_denied', retry: 'no', summary: '用户在浏览器拒绝授权，或设备码过期' },
+  { code: -32043, kind: 'git_oauth_unavailable', retry: 'no', summary: '厂商不支持设备码流程 / 未配置 OAuth App / 网络不可达' },
+  { code: -32044, kind: 'git_ssh_key_invalid', retry: 'no', summary: '私钥无法解析、口令错误，或 agent 中没有可用身份' },
+  { code: -32045, kind: 'git_host_key_unverified', retry: 'no', summary: '首次连接的主机指纹未确认' },
 ] as const;
 
 /** JSON-RPC 2.0 标准码（`06` §10.1）。 */

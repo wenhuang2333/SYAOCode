@@ -72,3 +72,56 @@ export {
   syaoPaths,
   type SyaoPaths,
 } from './paths.ts';
+export {
+  MemoryCredentialProvider,
+  keychainEntryFor,
+  nonce,
+  redactSecret,
+  secretFingerprint,
+} from './credentials.ts';
+export type { CredentialBridge, CredentialProvider } from './credentials.ts';
+export {
+  IpcCredentialBridge,
+  UnavailableCredentialProvider,
+  processCredentialChannel,
+} from './credential-bridge.ts';
+export type { CredentialIpcChannel, CredentialIpcOp } from './credential-bridge.ts';
+export {
+  GitError,
+  assertRelativePath,
+  assertSafeGitArgs,
+  assertSafeRemoteUrl,
+  cleanEnv,
+  gitAvailable,
+  isGitRepository,
+  redact,
+  requireRepository,
+  resetGitAvailability,
+  runGit,
+  sanitizeRemoteUrl,
+  type GitFailureKind,
+  type GitRunOptions,
+  type GitRunResult,
+} from './git-run.ts';
+export { statFile, readTextPreview, type FileStat, type FileStatKind } from './file-stat.ts';
+export {
+  GitAuthService,
+  GitAuthError,
+  GIT_AUTH_FAILURE_KINDS,
+  isGitAuthError,
+  hostFromRemoteUrl,
+  type GitAuthFailureKind,
+  type GitAuthHydrateRecord,
+} from './git-auth.ts';
+export { GitService, type GitServiceOptions } from './git-service.ts';
+export { GitWriteService, type GitAuditSink, type GitStatusReader } from './git-write.ts';
+export { GitUploadService, dhpCodeForGitError, dhpKindForGitError } from './git-upload.ts';
+export { McpService, McpServiceError, type McpServiceOptions } from './mcp-service.ts';
+export { AgentsService, AgentsServiceError, type AgentsServiceOptions } from './agents-service.ts';
+export {
+  ChangesCollector,
+  createChangeToolHooks,
+  pathFromToolInput,
+  type ChangeToolHooks,
+  type ChangesSnapshot,
+} from './changes.ts';

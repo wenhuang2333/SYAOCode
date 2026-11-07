@@ -25,19 +25,19 @@ import {
 } from '../src/index.ts';
 
 describe('DHP 错误码', () => {
-  it('26 个自定义码连续无空洞', () => {
+  it('46 个自定义码连续无空洞', () => {
     const codes = DHP_ERROR_CODES.map((c) => c.code).sort((a, b) => a - b);
-    expect(codes).toHaveLength(26);
+    expect(codes).toHaveLength(46);
     for (let i = 1; i < codes.length; i += 1) {
       expect(codes[i]! - codes[i - 1]!).toBe(1);
     }
-    expect(codes[0]).toBe(-32025);
+    expect(codes[0]).toBe(-32045);
     expect(codes[codes.length - 1]).toBe(-32000);
   });
 
   it('kind 与码一一对应', () => {
     const kinds = new Set(DHP_ERROR_CODES.map((c) => c.kind));
-    expect(kinds.size).toBe(26);
+    expect(kinds.size).toBe(46);
     for (const spec of DHP_ERROR_CODES) {
       expect(codeForKind(spec.kind)).toBe(spec.code);
       expect(specForCode(spec.code)?.kind).toBe(spec.kind);

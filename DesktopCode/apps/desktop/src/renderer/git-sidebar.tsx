@@ -1,0 +1,820 @@
+/**
+ * Git 侧栏（`27` §11.3 / §10.8）。
+ *
+ * 纪律：
+ *  - **按需显示**：默认收起，不因改动、远端或上传结果自动弹出；
+ *  - **与会话详情互斥**：两者共用右栏槽位，同一时刻只显示一个（见 `gitTabState`）；
+ *  - **工作区口径**与"会话详情"的**会话口径**绝不混算、不相加；
+ *  - 上传是唯一出网操作：必须二次确认，失败只给"凭据未配置 / 被拒 / 离线 / 分叉"四条路径，
+ *    **任何位置都不提供 force 选项**。
+ */
+
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type {
+  GitAuthInfo,
+  GitAuthStatusResult,
+  GitBranchesResult,
+  GitBranchInfo,
+  GitCommitNode,
+  GitDiffResult,
+  GitFileEntry,
+  GitFileStatus,
+  GitGraphResult,
+  GitPreflightResult,
+  GitRemoteInfo,
+  GitRemotesResult,
+  GitStatusResult,
+  GitUploadResult,
+} from '@syaocode/dhp';
+import { Icon } from './icons';
+import { formatRelative } from './format';
+
+// ── 纯函数（可被测试直接断言）────────────────────────────────────────────
+
+export type GitTab = 'changes' | 'graph' | 'branches' | 'upload';
+
+export const GIT_TABS: readonly { readonly id: GitTab; readonly label: string }[] = [
+  { id: 'changes', label: '变更' },
+  { id: 'graph', label: '提交图' },
+  { id: 'branches', label: '分支' },
+  { id: 'upload', label: '上传' },
+];
+
+/** 右栏槽位：会话详情与 Git 互斥。 */
+export type RightSlot = 'none' | 'detail' | 'git';
+
+export interface SidebarSlotState {
+  readonly slot: RightSlot;
+  readonly detailOpen: boolean;
+  readonly gitOpen: boolean;
+  readonly tab: GitTab;
+  /** 打开 Git 之前会话详情是否展开（关闭 Git 后据此回退）。 */
+  readonly detailBeforeGit: boolean;
+}
+
+export type SidebarAction = 'toggle-git' | 'toggle-detail' | 'select-tab' | 'close';
+
+/** 右栏初始状态：**默认收起**（Git 不自动弹出）。 */
+export const INITIAL_SIDEBAR_STATE: SidebarSlotState = {
+  slot: 'none',
+  detailOpen: false,
+  gitOpen: false,
+  tab: 'changes',
+  detailBeforeGit: false,
+};
+
+/**
+ * 右栏槽位状态机（纯函数）。
+ *
+ * - 打开 Git：若会话详情正展开，右栏直接切换为 Git（**不叠加第二个侧栏**）；
+ * - 关闭 Git：回到会话详情；若详情此前是收起态，右栏整体收起；
+ * - 打开会话详情：自动关闭 Git（互斥）。
+ */
+export function gitTabState(state: SidebarSlotState, action: SidebarAction, tab: GitTab = state.tab): SidebarSlotState {
+  if (action === 'select-tab') {
+    return state.gitOpen ? { ...state, tab } : state;
+  }
+  if (action === 'close') {
+    return { ...INITIAL_SIDEBAR_STATE, tab: state.tab };
+  }
+  if (action === 'toggle-git') {
+    if (state.gitOpen) {
+      const back = state.detailBeforeGit;
+      return { ...state, slot: back ? 'detail' : 'none', detailOpen: back, gitOpen: false, detailBeforeGit: false };
+    }
+    return { ...state, slot: 'git', detailOpen: false, gitOpen: true, detailBeforeGit: state.detailOpen, tab: state.tab };
+  }
+  // toggle-detail
+  if (state.detailOpen) {
+    return { ...state, slot: state.gitOpen ? 'git' : 'none', detailOpen: false, gitOpen: state.gitOpen };
+  }
+  return { ...state, slot: 'detail', detailOpen: true, gitOpen: false };
+}
+
+/** 工作区状态字母（颜色之外的第二信息载体）。 */
+export const GIT_STATUS_LETTERS: Readonly<Record<GitFileStatus, string>> = {
+  added: 'A',
+  modified: 'M',
+  deleted: 'D',
+  renamed: 'R',
+  untracked: 'U',
+  conflicted: '!',
+};
+
+export const GIT_STATUS_LABELS: Readonly<Record<GitFileStatus, string>> = {
+  added: '新增',
+  modified: '修改',
+  deleted: '删除',
+  renamed: '重命名',
+  untracked: '未跟踪',
+  conflicted: '冲突',
+};
+
+export interface StagingGroups {
+  readonly staged: readonly GitFileEntry[];
+  readonly unstaged: readonly GitFileEntry[];
+  readonly untracked: readonly GitFileEntry[];
+}
+
+/** 按 已暂存 / 未暂存 / 未跟踪 分组。 */
+export function groupByStaging(files: readonly GitFileEntry[]): StagingGroups {
+  const staged: GitFileEntry[] = [];
+  const unstaged: GitFileEntry[] = [];
+  const untracked: GitFileEntry[] = [];
+  for (const file of files) {
+    if (file.status === 'untracked') untracked.push(file);
+    else if (file.staged) staged.push(file);
+    else unstaged.push(file);
+  }
+  return { staged, unstaged, untracked };
+}
+
+export interface GitFileTotals {
+  readonly files: number;
+  readonly added: number | null;
+  readonly removed: number | null;
+  readonly unavailable: number;
+}
+
+/** 工作区改动汇总；任一条目不可统计时总计标为未知（`null`）。 */
+export function summarizeGitFiles(files: readonly GitFileEntry[]): GitFileTotals {
+  let added = 0;
+  let removed = 0;
+  let unavailable = 0;
+  for (const file of files) {
+    if (file.stat === 'unavailable' || file.added == null || file.removed == null) {
+      unavailable += 1;
+      continue;
+    }
+    added += file.added;
+    removed += file.removed;
+  }
+  return { files: files.length, added: unavailable > 0 ? null : added, removed: unavailable > 0 ? null : removed, unavailable };
+}
+
+/** 行数文本：`+12 -3`；不可统计时是"不可统计"（**不是 0**）。 */
+export function gitFileStatText(file: GitFileEntry): string {
+  if (file.stat === 'unavailable' || file.added == null || file.removed == null) return '不可统计';
+  return `+${file.added} -${file.removed}`;
+}
+
+/** 文件行 `aria-label`。 */
+export function gitFileLabel(file: GitFileEntry): string {
+  const status = GIT_STATUS_LABELS[file.status] ?? '未知状态';
+  const where = file.staged ? '已暂存' : file.status === 'untracked' ? '未跟踪' : '未暂存';
+  if (file.stat === 'unavailable' || file.added == null || file.removed == null) {
+    return `${file.path}，${status}，${where}，不可统计行数`;
+  }
+  return `${file.path}，${status}，${where}，新增 ${file.added} 行，删除 ${file.removed} 行`;
+}
+
+/** 变更页顶部说明：工作区口径，且明确与会话口径不同。 */
+export function gitStatusSummary(status: GitStatusResult | undefined): string {
+  if (!status) return '工作区未提交改动 · 尚未读取';
+  const totals = summarizeGitFiles(status.files);
+  if (totals.files === 0) return '工作区未提交改动 · 0 个文件';
+  if (totals.added == null || totals.removed == null) return `工作区未提交改动 · ${totals.files} 个文件 · 统计不完整`;
+  return `工作区未提交改动 · ${totals.files} 个文件 · +${totals.added} -${totals.removed}`;
+}
+
+/** 顶部工具栏角标：`+12 -3`；没有改动时是空串（不显示虚假数字）。 */
+export function gitStatusBadge(status: GitStatusResult | undefined): string {
+  if (!status) return '';
+  const totals = summarizeGitFiles(status.files);
+  if (totals.files === 0) return '';
+  if (totals.added == null || totals.removed == null) return `${totals.files} 个文件`;
+  return `+${totals.added} -${totals.removed}`;
+}
+
+/** 领先 / 落后文案；未知时是"未知"（不是 0）。 */
+export function aheadBehindText(ahead: number | null | undefined, behind: number | null | undefined): string {
+  const a = ahead == null || !Number.isFinite(ahead) ? null : ahead;
+  const b = behind == null || !Number.isFinite(behind) ? null : behind;
+  if (a === null && b === null) return '领先/落后未知';
+  return `领先 ${a ?? '未知'} · 落后 ${b ?? '未知'}`;
+}
+
+/** 认证状态文案（只显示方式与账号，绝不显示令牌）。 */
+export function authStatusLabel(auth: GitAuthInfo | undefined): string {
+  if (!auth) return '认证状态未知';
+  if (!auth.configured) return '未配置凭据';
+  if (!auth.ready) return '凭据已配置，尚未校验';
+  const account = auth.account ? `（${auth.account}）` : '';
+  return `认证就绪 · ${authMethodLabel(auth.method)}${account}`;
+}
+
+/** 认证方式文案。 */
+export function authMethodLabel(method: GitAuthInfo['method']): string {
+  switch (method) {
+    case 'oauth': return '浏览器授权';
+    case 'ssh-agent': return '系统 SSH 凭据';
+    case 'ssh-key': return 'SSH 密钥';
+    case 'token': return '访问令牌';
+    case 'none': return '无凭据';
+  }
+}
+
+/** 认证状态点：绿=就绪，琥珀=未配置/未校验，灰=未知。 */
+export function authStatusTone(auth: GitAuthInfo | undefined): 'green' | 'amber' | 'grey' {
+  if (!auth) return 'grey';
+  if (auth.ready) return 'green';
+  if (auth.configured) return 'amber';
+  return 'amber';
+}
+
+/**
+ * 联网状态：只认预检结果（§10.7.5）。
+ *
+ * 未知时显示"未知"，**不默认当作在线**；也不得用缓存状态冒充实时状态。
+ */
+export function onlineStateLabel(preflight: GitPreflightResult | undefined): string {
+  if (!preflight || preflight.online == null) return '未知（点击"开始预检"检查连接）';
+  return preflight.online ? '在线' : '离线';
+}
+
+/** 联网状态点颜色：绿=在线，琥珀=离线，灰=未知。 */
+export function onlineStateTone(preflight: GitPreflightResult | undefined): 'green' | 'amber' | 'grey' {
+  if (!preflight || preflight.online == null) return 'grey';
+  return preflight.online ? 'green' : 'amber';
+}
+
+/** 远端展示 URL（已由 Host 剥离内嵌凭据；此处再做一次兜底脱敏）。 */
+export function remoteUrlLabel(remote: GitRemoteInfo): string {
+  const url = remote.url ?? '';
+  const scp = /^([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+):/.exec(url);
+  if (scp) return url;
+  return url.replace(/\/\/[^/@]+@/, '//');
+}
+
+/** 分支行文案：当前分支标记 + 领先落后。 */
+export function branchLabel(branch: GitBranchInfo): string {
+  const name = branch.kind === 'remote' ? `远端 ${branch.name}` : branch.name;
+  const current = branch.current ? '（当前）' : '';
+  const counts = branch.ahead == null && branch.behind == null ? '' : ` · ${aheadBehindText(branch.ahead, branch.behind)}`;
+  return `${name}${current}${counts}`;
+}
+
+// ── 提交图布局（纯函数 + 自绘 SVG，不引入图形库）─────────────────────────
+
+export interface GitGraphRow {
+  readonly sha: string;
+  readonly shortSha: string;
+  readonly subject: string;
+  readonly author: string;
+  readonly at: number;
+  readonly lane: number;
+  readonly refs: readonly string[];
+  /** 父提交在当前窗口之外 → 画虚线。 */
+  readonly truncated: boolean;
+}
+
+export interface GitGraphLayout {
+  readonly rows: readonly GitGraphRow[];
+  readonly lanes: number;
+}
+
+/**
+ * 提交图排位（纯函数）。
+ *
+ * 输入已按 topo/date 排序的提交数组；输出每行的泳道号与"父提交在窗口外"标记。
+ */
+export function layoutGitGraph(commits: readonly GitCommitNode[]): GitGraphLayout {
+  const window = new Set(commits.map((commit) => commit.sha));
+  const laneOf = new Map<string, number>();
+  const freeLanes: number[] = [];
+  let nextLane = 0;
+  const takeLane = (): number => (freeLanes.length > 0 ? (freeLanes.shift() as number) : nextLane++);
+  const rows: GitGraphRow[] = [];
+
+  for (const commit of commits) {
+    // 子提交可能已经为本提交预留了泳道（首父继承子泳道）。
+    const lane = laneOf.get(commit.sha) ?? takeLane();
+    laneOf.set(commit.sha, lane);
+    const truncated = commit.parents.some((parent) => !window.has(parent));
+    commit.parents.forEach((parent, index) => {
+      if (laneOf.has(parent)) return;
+      laneOf.set(parent, index === 0 ? lane : takeLane());
+    });
+    // 没有窗口内父提交 → 本泳道到此结束，可被后续分支复用。
+    const continues = commit.parents.some((parent) => window.has(parent));
+    if (!continues && !freeLanes.includes(lane)) freeLanes.push(lane);
+    rows.push({
+      sha: commit.sha,
+      shortSha: commit.sha.slice(0, 7),
+      subject: commit.subject,
+      author: commit.author,
+      at: commit.at,
+      lane,
+      refs: commit.refs,
+      truncated,
+    });
+  }
+  return { rows, lanes: Math.max(1, nextLane) };
+}
+
+// ── 上传流程（`27` §10.8）───────────────────────────────────────────────
+
+export type UploadScope = 'all' | 'session';
+
+export const UPLOAD_SCOPE_LABELS: Readonly<Record<UploadScope, string>> = {
+  all: '全部未提交改动',
+  session: '仅本会话改动',
+};
+
+export interface UploadConfirmPayload {
+  readonly remote: string;
+  readonly branch: string;
+  readonly files: number;
+  readonly added: number;
+  readonly removed: number;
+  readonly message: string;
+  readonly scope: UploadScope;
+}
+
+/** 二次确认框的字段（确认内容必须与实际执行一致）。 */
+export function uploadConfirmPayload(
+  preflight: GitPreflightResult,
+  options: { readonly message: string; readonly scope: UploadScope },
+): UploadConfirmPayload {
+  return {
+    remote: preflight.remote,
+    branch: preflight.branch,
+    files: preflight.files,
+    added: preflight.added,
+    removed: preflight.removed,
+    message: options.message.trim(),
+    scope: options.scope,
+  };
+}
+
+export type UploadFailureKind = 'auth-required' | 'auth-rejected' | 'offline' | 'diverged' | 'no-change' | 'blocked' | 'unknown';
+
+export interface UploadFailurePath {
+  readonly kind: UploadFailureKind;
+  readonly title: string;
+  /** 可操作路径（最多三条）。**永远不包含 force 选项。 */
+  readonly actions: readonly string[];
+}
+
+/**
+ * 上传失败 → 可操作路径（`27` §10.8.3）。
+ *
+ * 硬约束：分叉只给"先拉取 / 上传到新分支 / 取消"，**不提供 force**。
+ */
+export function uploadFailurePath(code: number): UploadFailurePath {
+  switch (code) {
+    case -32036:
+      return { kind: 'auth-required', title: '未配置凭据', actions: ['去配置凭据', '改用 SSH 凭据'] };
+    case -32037:
+      return { kind: 'auth-rejected', title: '凭据被远端拒绝', actions: ['重新输入令牌', '检查令牌权限范围'] };
+    case -32038:
+      return { kind: 'offline', title: '网络不可达', actions: ['检查网络后重试'] };
+    case -32039:
+      return { kind: 'diverged', title: '远端有新提交（分叉）', actions: ['先拉取再上传', '上传到新分支', '取消'] };
+    case -32032:
+      return { kind: 'no-change', title: '提交或推送被拒绝（无改动 / 无 upstream / 钩子或远端策略）', actions: ['查看脱敏后的远端消息', '检查远端与分支设置', '返回重新选择范围'] };
+    case -32033:
+      return { kind: 'blocked', title: '操作被安全边界拦截', actions: ['返回重新选择参数'] };
+    default:
+      return { kind: 'unknown', title: '上传失败', actions: ['重试', '改范围', '去配置凭据'] };
+  }
+}
+
+/** 预检阻塞项（`27` §10.9 的门禁不满足时的原因）。 */
+export function uploadBlockers(preflight: GitPreflightResult | undefined): readonly string[] {
+  if (!preflight) return [];
+  return preflight.blockers.map((blocker) => blocker.reason);
+}
+
+/** 预检是否允许进入确认步骤。 */
+export function preflightReady(preflight: GitPreflightResult | undefined): boolean {
+  if (!preflight) return false;
+  if (preflight.blockers.length > 0) return false;
+  if (preflight.diverged) return false;
+  if (preflight.online === false) return false;
+  if (preflight.files === 0) return false;
+  return true;
+}
+
+// ── 组件 ────────────────────────────────────────────────────────────────
+
+export interface GitSidebarProps {
+  readonly workspaceRoot: string;
+  readonly status: GitStatusResult | undefined;
+  readonly branches: GitBranchesResult | undefined;
+  readonly graph: GitGraphResult | undefined;
+  readonly remotes: GitRemotesResult | undefined;
+  readonly auth: GitAuthStatusResult | undefined;
+  readonly preflight: GitPreflightResult | undefined;
+  readonly upload: GitUploadResult | undefined;
+  readonly diff: GitDiffResult | undefined;
+  readonly loading: boolean;
+  readonly busy: boolean;
+  readonly error: string;
+  readonly tab: GitTab;
+  readonly onTab: (tab: GitTab) => void;
+  readonly onClose: () => void;
+  readonly onRefresh: () => void;
+  readonly onLoadGraph: (skip?: number) => void;
+  readonly onStage: (paths: readonly string[]) => void;
+  readonly onUnstage: (paths: readonly string[]) => void;
+  readonly onCommit: (message: string) => void;
+  readonly onBranchSwitch: (name: string) => void;
+  readonly onBranchCreate: (name: string) => void;
+  readonly onPreflight: (input: { readonly remote: string; readonly branch?: string; readonly scope: UploadScope }) => Promise<GitPreflightResult | undefined>;
+  readonly onUpload: (input: { readonly remote: string; readonly branch: string; readonly message: string; readonly scope: UploadScope }) => Promise<GitUploadResult | undefined>;
+  readonly onOpenDetail: () => void;
+  /** 凭据窄桥（可选）：主进程尚未提供时界面明确降级，不假装保存成功。 */
+  readonly onSetToken?: ((input: { readonly workspaceRoot: string; readonly remote: string; readonly url: string; readonly token: string }) => Promise<void>) | undefined;
+  readonly onUseSshAgent?: ((input: { readonly workspaceRoot: string; readonly remote: string; readonly url: string }) => Promise<void>) | undefined;
+  readonly onClearAuth?: ((input: { readonly workspaceRoot: string; readonly remote: string; readonly url: string }) => Promise<void>) | undefined;
+}
+
+type UploadStep = 'idle' | 'preflight' | 'confirm' | 'uploading' | 'success' | 'failed';
+
+export function GitSidebar(props: GitSidebarProps) {
+  const {
+    workspaceRoot, status, branches, graph, remotes, auth, preflight, upload, diff,
+    loading, busy, error, tab, onTab, onClose, onRefresh, onLoadGraph,
+    onStage, onUnstage, onCommit, onBranchSwitch, onBranchCreate,
+    onPreflight, onUpload, onOpenDetail, onSetToken, onUseSshAgent, onClearAuth,
+  } = props;
+
+  const groups = useMemo(() => groupByStaging(status?.files ?? []), [status]);
+  const layout = useMemo(() => layoutGitGraph(graph?.commits ?? []), [graph]);
+
+  const [remoteName, setRemoteName] = useState('');
+  const [branchName, setBranchName] = useState('');
+  const [scope, setScope] = useState<UploadScope>('all');
+  const [message, setMessage] = useState('');
+  const [step, setStep] = useState<UploadStep>('idle');
+  const [failure, setFailure] = useState<{ readonly code: number; readonly message: string }>();
+  const [token, setToken] = useState('');
+  const [credentialNote, setCredentialNote] = useState('');
+  const [newBranch, setNewBranch] = useState('');
+  const [commitMessage, setCommitMessage] = useState('');
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const confirmBoxRef = useRef<HTMLDivElement>(null);
+  const tabRef = useRef<HTMLButtonElement>(null);
+
+  const remoteList = remotes?.remotes ?? [];
+  const selectedRemote: GitRemoteInfo | undefined = remoteList.find((remote) => remote.name === remoteName) ?? remoteList[0];
+  const remoteAuth = selectedRemote ? (auth?.remotes.find((item) => item.name === selectedRemote.name)?.auth ?? selectedRemote.auth) : undefined;
+  const confirm = preflight ? uploadConfirmPayload(preflight, { message, scope }) : undefined;
+  const onlineLabel = onlineStateLabel(preflight);
+  const onlineTone = onlineStateTone(preflight);
+
+  useEffect(() => {
+    if (remoteList.length > 0 && remoteName === '') setRemoteName(remoteList[0]!.name);
+  }, [remoteList, remoteName]);
+
+  // 打开侧栏后焦点进入侧栏（§11.4）。
+  useEffect(() => { tabRef.current?.focus(); }, []);
+
+  // 二次确认：焦点落在主按钮上，Tab 在对话框内循环，Esc 取消（§11.4）。
+  useEffect(() => {
+    if (step !== 'confirm') return;
+    confirmRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setStep('preflight'); return; }
+      if (event.key !== 'Tab') return;
+      const list = Array.from(confirmBoxRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? []);
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [step]);
+
+  const runPreflight = async () => {
+    if (!selectedRemote) return;
+    setStep('preflight');
+    setFailure(undefined);
+    try {
+      const result = await onPreflight({ remote: selectedRemote.name, ...(branchName ? { branch: branchName } : {}), scope });
+      if (result) setStep(preflightReady(result) ? 'confirm' : 'preflight');
+    } catch (e) {
+      setFailure({ code: -32032, message: (e as Error).message });
+      setStep('failed');
+    }
+  };
+
+  const runUpload = async () => {
+    if (!selectedRemote || !confirm) return;
+    setStep('uploading');
+    setFailure(undefined);
+    try {
+      const result = await onUpload({
+        remote: selectedRemote.name,
+        branch: confirm.branch,
+        message: confirm.message,
+        scope: confirm.scope,
+      });
+      if (result) { setStep('success'); return; }
+      setFailure({ code: -32032, message: '上传结果不完整，请重试。' });
+      setStep('failed');
+    } catch (e) {
+      const error = e as { readonly code?: number; readonly message: string };
+      const matched = /(-32\d{3})/.exec(error.message);
+      const code = typeof error.code === 'number' ? error.code : matched ? Number(matched[1]) : -32032;
+      setFailure({ code, message: error.message });
+      setStep('failed');
+    }
+  };
+
+  const submitToken = async () => {
+    if (!selectedRemote || !token) return;
+    setCredentialNote('');
+    if (!onSetToken) {
+      setCredentialNote('主进程尚未提供凭据通道，令牌不会被保存。请改用 SSH 凭据或等待凭据桥接上线。');
+      setToken('');
+      return;
+    }
+    try {
+      await onSetToken({ workspaceRoot, remote: selectedRemote.name, url: selectedRemote.url, token });
+    } finally {
+      // 提交后立即清空：页面上任何位置都不提供"查看令牌"。
+      setToken('');
+    }
+  };
+
+  const header = (
+    <div className="git-header">
+      <div className="git-header-main">
+        <div className="git-branch-line">
+          <Icon name="branch" size={14} />
+          <strong>{status?.branch ?? (status ? '游离 HEAD' : '尚未读取')}</strong>
+          {status?.detached && <span className="subtle-badge">游离</span>}
+        </div>
+        <div className="git-status-line">
+          <span>{status ? aheadBehindText(status.ahead, status.behind) : '领先/落后未知'}</span>
+          <span className="git-dot-group">
+            <i className={`state-dot ${onlineTone}`} title={onlineLabel} />
+            <span className="sr-only">联网状态：{onlineLabel}</span>
+            <i className={`state-dot ${authStatusTone(remoteAuth)}`} title={authStatusLabel(remoteAuth)} />
+            <span className="sr-only">认证状态：{authStatusLabel(remoteAuth)}</span>
+          </span>
+        </div>
+      </div>
+      <button aria-label="刷新 Git 状态" title="刷新" disabled={loading || busy} onClick={onRefresh}><Icon name="refresh" size={15} /></button>
+      <button aria-label="关闭 Git 侧栏" title="关闭" onClick={onClose}><Icon name="close" size={15} /></button>
+    </div>
+  );
+
+  const changesTab = (
+    <div className="git-tab-body">
+      <p className="git-scope-note">{gitStatusSummary(status)}</p>
+      {status?.truncated && <p className="data-note">输出已截断，文件列表不完整。</p>}
+      {groups.staged.length === 0 && groups.unstaged.length === 0 && groups.untracked.length === 0
+        ? <p className="git-empty">工作区没有未提交改动。</p>
+        : <div className="git-groups">
+          {([['已暂存', groups.staged], ['未暂存', groups.unstaged], ['未跟踪', groups.untracked]] as const).map(([title, files]) => (
+            <section className="git-group" key={title}>
+              <header><span>{title}</span><small>{files.length}</small></header>
+              {files.length === 0
+                ? <p className="git-empty-small">无</p>
+                : <ul className="git-file-list">
+                  {files.map((file) => (
+                    <li className="git-file-row" key={`${file.staged ? 's' : 'u'}:${file.path}`} aria-label={gitFileLabel(file)}>
+                      <span className={`change-status change-status-${file.status}`} title={GIT_STATUS_LABELS[file.status]}>{GIT_STATUS_LETTERS[file.status]}</span>
+                      <span className="change-path" title={file.path}>{file.path}</span>
+                      {file.stat === 'unavailable' || file.added == null || file.removed == null
+                        ? <span className="change-stat change-stat-unknown">不可统计</span>
+                        : <span className="change-stat"><span className="change-stat-add">+{file.added}</span> <span className="change-stat-del">-{file.removed}</span></span>}
+                      <button className="git-file-action" aria-label={`${file.staged ? '取消暂存' : '暂存'} ${file.path}`} disabled={busy} onClick={() => (file.staged ? onUnstage([file.path]) : onStage([file.path]))}>
+                        {file.staged ? '取消暂存' : '暂存'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>}
+            </section>
+          ))}
+        </div>}
+      <section className="git-commit-box">
+        <label htmlFor="git-commit-message">提交信息</label>
+        <input id="git-commit-message" value={commitMessage} placeholder="填写提交信息（提交前会二次确认）" disabled={busy} onChange={(event) => setCommitMessage(event.target.value)} />
+        <button className="btn" disabled={busy || commitMessage.trim() === '' || groups.staged.length === 0} onClick={() => { onCommit(commitMessage.trim()); setCommitMessage(''); }}>提交已暂存改动</button>
+        <p className="data-note">提交属于本地写操作：先暂存，再提交；不提供强制推送。</p>
+      </section>
+    </div>
+  );
+
+  const graphTab = (
+    <div className="git-tab-body">
+      {graph?.truncated && <p className="data-note">窗口外的父提交以虚线表示，还有更多历史。</p>}
+      {layout.rows.length === 0
+        ? <p className="git-empty">仓库还没有提交记录。</p>
+        : <ul className="git-graph">
+          {layout.rows.map((row, index) => {
+            const previous = index > 0 ? layout.rows[index - 1] : undefined;
+            const laneX = 12 + row.lane * 16;
+            const previousX = previous ? 12 + previous.lane * 16 : laneX;
+            return <li className="git-graph-row" key={row.sha} aria-label={`提交 ${row.shortSha}，${row.subject}`}>
+              <svg className="git-graph-svg" width={12 + layout.lanes * 16 + 12} height={24} viewBox={`0 0 ${12 + layout.lanes * 16 + 12} 24`} aria-hidden="true">
+                {previous && previous.lane !== row.lane && <path d={`M${previousX} 0 V12 H${laneX}`} className="git-graph-edge" />}
+                {row.truncated && <path d={`M${laneX} 12 V24`} className="git-graph-edge git-graph-edge-dashed" />}
+                <circle cx={laneX} cy={12} r={4} className="git-graph-node" />
+              </svg>
+              <div className="git-graph-meta">
+                <strong title={row.subject}>{row.subject}</strong>
+                <small>{row.shortSha} · {row.author} · {formatRelative(row.at)}</small>
+                {row.refs.length > 0 && <span className="git-graph-refs">{row.refs.join(' · ')}</span>}
+              </div>
+            </li>;
+          })}
+        </ul>}
+      <button className="btn" disabled={loading || busy} onClick={() => onLoadGraph(layout.rows.length)}>加载更多</button>
+    </div>
+  );
+
+  const branchesTab = (
+    <div className="git-tab-body">
+      {branches?.detached && <p className="data-note">当前处于游离 HEAD，切换分支前请先提交或保留改动。</p>}
+      {(['local', 'remote'] as const).map((kind) => {
+        const list = kind === 'local' ? (branches?.local ?? []) : (branches?.remote ?? []);
+        return <section className="git-group" key={kind}>
+          <header><span>{kind === 'local' ? '本地分支' : '远端分支'}</span><small>{list.length}</small></header>
+          {list.length === 0
+            ? <p className="git-empty-small">无</p>
+            : <ul className="git-branch-list">
+              {list.map((branch) => (
+                <li key={`${kind}:${branch.name}`} aria-label={branchLabel(branch)}>
+                  <span className={branch.current ? 'git-branch-current' : ''}>{branch.name}</span>
+                  {branch.current && <span className="subtle-badge">当前</span>}
+                  {branch.upstream && <small>上游 {branch.upstream}</small>}
+                  {kind === 'local' && !branch.current && (
+                    <button className="git-file-action" disabled={busy} onClick={() => onBranchSwitch(branch.name)}>切换</button>
+                  )}
+                </li>
+              ))}
+            </ul>}
+        </section>;
+      })}
+      <section className="git-commit-box">
+        <label htmlFor="git-new-branch">新建分支</label>
+        <input id="git-new-branch" value={newBranch} placeholder="分支名" disabled={busy} onChange={(event) => setNewBranch(event.target.value)} />
+        <button className="btn" disabled={busy || newBranch.trim() === ''} onClick={() => { onBranchCreate(newBranch.trim()); setNewBranch(''); }}>创建分支</button>
+      </section>
+    </div>
+  );
+
+  const uploadTab = (
+    <div className="git-tab-body">
+      <section className="upload-step">
+        <h4>1 · 选择远端</h4>
+        {remoteList.length === 0
+          ? <p className="git-empty">仓库没有配置远端。请先在仓库中添加远端后再上传。</p>
+          : <label className="upload-field">
+            <span>远端</span>
+            <select value={selectedRemote?.name ?? ''} disabled={busy} onChange={(event) => { setRemoteName(event.target.value); setStep('idle'); }}>
+              {remoteList.map((remote) => <option key={remote.name} value={remote.name}>{remote.name} · {remoteUrlLabel(remote)}</option>)}
+            </select>
+          </label>}
+      </section>
+
+      <section className="upload-step">
+        <h4>2 · 认证状态</h4>
+        <p className="upload-auth-line"><i className={`state-dot ${authStatusTone(remoteAuth)}`} />{authStatusLabel(remoteAuth)}</p>
+        {remoteAuth && !remoteAuth.configured && (
+          <div className="upload-credential">
+            <p className="data-note">此远端尚未配置凭据。可使用系统 SSH 凭据，或粘贴访问令牌（令牌只写不读回，提交后立即清空）。</p>
+            <div className="upload-credential-actions">
+              <button className="btn" disabled={busy || !onUseSshAgent} onClick={() => { if (selectedRemote && onUseSshAgent) void onUseSshAgent({ workspaceRoot, remote: selectedRemote.name, url: selectedRemote.url }); }}>使用 SSH 凭据</button>
+              <label className="upload-field">
+                <span>访问令牌</span>
+                <input type="password" autoComplete="off" value={token} placeholder="粘贴访问令牌" disabled={busy} onChange={(event) => setToken(event.target.value)} />
+              </label>
+              <button className="btn btn-primary" disabled={busy || token === ''} onClick={() => void submitToken()}>保存并验证</button>
+            </div>
+            {credentialNote && <p className="upload-note-error" role="alert">{credentialNote}</p>}
+          </div>
+        )}
+        {remoteAuth?.configured && onClearAuth && (
+          <button className="btn" disabled={busy} onClick={() => { if (selectedRemote) void onClearAuth({ workspaceRoot, remote: selectedRemote.name, url: selectedRemote.url }); }}>断开连接</button>
+        )}
+      </section>
+
+      <section className="upload-step">
+        <h4>3 · 预检</h4>
+        <p className="data-note">上传前必须重新预检：脏工作区、领先/落后、分叉、远端可写性、网络。</p>
+        <button className="btn" disabled={busy || !selectedRemote} onClick={() => void runPreflight()}>开始预检</button>
+        {preflight && (
+          <div className="upload-preflight">
+            <div className="detail-meta"><span>远端</span><span>{preflight.remote}</span></div>
+            <div className="detail-meta"><span>分支</span><span>{preflight.branch}</span></div>
+            <div className="detail-meta"><span>领先/落后</span><span>{aheadBehindText(preflight.ahead, preflight.behind)}</span></div>
+            <div className="detail-meta"><span>联网</span><span>{preflight.online === null ? '未知' : preflight.online ? '在线' : '离线'}</span></div>
+            <div className="detail-meta"><span>文件数</span><span>{preflight.files}</span></div>
+            <div className="detail-meta"><span>行数</span><span>+{preflight.added} -{preflight.removed}</span></div>
+            {uploadBlockers(preflight).map((reason) => <p className="upload-blocker" key={reason}>{reason}</p>)}
+          </div>
+        )}
+      </section>
+
+      <section className="upload-step">
+        <h4>4 · 范围与提交信息</h4>
+        <div className="upload-scope" role="radiogroup" aria-label="上传范围">
+          {(['all', 'session'] as const).map((value) => (
+            <label key={value} className={scope === value ? 'selected' : ''}>
+              <input type="radio" name="upload-scope" value={value} checked={scope === value} disabled={busy} onChange={() => setScope(value)} />
+              <span>{UPLOAD_SCOPE_LABELS[value]}</span>
+            </label>
+          ))}
+        </div>
+        <label className="upload-field">
+          <span>提交信息</span>
+          <textarea value={message} rows={3} placeholder="填写本次上传的提交信息" disabled={busy} onChange={(event) => setMessage(event.target.value)} />
+        </label>
+        <button className="btn" disabled={busy || message.trim() === ''} onClick={() => void runPreflight()}>预检并准备确认</button>
+      </section>
+
+      {step === 'confirm' && confirm && (
+        <section ref={confirmBoxRef} className="upload-confirm" role="dialog" aria-modal="true" aria-label="确认上传">
+          <h4>二次确认</h4>
+          <p className="data-note">上传会把本地代码送出本机。请核对下面每一项，必要时返回修改。</p>
+          <div className="detail-meta"><span>远端</span><span>{confirm.remote}</span></div>
+          <div className="detail-meta"><span>分支</span><span>{confirm.branch}</span></div>
+          <div className="detail-meta"><span>文件数</span><span>{confirm.files}</span></div>
+          <div className="detail-meta"><span>行数</span><span>+{confirm.added} -{confirm.removed}</span></div>
+          <div className="detail-meta"><span>范围</span><span>{UPLOAD_SCOPE_LABELS[confirm.scope]}</span></div>
+          <div className="upload-confirm-message"><span>提交信息</span><code>{confirm.message}</code></div>
+          <div className="upload-confirm-actions">
+            <button className="btn" onClick={() => setStep('preflight')}>取消</button>
+            <button ref={confirmRef} className="btn btn-primary" disabled={busy} onClick={() => void runUpload()}>确认上传</button>
+          </div>
+        </section>
+      )}
+
+      {step === 'uploading' && <p className="upload-progress" role="status">正在提交并上传…（commit → push）</p>}
+
+      {step === 'success' && upload && (
+        <section className="upload-success">
+          <h4>上传成功</h4>
+          <div className="detail-meta"><span>提交 sha</span><code>{upload.sha}</code></div>
+          <button className="btn" aria-label="复制提交 sha" onClick={() => { void navigator.clipboard?.writeText(upload.sha); }}><Icon name="copy" size={13} />复制 sha</button>
+          <div className="detail-meta"><span>远端</span><code>{upload.remote}</code></div>
+          <div className="detail-meta"><span>分支</span><span>{upload.branch}</span></div>
+          <div className="detail-meta"><span>文件数</span><span>{upload.files}</span></div>
+          <div className="detail-meta"><span>行数</span><span>+{upload.added} -{upload.removed}</span></div>
+          <p className="data-note">远端地址不在此处自动打开；如需查看，请自行复制到浏览器。</p>
+          <button className="btn" onClick={() => setStep('idle')}>完成</button>
+        </section>
+      )}
+
+      {step === 'failed' && failure && (
+        <section className="upload-failed" role="alert">
+          <h4>上传失败（{failure.code}）</h4>
+          <p>{uploadFailurePath(failure.code).title}</p>
+          <p className="data-note">{failure.message}</p>
+          <ul className="upload-actions">
+            {uploadFailurePath(failure.code).actions.map((action) => <li key={action}>{action}</li>)}
+          </ul>
+          <button className="btn" onClick={() => setStep('idle')}>返回</button>
+        </section>
+      )}
+    </div>
+  );
+
+  const tabs: readonly { readonly id: GitTab; readonly label: string }[] = GIT_TABS;
+
+  return (
+    <aside className="git-sidebar" aria-label="Git 侧栏">
+      {header}
+      <div className="git-tabs" role="tablist" aria-label="Git 面板">
+        {tabs.map((item, index) => (
+          <button
+            key={item.id}
+            ref={index === 0 ? tabRef : undefined}
+            role="tab"
+            type="button"
+            aria-selected={tab === item.id}
+            className={tab === item.id ? 'selected' : ''}
+            onClick={() => onTab(item.id)}
+          >{item.label}</button>
+        ))}
+      </div>
+      <div className="git-scroll">
+        {error && <p className="upload-note-error" role="alert">{error}</p>}
+        {tab === 'changes' && changesTab}
+        {tab === 'graph' && graphTab}
+        {tab === 'branches' && branchesTab}
+        {tab === 'upload' && uploadTab}
+        {diff && tab === 'changes' && (
+          <section className="git-diff">
+            <header>{diff.path}<small>{diff.binary ? '二进制文件' : `+${diff.added} -${diff.removed}`}</small></header>
+            {diff.hunks.map((hunk, index) => (
+              <pre key={`${hunk.oldStart}:${hunk.newStart}:${index}`} className="git-diff-hunk">{`@@ -${hunk.oldStart} +${hunk.newStart} @@`}{'\n'}{hunk.lines.map((line) => line.text).join('\n')}</pre>
+            ))}
+          </section>
+        )}
+      </div>
+      <div className="git-footer">
+        <button className="text-link" onClick={onOpenDetail}>本会话改动见会话详情 →</button>
+        <small className="data-note">工作区口径与会话口径互不相加。</small>
+      </div>
+    </aside>
+  );
+}

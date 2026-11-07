@@ -13,16 +13,26 @@
 
 import {
   createAgent,
+  SyaoError,
   type Agent,
   type PermissionHandler,
   type PermissionMode,
   type Provider,
   type Runtime,
+  type Tool,
+  type ToolContext,
+  type ToolOutput,
+  type ToolProgress,
 } from '@syaocode/core';
 import { nodeRuntime } from '@syaocode/node';
 import { createAnthropicProvider, createOpenAICompatibleProvider } from '@syaocode/providers';
 import { createBuiltinTools } from '@syaocode/tools';
 import { MockProvider, mockText, mockToolUse } from '@syaocode/testing';
+import type { ChannelConfig, ChannelModel, ContextInfo, UsageRecord } from '@syaocode/dhp';
+import type { Message } from '@syaocode/core';
+import { observeProvider } from './usage.ts';
+import { wireUsageRuntime } from './provider-usage.ts';
+import { channelSchema } from './workbench-validation.ts';
 
 export interface ModelSpec {
   readonly provider: string;
@@ -134,12 +144,37 @@ export function hasKeyFor(provider: string, env: Record<string, string | undefin
   return v !== undefined && v !== '';
 }
 
+/**
+ * 工具钩子（`27` §7.2 的"宿主侧工具装饰器"）。
+ *
+ * 只用于**观测**：钩子抛错不会让工具失败，也不会改变工具的权限与超时语义。
+ */
+export interface ToolHooks {
+  before(tool: string, input: unknown): Promise<void>;
+  after(tool: string, input: unknown, isError: boolean): Promise<void>;
+}
+
+/** 需要被装饰的工具：只有这三个会改动工作区或执行命令。 */
+const HOOKED_TOOL_NAMES: ReadonlySet<string> = new Set(['write', 'edit', 'bash']);
+
 export interface CreateDesktopAgentOptions {
+  readonly channel?: ChannelConfig;
+  readonly history?: readonly Message[];
+  readonly observation?: {
+    sessionId: string; model: ChannelModel;
+    onContext(context: ContextInfo): void;
+    onUsage(record: UsageRecord): Promise<void>;
+  };
   readonly modelSpec: string;
   readonly cwd: string;
   readonly permissionMode: PermissionMode;
   readonly permissionHandler: PermissionHandler;
   readonly env?: Record<string, string | undefined>;
+  /**
+   * 可选的工具钩子：给 `write` / `edit` / `bash` 套一层观测装饰器，
+   * 用于采集会话改动 / 产出（`27` §7）。不传时行为与原来完全一致。
+   */
+  readonly toolHooks?: ToolHooks;
 }
 
 export type CreateAgentResult =
@@ -157,20 +192,117 @@ export type CreateAgentResult =
 export function createDesktopAgent(opts: CreateDesktopAgentOptions): CreateAgentResult {
   const spec = parseModelSpec(opts.modelSpec);
   const runtime = nodeRuntime();
-  const built = buildProvider(spec, runtime, opts.env ?? process.env);
+  const wire = opts.channel && opts.channel.protocol !== 'mock' ? wireUsageRuntime(runtime, opts.channel.protocol) : undefined;
+  const built = opts.channel
+    ? buildChannelProvider(opts.channel, spec.model, wire?.runtime ?? runtime, opts.env ?? process.env)
+    : buildProvider(spec, runtime, opts.env ?? process.env);
   if (!built.ok) return { ok: false, reason: built.reason };
-
+  const base: Provider = {
+    id: built.provider.id,
+    capabilities: (model) => built.provider.capabilities(model),
+    async *stream(req, args) {
+      try { yield* built.provider.stream(req, args); }
+      catch (e) {
+        // Upstream error bodies may contain credentials/URLs. Keep only typed code.
+        throw new SyaoError({ code: SyaoError.is(e) ? e.code : 'SY-PRV-008', message: 'Provider request failed; check channel credentials and endpoint.' });
+      }
+    },
+  };
+  const observed = opts.observation ? observeProvider(base, {
+    ...opts.observation, workspaceRoot: opts.cwd, channelId: spec.provider,
+    ...(wire ? { wireUsage: wire.usage } : {}),
+  }) : base;
+  const provider: Provider = { ...observed, async *stream(req, args) { wire?.reset(); yield* observed.stream(req, args); } };
   const { tools } = createBuiltinTools();
+  const hooks = opts.toolHooks;
+  const wiredTools = hooks === undefined
+    ? tools
+    : tools.map((tool) => (HOOKED_TOOL_NAMES.has(tool.name) ? wrapToolWithHooks(tool, hooks) : tool));
 
   const agent = createAgent({
-    provider: built.provider,
+    provider,
     model: built.model,
     cwd: opts.cwd,
-    tools,
+    tools: wiredTools,
     permissionMode: opts.permissionMode,
     permissionHandler: opts.permissionHandler,
     runtime,
   });
 
+  agent.history.push(...structuredClone(opts.history ?? []));
   return { ok: true, agent, model: `${spec.provider}:${built.model}` };
+}
+
+export function buildChannelProvider(channel: ChannelConfig, model: string, runtime: Runtime, env: Record<string, string | undefined>): ProviderBuildResult {
+  if (!channelSchema.safeParse(channel).success || !channel.models.some((m) => m.id === model)) return { ok: false, reason: 'invalid channel/model' };
+  if (channel.protocol === 'mock') return buildProvider({ provider: 'mock', model }, runtime, env);
+  const key = channel.apiKeyEnv ? env[channel.apiKeyEnv] : undefined;
+  if (!key?.trim()) return { ok: false, reason: 'channel credentials are not ready' };
+  const baseUrl = (channel.baseUrl ?? (channel.protocol === 'anthropic' ? 'https://api.anthropic.com/v1' : 'https://api.openai.com/v1')).replace(/\/$/, '');
+  const provider = channel.protocol === 'anthropic'
+    ? createAnthropicProvider({ runtime, apiKey: key, baseUrl })
+    : createOpenAICompatibleProvider({ runtime, apiKey: key, baseUrl, id: channel.id });
+  return { ok: true, provider, model };
+}
+
+/**
+ * 给工具套一层观测钩子（`27` §7.2 的"宿主侧工具装饰器"）。
+ *
+ * 装饰器**只**改变"什么时候被观察"，不改变工具本身：
+ * `name` / `description` / `inputSchema` / `risk` / `readOnly` / `timeoutMs` /
+ * `trust` / `permissionSubject` / `concurrencySafe` 全部原样保留，
+ * 权限管线与超时行为完全不变。
+ *
+ * 执行顺序固定为：`before` → 原 `execute` → `after`；
+ * 原 `execute` 抛错或返回 `isError` 时，`after` 依然被调用且 `isError = true`。
+ */
+function wrapToolWithHooks<I>(tool: Tool<I>, hooks: ToolHooks): Tool<I> {
+  const original = tool.execute;
+  return {
+    ...tool,
+    execute(input: I, ctx: ToolContext): Promise<ToolOutput> {
+      return (async () => {
+        await callHook(() => hooks.before(tool.name, input));
+        try {
+          const result = original(input, ctx);
+          if (isAsyncGenerator(result)) {
+            // 生成器形态：逐段消费并把进度转发给 `ctx.progress`，最后再结算。
+            let step = await result.next();
+            while (!step.done) {
+              ctx.progress(step.value.note);
+              step = await result.next();
+            }
+            await callHook(() => hooks.after(tool.name, input, step.value.isError === true));
+            return step.value;
+          }
+          const output = await result;
+          await callHook(() => hooks.after(tool.name, input, output.isError === true));
+          return output;
+        } catch (e) {
+          await callHook(() => hooks.after(tool.name, input, true));
+          throw e;
+        }
+      })();
+    },
+  };
+}
+
+/** 钩子是观测手段：钩子自己出错也不能让工具失败。 */
+async function callHook(run: () => Promise<void>): Promise<void> {
+  try {
+    await run();
+  } catch {
+    // 吞掉钩子异常——观测失败不该改变工具行为。
+  }
+}
+
+function isAsyncGenerator(
+  value: unknown,
+): value is AsyncGenerator<ToolProgress, ToolOutput, unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as AsyncGenerator<ToolProgress, ToolOutput, unknown>).next === 'function' &&
+    typeof (value as AsyncGenerator<ToolProgress, ToolOutput, unknown>).return === 'function'
+  );
 }

@@ -8,6 +8,7 @@ import type * as React from 'react';
 
 import type { ProjectionRow } from '@syaocode/dhp';
 import type { Messages } from './i18n.ts';
+import { Markdown } from './markdown.tsx';
 
 export interface TimelineProps {
   readonly rows: readonly ProjectionRow[];
@@ -38,7 +39,7 @@ export function RowView({ row, m }: { row: ProjectionRow; m: Messages }): React.
       return (
         <article className={`row msg msg-${row.role}`}>
           <span className="role">{row.role === 'user' ? m.you : m.assistant}</span>
-          <div className="content">{row.text}</div>
+          <div className="content">{row.role === 'assistant' ? <Markdown text={row.text} /> : row.text}</div>
           {!row.final && <span className="streaming-dot" aria-label="streaming">•</span>}
         </article>
       );
@@ -62,6 +63,7 @@ export function RowView({ row, m }: { row: ProjectionRow; m: Messages }): React.
           <span className="tool-name">{row.name}</span>
           {row.progress !== undefined && <span className="tool-progress">{row.progress}</span>}
           {row.durationMs !== undefined && <span className="tool-duration">{row.durationMs}ms</span>}
+          <details className="tool-input"><summary>输入参数</summary><pre>{JSON.stringify(row.input, null, 2)?.slice(0, 8000) ?? '—'}</pre></details>
           {row.resultText !== undefined && row.resultText !== '' && (
             <details className="tool-result">
               <summary>结果</summary>

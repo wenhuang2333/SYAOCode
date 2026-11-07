@@ -4,6 +4,8 @@
 # 规格与设计文档：只在本地工作区保留，不进公开仓库（仓库只留 README + 代码）
 /document/
 /DesktopDoc/
+/doc/
+/newDesktopDoc/
 
 # 工作区管理文件（不进公开仓库）
 /AGENTS.md

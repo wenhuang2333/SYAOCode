@@ -12,14 +12,18 @@
 import {
   DHP_CAPABILITIES,
   DHP_VERSION,
+  FeatureNotification,
   Method,
   Notification,
   decodeFrame,
   encodeFrame,
   type DhpCapability,
+  type GitAuthChangedNotification,
   type HelloAckResult,
+  type McpChangedNotification,
   type PendingInteraction,
   type SessionChangedNotification,
+  type SessionChangesNotification,
   type SessionDelta,
   type SessionSnapshot,
 } from '@syaocode/dhp';
@@ -56,6 +60,14 @@ export interface DhpConnectionOptions {
   readonly onSnapshot?: (sessionId: string, snapshot: SessionSnapshot) => void;
   readonly onInteraction?: (interaction: PendingInteraction) => void;
   readonly onSessionChanged?: (change: SessionChangedNotification) => void;
+  /** 会话改动 / 产出 / 来源快照（整体替换语义）。 */
+  readonly onSessionChanges?: (changes: SessionChangesNotification) => void;
+  /** MCP 服务状态变化。 */
+  readonly onMcpChanged?: (change: McpChangedNotification) => void;
+  /** 工作区 Git 状态可能变化（只提示刷新）。 */
+  readonly onGitChanged?: (workspaceRoot: string) => void;
+  /** 登录状态变化（只含方式与账号）。 */
+  readonly onGitAuthChanged?: (change: GitAuthChangedNotification) => void;
   readonly onError?: (err: Error) => void;
   /** 重连成功后的钩子（用于重新订阅）。 */
   readonly onReconnected?: (ack: HelloAckResult) => void;
@@ -230,6 +242,23 @@ export class DhpConnection {
       }
       case Notification.SessionChanged: {
         this.opts.onSessionChanged?.(params as SessionChangedNotification);
+        return;
+      }
+      case FeatureNotification.SessionChanges: {
+        this.opts.onSessionChanges?.(params as SessionChangesNotification);
+        return;
+      }
+      case FeatureNotification.McpChanged: {
+        this.opts.onMcpChanged?.(params as McpChangedNotification);
+        return;
+      }
+      case FeatureNotification.GitChanged: {
+        const p = params as { workspaceRoot?: string };
+        if (typeof p.workspaceRoot === 'string') this.opts.onGitChanged?.(p.workspaceRoot);
+        return;
+      }
+      case FeatureNotification.GitAuthChanged: {
+        this.opts.onGitAuthChanged?.(params as GitAuthChangedNotification);
         return;
       }
       default:

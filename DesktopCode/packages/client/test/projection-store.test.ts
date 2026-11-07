@@ -43,6 +43,15 @@ describe('ProjectionStore', () => {
     expect(requests).toHaveLength(0);
   });
 
+  it('切换会话后忽略旧会话相同水位的延迟事件', () => {
+    const { store, requests } = makeStore();
+    store.replacement(emptySnapshot({ ...META, sessionId: 'new-session' }));
+    store.delta({ sessionId: 's1', epoch: 1, fromSeq: 1, toSeq: 1, events: [{ type: 'text.delta', text: 'old private content' }] });
+    expect(store.current?.rows).toEqual([]);
+    expect(store.current?.seq).toBe(0);
+    expect(requests).toEqual([]);
+  });
+
   it('铁律 2：断档 → 发起重订阅，且不应用该 delta', () => {
     const { store, requests } = makeStore();
     store.replacement({ ...emptySnapshot(META), seq: 5 });

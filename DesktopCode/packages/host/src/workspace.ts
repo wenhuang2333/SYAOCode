@@ -8,6 +8,10 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
+function isSensitivePath(value: string): boolean {
+  return value.split(/[\\/]/).some((part) => /^(?:\.env(?:\..*)?|\.ssh|\.aws|\.gnupg|id_rsa|id_ed25519|credentials(?:\.json)?|.*\.(?:pem|key|p12))$/i.test(part));
+}
+
 export interface WorkspaceServiceOptions {
   readonly root: string;
   /** 额外可读目录（对应 CLI 的 `--add-dir`；桌面端为空）。 */
@@ -86,11 +90,27 @@ export class WorkspaceService {
 
   /** 目录树（限深，避免一次拉全仓库）。 */
   async tree(rel = '.', maxDepth = 3): Promise<TreeNode[]> {
-    const abs = this.resolve(rel);
-    return this.walk(abs, maxDepth);
+    const abs = await this.checkedPath(rel);
+    return this.walk(abs, Math.min(6, Math.max(0, maxDepth)), { remaining: 1500 }, path.relative(this.root, this.resolve(rel)));
   }
 
-  private async walk(abs: string, depth: number): Promise<TreeNode[]> {
+  private async checkedPath(rel: string): Promise<string> {
+    const candidate = this.resolve(rel);
+    const real = await fs.realpath(candidate).catch(() => {
+      throw new WorkspaceAccessError(`not found: ${rel}`, 'not_found');
+    });
+    const roots = await Promise.all([this.root, ...this.extraDirs].map((root) => fs.realpath(root)));
+    if (!roots.some((root) => {
+      const relative = path.relative(root, real);
+      return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+    })) throw new WorkspaceAccessError('symbolic link escapes workspace', 'outside_workspace');
+    if (isSensitivePath(candidate) || isSensitivePath(real)) {
+      throw new WorkspaceAccessError('sensitive file is not available in the file browser', 'path_rejected');
+    }
+    return real;
+  }
+
+  private async walk(abs: string, depth: number, budget: { remaining: number }, logicalPath: string): Promise<TreeNode[]> {
     if (depth <= 0) return [];
     let entries;
     try {
@@ -100,15 +120,17 @@ export class WorkspaceService {
     }
     const nodes: TreeNode[] = [];
     for (const e of entries) {
-      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist') continue;
+      if (budget.remaining <= 0) break;
+      if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist' || isSensitivePath(e.name)) continue;
+      budget.remaining -= 1;
       const full = path.join(abs, e.name);
-      const relPath = path.relative(this.root, full);
+      const relPath = path.join(logicalPath, e.name);
       if (e.isDirectory()) {
         nodes.push({
           name: e.name,
           path: relPath,
           type: 'dir',
-          children: await this.walk(full, depth - 1),
+          children: await this.walk(full, depth - 1, budget, relPath),
         });
       } else {
         nodes.push({ name: e.name, path: relPath, type: 'file' });
@@ -119,21 +141,25 @@ export class WorkspaceService {
 
   /** 读取文本文件（截断）。 */
   async readFile(rel: string): Promise<{ path: string; text: string; truncated: boolean }> {
-    const abs = this.resolve(rel);
+    const abs = await this.checkedPath(rel);
     const stat = await fs.stat(abs).catch(() => {
       throw new WorkspaceAccessError(`not found: ${rel}`, 'not_found');
     });
     if (!stat.isFile()) {
       throw new WorkspaceAccessError(`not a file: ${rel}`, 'path_rejected');
     }
-    const buf = await fs.readFile(abs);
-    const truncated = buf.byteLength > this.maxReadBytes;
-    const slice = truncated ? buf.subarray(0, this.maxReadBytes) : buf;
-    return {
-      path: path.relative(this.root, abs),
-      text: slice.toString('utf8'),
-      truncated,
-    };
+    const file = await fs.open(abs, 'r');
+    try {
+      const buf = Buffer.alloc(Math.min(stat.size, this.maxReadBytes));
+      const { bytesRead } = await file.read(buf, 0, buf.length, 0);
+      return {
+        path: path.relative(this.root, this.resolve(rel)),
+        text: buf.subarray(0, bytesRead).toString('utf8'),
+        truncated: stat.size > this.maxReadBytes,
+      };
+    } finally {
+      await file.close();
+    }
   }
 
   /** 统一差异（unified 风格）。 */

@@ -22,7 +22,7 @@ import {
   type SessionDelta,
   type SessionEvent,
   type SessionSnapshot,
-  type SessionSummary,
+  type DesktopSessionSummary,
 } from '@syaocode/dhp';
 
 /** 事件环大小：足够覆盖"客户端断线 30 秒"期间的补洞需求。 */
@@ -30,6 +30,7 @@ export const EVENT_RING_SIZE = 4096;
 
 export interface SessionState {
   readonly sessionId: string;
+  archived: boolean;
   title: string;
   readonly createdAt: number;
   updatedAt: number;
@@ -62,7 +63,22 @@ export class SessionRegistry {
   private readonly states = new Map<string, SessionState>();
   private readonly listeners = new Map<string, Set<DeltaListener>>();
 
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(private readonly now: () => number = Date.now, private readonly onChange: () => void = () => {}) {}
+
+  restore(saved: { snapshot: SessionSnapshot; turn: number; archived: boolean }): SessionState {
+    const old = saved.snapshot;
+    const interrupted = old.runState !== 'idle' || old.pendingInteractions.length > 0;
+    const rows: ProjectionRow[] = old.rows.map((r) => {
+      if (r.kind === 'toolCall' && (r.state === 'running' || r.state === 'proposed')) return { ...r, state: 'error', resultText: 'Host interrupted; action was not replayed.' };
+      if (r.kind === 'message' || r.kind === 'thinking') return { ...r, final: true };
+      return r;
+    });
+    if (interrupted) rows.push({ kind: 'marker', key: `restart:${old.epoch + 1}`, seq: old.seq, tone: 'warn', text: 'Host restarted; previous run and approvals were interrupted.' });
+    const snapshot: SessionSnapshot = { ...old, rows, epoch: old.epoch + 1, revision: old.revision + 1, runState: 'idle', pendingInteractions: [] };
+    const s: SessionState = { sessionId: old.meta.sessionId, title: old.meta.title, createdAt: old.meta.createdAt, updatedAt: old.meta.updatedAt, epoch: snapshot.epoch, snapshot, events: [], ringFloor: snapshot.seq + 1, runState: 'idle', turn: saved.turn, archived: saved.archived };
+    this.states.set(s.sessionId, s);
+    return s;
+  }
 
   create(params: {
     readonly sessionId: string;
@@ -83,6 +99,7 @@ export class SessionRegistry {
     };
     const state: SessionState = {
       sessionId: params.sessionId,
+      archived: false,
       title: params.title,
       createdAt: ts,
       updatedAt: ts,
@@ -107,7 +124,7 @@ export class SessionRegistry {
     return s;
   }
 
-  list(): readonly SessionSummary[] {
+  list(): readonly DesktopSessionSummary[] {
     return [...this.states.values()]
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .map((s) => ({
@@ -116,6 +133,11 @@ export class SessionRegistry {
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
         turnCount: s.turn,
+        workspaceRoot: s.snapshot.meta.workspaceRoot,
+        model: s.snapshot.meta.model,
+        permissionMode: s.snapshot.meta.permissionMode,
+        runState: s.runState,
+        archived: s.archived,
       }));
   }
 
@@ -127,7 +149,9 @@ export class SessionRegistry {
   rename(sessionId: string, title: string): void {
     const s = this.require(sessionId);
     s.title = title;
-    s.snapshot = { ...s.snapshot, meta: { ...s.snapshot.meta, title } };
+    s.updatedAt = this.now();
+    s.snapshot = { ...s.snapshot, meta: { ...s.snapshot.meta, title, updatedAt: s.updatedAt } };
+    this.onChange();
   }
 
   subscribe(sessionId: string, fn: DeltaListener): () => void {
@@ -139,6 +163,7 @@ export class SessionRegistry {
     set.add(fn);
     return () => {
       set?.delete(fn);
+      if (set?.size === 0) this.listeners.delete(sessionId);
     };
   }
 
@@ -184,6 +209,7 @@ export class SessionRegistry {
     }
 
     this.emit(state, delta);
+    this.onChange();
     return delta;
   }
 
@@ -217,6 +243,7 @@ export class SessionRegistry {
     }
 
     this.emit(state, delta);
+    this.onChange();
     return delta;
   }
 
@@ -238,7 +265,9 @@ export class SessionRegistry {
    */
   bumpRevision(sessionId: string): number {
     const state = this.require(sessionId);
-    state.snapshot = { ...state.snapshot, revision: state.snapshot.revision + 1 };
+    state.updatedAt = this.now();
+    state.snapshot = { ...state.snapshot, revision: state.snapshot.revision + 1, meta: { ...state.snapshot.meta, updatedAt: state.updatedAt } };
+    this.onChange();
     return state.snapshot.revision;
   }
 
@@ -250,7 +279,9 @@ export class SessionRegistry {
    */
   setPending(sessionId: string, pending: readonly PendingInteraction[]): void {
     const state = this.require(sessionId);
-    state.snapshot = { ...state.snapshot, pendingInteractions: pending };
+    state.runState = pending.length > 0 ? 'awaiting-approval' : state.runState === 'awaiting-approval' ? 'streaming' : state.runState;
+    state.snapshot = { ...state.snapshot, pendingInteractions: pending, runState: state.runState };
+    this.onChange();
   }
 
   patchMeta(sessionId: string, patch: { permissionMode?: string; model?: string }): void {
@@ -417,23 +448,14 @@ export async function pumpAgentEvents(
     readonly pendingOf: () => readonly PendingInteraction[];
   },
 ): Promise<{ endReason: string; finalText: string; permissionDenied: boolean }> {
-  const state = registry.require(sessionId);
-  state.abort = new AbortController();
-  const ac = state.abort;
-  const onOuterAbort = (): void => ac.abort();
-  signal.addEventListener('abort', onOuterAbort, { once: true });
-
-  try {
-    for await (const ev of agent.run(input, { signal: ac.signal })) {
-      for (const mapped of toSessionEvents(ev)) {
-        registry.append(sessionId, mapped);
-        if (mapped.type === 'permission.request' || mapped.type === 'permission.result') {
-          hooks.onPending(hooks.pendingOf());
-        }
-      }
+  // No sessionId option: history is seeded exactly once by Host, never reloaded by run().
+  for await (const ev of agent.run(input, { signal })) {
+    for (const mapped of toSessionEvents(ev)) {
+      // Kernel turns are internal tool iterations. Only Host finally ends the run.
+      if (mapped.type === 'turn.end') continue;
+      registry.append(sessionId, mapped.type === 'error' ? { ...mapped, fatal: false } : mapped);
+      if (mapped.type === 'permission.request' || mapped.type === 'permission.result') hooks.onPending(hooks.pendingOf());
     }
-  } finally {
-    signal.removeEventListener('abort', onOuterAbort);
   }
 
   const st = registry.require(sessionId);

@@ -43,9 +43,9 @@ export function Composer({
 
   const submit = useCallback((): void => {
     const text = value.trim();
-    if (text === '' || disabled === true || awaitingApproval === true) return;
+    if (text === '' || disabled === true || awaitingApproval === true || busy === true) return;
     onSubmit(text);
-  }, [value, disabled, awaitingApproval, onSubmit]);
+  }, [value, disabled, awaitingApproval, busy, onSubmit]);
 
   return (
     <div className="composer">
@@ -62,6 +62,7 @@ export function Composer({
         value={value}
         disabled={disabled === true}
         placeholder={m.composerPlaceholder}
+        aria-label="对话输入"
         rows={3}
         onCompositionStart={() => setComposing(true)}
         onCompositionEnd={() => setComposing(false)}
@@ -82,14 +83,17 @@ export function Composer({
           const text = e.clipboardData.getData('text/plain');
           if (text === '') return;
           e.preventDefault();
-          const next = value + text;
+          const start = ref.current?.selectionStart ?? value.length;
+          const end = ref.current?.selectionEnd ?? start;
+          const next = value.slice(0, start) + text + value.slice(end);
           onChange(next);
+          requestAnimationFrame(() => ref.current?.setSelectionRange(start + text.length, start + text.length));
           if (next.length > PASTE_COLLAPSE_THRESHOLD) setCollapsed(true);
         }}
       />
       <div className="composer-actions">
         {awaitingApproval === true && <span className="awaiting">等待审批</span>}
-        <button type="button" className="btn btn-primary" onClick={submit} disabled={disabled === true || busy === true}>
+        <button type="button" className="btn btn-primary" onClick={submit} disabled={disabled === true || busy === true || awaitingApproval === true || !value.trim()}>
           {busy === true ? m.sending : m.send}
         </button>
       </div>

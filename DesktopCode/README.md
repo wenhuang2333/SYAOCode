@@ -2,7 +2,7 @@
 
 > SYAOCode 的桌面端实现。内核复用 `../code/` 的 `@syaocode/*` 包，**不改一行内核代码**。
 
-设计与规格文档：[`../DesktopDoc/`](../DesktopDoc/README.md)（26 份，约 20 万字）。
+设计与规格文档仅在本地保留：`doc/DesktopDoc/` 与重构补充文档 `doc/newDesktopDoc/`，不随公开仓库发布。
 
 ---
 
@@ -51,7 +51,7 @@ cd DesktopCode
 corepack pnpm install          # 首次需下载 Electron 二进制（约 100MB）
 
 corepack pnpm typecheck        # 5 个包全部类型检查
-corepack pnpm test             # 91 个测试
+corepack pnpm test             # 协议、Host、客户端、界面和壳层回归
 
 # ① 只跑 Host（调试 DHP 协议最方便，不需要窗口）
 corepack pnpm dev:host
@@ -69,7 +69,7 @@ corepack pnpm package:mac
 
 ### 数据目录
 
-默认 `~/.syaocode`。用 `SYAOCODE_HOME` 覆盖（**这是本项目实现的 OI-D-07**）：
+默认 `~/.syaocode`。桌面工作区、完整会话历史、渠道和请求账本保存在 `desktop/state-v1.json`，不迁移或修改 CLI JSONL。用 `SYAOCODE_HOME` 覆盖（**这是本项目实现的 OI-D-07**）：
 
 ```bash
 SYAOCODE_HOME=/tmp/syao-test corepack pnpm dev:host
@@ -87,7 +87,7 @@ corepack pnpm dev:host
 # 另一个终端连上去发消息即可，会看到固定的三条剧本回复
 ```
 
-接真实模型：`DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`。
+接真实模型：`DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`。也可在“渠道与设置”中添加 OpenAI-compatible 或 Anthropic 渠道、真实模型 ID、容量和价格；API Key 只由 Host 从指定环境变量读取。
 
 ---
 
@@ -107,30 +107,28 @@ corepack pnpm dev:host
 
 | 能力 | 状态 |
 | --- | --- |
-| DHP 协议：26 个错误码、版本协商、命令信封六态 ACK、三条投影铁律 | ✅ 已实现 + 23 测试 |
-| Host：会话/事件环/补洞、审批代理（超时 fail-closed、结算幂等、敏感项降级）、配置分层、工作区围栏、差异 | ✅ 已实现 + 40 测试（含 8 个真实 WebSocket 端到端） |
-| 客户端：连接、抖动重连、投影 store（断档重订阅、抑制过期 delta） | ✅ 已实现 + 10 测试 |
-| UI：时间线、Composer（IME 组合保护）、审批卡片、状态栏、i18n | ✅ 已实现 + 9 测试 |
-| Electron 壳：窗口、托盘、单实例、Host 守护、窄 preload、CSP | ✅ 已实现 + 9 静态断言 |
-| 应用启动 → Host ready → 渲染层建会话 → 流式渲染 | ✅ 实测通过（见下） |
-| 内嵌终端（PTY） | ⛔ 未接（`terminal/*` 方法已在协议里，Host 侧未实现） |
-| 治理面可视化（任务/预算/审计链） | ◐ 接口存在，`governance/*` 返回占位数据（ARF Fabric 未装配） |
-| 多轮 steer | ⛔ 明确返回 `rejected` + 原因（不静默丢弃） |
-| 自动更新 / 签名公证 | ⛔ 未做（配置骨架在 `electron-builder.yml`） |
+| DHP 协议：46 个错误码、版本协商、命令信封六态 ACK、三条投影铁律 | 已实现，23 项测试 |
+| Host：会话/事件环/补洞、审批代理、配置分层、工作区围栏 | 已实现，203 项测试（含真实 WebSocket 端到端场景） |
+| 客户端：连接、抖动重连、投影 store（断档重订阅、隔离过期会话 delta） | 已实现，11 项测试 |
+| UI：Markdown 时间线、Composer、审批卡片、状态栏、i18n | 已实现，9 项共享组件测试 |
+| 三栏工作台：多项目、多会话、搜索、归档恢复、模型与权限控制、文件预览 | 已实现；启动不自动创建会话，每个会话使用真实 cwd 和独立历史 |
+| 用量与账户：请求级账本、10 项 KPI、日期/项目筛选、渠道健康、手动余额与配额 | 已实现；未知数据保持未知，余额和配额明确标注非实时 |
+| Electron 壳与页面：窗口、Host 守护、窄 preload、CSP、统计/设置/Agent/MCP 页、会话详情、Git 侧栏 | 已实现，153 项应用测试 |
+| 应用启动 → Host ready → 按需建会话 → 流式渲染 → 重启恢复 | 27 项真实 Electron 验收通过 |
+| 内嵌终端（PTY） | 未接（`terminal/*` 方法已在协议里，Host 侧未实现） |
+| 治理面可视化（任务/预算/审计链） | 接口存在，`governance/*` 返回占位数据（ARF Fabric 未装配） |
+| MCP、技能、多代理编排、工作区检查点回滚 | 界面明确标为未接入，不伪造能力状态 |
+| 多轮 steer | 明确返回 `rejected` + 原因（不静默丢弃） |
+| 自动更新 / 签名公证 | 未做（配置骨架在 `electron-builder.yml`） |
 
-实测记录（macOS arm64 / Node 24.15 / Electron 44.10.1，2026-11-02）：
+2026-11-06 实测（macOS arm64 / Node 24.18 / Electron 44.10.1）：
 
-```
-[host] info dhp: listening {"host":"127.0.0.1","port":64717}
-[host] ready url=ws://127.0.0.1:64717 workspace=.../apps/desktop
-[main] host ready on port 64717          ← 主进程从 IPC 收到 ready 帧
-[host] info dhp: connection open {"conn":"conn_1"}
-[host] info dhp: hello {"conn":"conn_1","client":"syaocode-desktop","capabilities":13}
-[main] window ready-to-show
-```
+- 类型检查、生产构建和 399 项 DesktopCode 测试通过。
+- 两个隔离项目完成多会话、严格审批、真实 cwd、模型切换、统计、归档恢复和重启恢复验收。
+- 本机临时 SSE Provider 证实请求依次到达 `alpha`、`beta`；第二次请求保留第一次的完整输入与回复。
+- 900px 与 1440px 视口均完成截图检查，无页面级横向溢出；renderer page error 和 console error 均为 0。
 
-窗口状态栏最终显示 `就绪 · mock:default · default · idle`，即
-握手 → 建会话 → 订阅 → 投影渲染整条链路跑通。
+详细结果见本地 `doc/newDesktopDoc/05-验证记录与交付说明.md`。
 
 ---
 
@@ -159,8 +157,9 @@ corepack pnpm dev:host
 
 - `../code/` 是**只读的内核**。本目录通过 `link:../../../code/packages/*` 引用它。
 - 新增能力一律在 `DesktopCode/` 内实现；需要改内核的，先记入 `DesktopDoc/00-基线` §7.3 的缺口清单。
-- 内核的 1055 个测试与本目录的 91 个测试**互不影响**。
+- 本目录的 399 项测试独立运行，不能替代内核回归。
+- 2026-11-06 单独复测 `@syaocode/rpc`：21 个测试文件、325 项测试通过；本轮未修改内核。
 
 ```bash
-cd ../code && corepack pnpm typecheck && corepack pnpm test   # 内核仍然全绿
+cd ../code && corepack pnpm typecheck && corepack pnpm test
 ```

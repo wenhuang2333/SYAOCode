@@ -27,7 +27,17 @@ export type DhpCapability =
   | 'governance'
   | 'edge'
   | 'cost'
-  | 'diagnostics';
+  | 'diagnostics'
+  // 27 §5 增补：能力位只声明"这条链路存在"，不声明"它一定成功"。
+  | 'changes'
+  | 'artifacts'
+  | 'sources'
+  | 'mcp'
+  | 'agents'
+  | 'git'
+  | 'git.graph'
+  | 'git.write'
+  | 'git.upload';
 
 export const DHP_CAPABILITIES: readonly DhpCapability[] = [
   'session',
@@ -43,6 +53,15 @@ export const DHP_CAPABILITIES: readonly DhpCapability[] = [
   'edge',
   'cost',
   'diagnostics',
+  'changes',
+  'artifacts',
+  'sources',
+  'mcp',
+  'agents',
+  'git',
+  'git.graph',
+  'git.write',
+  'git.upload',
 ] as const;
 
 export interface HelloParams {

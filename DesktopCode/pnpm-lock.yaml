@@ -116,6 +116,9 @@ importers:
       '@syaocode/node':
         specifier: link:../../../code/packages/node
         version: link:../../../code/packages/node
+      '@syaocode/protocols':
+        specifier: link:../../../code/packages/protocols
+        version: link:../../../code/packages/protocols
       '@syaocode/providers':
         specifier: link:../../../code/packages/providers
         version: link:../../../code/packages/providers

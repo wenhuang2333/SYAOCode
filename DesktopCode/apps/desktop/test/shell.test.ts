@@ -73,6 +73,19 @@ describe('渲染层 ↔ Host 的握手链路', () => {
   //   ① 缺 'ipc' stdio → Host 的 ready 帧被静默丢弃 → UI 永远停在"正在连接…"
   //   ② 渲染层给 WebSocket 传 { headers } → Chromium 直接抛 TypeError
   //   ③ 令牌既不进 URL 也不进渲染层 JS 堆 → 只能由主进程在 session 层注入
+  it('preload 和 host:info 不向 renderer 暴露认证令牌', () => {
+    const preload = read('src/preload/index.ts');
+    // Host 的 bearer 令牌只在主进程：preload 不得提供任何"取 Host 令牌"的方法。
+    // （`git.setToken` 里那个 `token` 是用户粘贴的 Git PAT，只进钥匙串、永不回读，
+    //  与 Host 认证令牌是两回事；这里断言的是后者没有出口。）
+    expect(preload).not.toMatch(/hostToken|bearerToken|getToken\(/);
+    expect(preload).not.toMatch(/info\(\)[^;]*token/i);
+    const main = read('src/main/index.ts');
+    expect(main).not.toContain('token: h.token');
+    expect(main).toContain("target.hostname === '127.0.0.1'");
+    expect(main).toContain('target.port === String(handle.port)');
+  });
+
   it('Host 必须带 ipc 通道启动（ready 帧靠它）', () => {
     const main = read('src/main/index.ts');
     expect(main).toMatch(/stdio:\s*\[[^\]]*'ipc'/);
@@ -80,7 +93,7 @@ describe('渲染层 ↔ Host 的握手链路', () => {
   });
 
   it('渲染层不得给 WebSocket 传 headers（Chromium 会抛 TypeError）', () => {
-    const renderer = read('src/renderer/index.tsx');
+    const renderer = read('src/renderer/use-workbench.ts');
     expect(renderer).not.toMatch(/new WebSocket\([^)]*headers/);
   });
 
@@ -88,7 +101,7 @@ describe('渲染层 ↔ Host 的握手链路', () => {
     const main = read('src/main/index.ts');
     expect(main).toContain('onBeforeSendHeaders');
     expect(main).toMatch(/Authorization:\s*`Bearer/);
-    const renderer = read('src/renderer/index.tsx');
+    const renderer = read('src/renderer/use-workbench.ts');
     expect(renderer).not.toContain('Bearer');
   });
 });

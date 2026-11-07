@@ -32,6 +32,9 @@ import {
 } from '@syaocode/dhp';
 
 export interface DhpHandlerContext {
+  readonly connectionId: string;
+  /** Register one connection cleanup; returned function removes it. */
+  onDisconnect(cleanup: () => void): () => void;
   /** 该连接已协商的能力位。处理函数**必须**据此判断是否支持。 */
   readonly capabilities: readonly DhpCapability[];
   /** 向该连接推送通知。 */
@@ -298,6 +301,12 @@ export async function startDhpServer(opts: DhpServerOptions = {}): Promise<DhpSe
     conn.inflight += 1;
     try {
       const ctx: DhpHandlerContext = {
+        connectionId: conn.id,
+        onDisconnect(cleanup) {
+          if (conn.ws.readyState !== conn.ws.OPEN) { cleanup(); return () => {}; }
+          conn.cleanups.add(cleanup);
+          return () => { conn.cleanups.delete(cleanup); };
+        },
         capabilities: conn.capabilities,
         notify: (method, params) => safeSend(conn, { jsonrpc: '2.0', method, params } as JsonRpcFrame),
       };
@@ -367,10 +376,10 @@ function safeSend(conn: Conn, frame: JsonRpcFrame): void {
 
 /** 处理器可直接抛出的协议错误。 */
 export class DhpProtocolError extends Error {
-  readonly kind: Parameters<typeof codeForKind>[0];
+  readonly kind: Parameters<typeof codeForKind>[0] | 'invalid_request';
   readonly data?: Record<string, unknown>;
 
-  constructor(kind: Parameters<typeof codeForKind>[0], message: string, data?: Record<string, unknown>) {
+  constructor(kind: Parameters<typeof codeForKind>[0] | 'invalid_request', message: string, data?: Record<string, unknown>) {
     super(message);
     this.name = 'DhpProtocolError';
     this.kind = kind;
@@ -390,7 +399,7 @@ export function mapError(err: unknown): {
 } {
   if (err instanceof DhpProtocolError) {
     return {
-      code: codeForKind(err.kind),
+      code: err.kind === 'invalid_request' ? -32602 : codeForKind(err.kind),
       message: err.message,
       data: { kind: err.kind, ...(err.data ?? {}) },
     };

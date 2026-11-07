@@ -135,7 +135,7 @@ describe('DHP 端到端', () => {
     })) as { capabilities: string[]; workspaceRoot: string };
 
     expect(ack.capabilities).toContain('session');
-    expect(ack.workspaceRoot).toBe(path.resolve(tmpWs));
+    expect(ack.workspaceRoot).toBe(fs.realpathSync(tmpWs));
 
     const created = (await client.request(Method.SessionCreate, { title: 'e2e' })) as {
       snapshot: SessionSnapshot;

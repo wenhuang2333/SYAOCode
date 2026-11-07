@@ -101,7 +101,7 @@ export class ProjectionStore {
       });
       return;
     }
-    if (this.resyncing) return;
+    if (d.sessionId !== this.snapshot.meta.sessionId || this.resyncing) return;
 
     const result = applyDelta(this.snapshot, d);
     if (result.ok) {

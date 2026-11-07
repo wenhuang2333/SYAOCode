@@ -17,6 +17,7 @@
     "@syaocode/core": "link:../../../code/packages/core",
     "@syaocode/dhp": "workspace:*",
     "@syaocode/node": "link:../../../code/packages/node",
+    "@syaocode/protocols": "link:../../../code/packages/protocols",
     "@syaocode/providers": "link:../../../code/packages/providers",
     "@syaocode/testing": "link:../../../code/packages/testing",
     "@syaocode/tools": "link:../../../code/packages/tools",

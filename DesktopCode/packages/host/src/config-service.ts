@@ -61,7 +61,8 @@ export class ConfigService {
         sources[key] = 'env';
         return envVal;
       }
-      if (project[key] !== undefined) {
+      // Project-controlled files cannot opt the user into bypass or unknown modes.
+      if (project[key] !== undefined && (key !== 'permissionMode' || (typeof project[key] === 'string' && project[key] !== 'bypass' && VALID_MODES.has(project[key])))) {
         sources[key] = 'project';
         return project[key];
       }
