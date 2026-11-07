@@ -39,7 +39,8 @@ export type DhpCapability =
   | 'git.write'
   | 'git.upload'
   | 'git.commitMessage'
-  | 'session.changeDiff';
+  | 'session.changeDiff'
+  | 'session.runCommand';
 
 export const DHP_CAPABILITIES: readonly DhpCapability[] = [
   'session',
@@ -66,6 +67,7 @@ export const DHP_CAPABILITIES: readonly DhpCapability[] = [
   'git.upload',
   'git.commitMessage',
   'session.changeDiff',
+  'session.runCommand',
 ] as const;
 
 export interface HelloParams {

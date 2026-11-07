@@ -16,7 +16,7 @@
  * `-32026…-32029` MCP、`-32030…-32035` Git/产出/来源、
  * `-32036…-32045` 凭据 / 联网 / OAuth / SSH。
  */
-export const DHP_ERROR_RANGE = { min: -32046, max: -32000 } as const;
+export const DHP_ERROR_RANGE = { min: -32047, max: -32000 } as const;
 
 /**
  * L2 错误的 `kind` —— 客户端**必须**按 `kind` 分支，绝不按数字字面量分支。
@@ -72,7 +72,8 @@ export type DhpErrorKind =
   | 'git_oauth_unavailable'
   | 'git_ssh_key_invalid'
   | 'git_host_key_unverified'
-  | 'git_signing_failed';
+  | 'git_signing_failed'
+  | 'command_denied';
 
 /** 重试语义：客户端据此决定是否可自动重试。 */
 export type DhpRetryPolicy = 'no' | 'once' | 'backoff' | 'after_turn_end' | 'after_hello' | 'never_auto';
@@ -139,6 +140,7 @@ export const DHP_ERROR_CODES: readonly DhpErrorCodeSpec[] = [
   { code: -32044, kind: 'git_ssh_key_invalid', retry: 'no', summary: '私钥无法解析、口令错误，或 agent 中没有可用身份' },
   { code: -32045, kind: 'git_host_key_unverified', retry: 'no', summary: '首次连接的主机指纹未确认' },
   { code: -32046, kind: 'git_signing_failed', retry: 'no', summary: '提交签名失败；必须由用户选择重试 / 无签名提交 / 取消' },
+  { code: -32047, kind: 'command_denied', retry: 'no', summary: '命令被权限规则拒绝（危险命令或显式 deny），不提供提权通道' },
 ] as const;
 
 /** JSON-RPC 2.0 标准码（`06` §10.1）。 */

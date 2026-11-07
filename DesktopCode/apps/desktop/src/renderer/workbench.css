@@ -361,3 +361,29 @@ body{font-size:13px;background:#fff;line-height:1.6}button,input,select,textarea
 .git-diff-line-add{background:var(--sy-diff-add-soft);color:#1f7a5e}
 .git-diff-line-del{background:var(--sy-diff-del-soft);color:#a6404f}
 .git-diff-line-ctx{color:#7d7f91}
+
+/* ════════════════════════════════════════════════════════════════════════
+   FR-N-036：`!` 前缀的本地命令行
+   - 视觉上必须与会话消息 / 模型工具调用区分：等宽 + “本地命令”标签 + “未发送给模型”；
+   - 结果按 ok / failed / timeout / denied 四色区分，被拒不显示为成功；
+   - 这些行只是渲染层视图，不进会话历史，也不进模型上下文。
+   ════════════════════════════════════════════════════════════════════════ */
+.shell-lines{display:flex;flex-direction:column;gap:6px;margin:8px 0 4px}
+.shell-line{display:flex;flex-direction:column;gap:3px;border:1px dashed #d8d3ea;border-left:3px solid #8b7bd8;border-radius:8px;background:#fbfaff;padding:7px 9px}
+.shell-line-ok{border-left-color:#3f9d7c;background:#f7fdfa}
+.shell-line-failed{border-left-color:#c2475c;background:#fff8f9}
+.shell-line-timeout{border-left-color:#c98b3c;background:#fffaf2}
+.shell-line-denied{border-left-color:#ac4056;background:#fff4f5}
+.shell-line-head{display:flex;align-items:center;gap:6px}
+.shell-line-tag{border-radius:5px;background:#ece7fa;color:#5b46a8;font-size:9px;font-weight:600;padding:1px 6px;letter-spacing:.3px}
+.shell-line-hint{color:#a7abbb;font-size:9px}
+.shell-line-command{margin:0;font-family:var(--sy-mono);font-size:10px;line-height:1.7;color:#4f5265;white-space:pre-wrap;overflow-wrap:anywhere}
+.shell-line-command>span{color:#8b7bd8;user-select:none}
+.shell-line-status{margin:0;font-size:10px;line-height:1.6;color:#6a6e83}
+.shell-line-status-ok{color:#2f7a5f}
+.shell-line-status-failed{color:#ac4056}
+.shell-line-status-timeout{color:#8a6d3b}
+.shell-line-status-denied{color:#ac4056;font-weight:600}
+.shell-line-note{margin:0;font-size:9px;line-height:1.6;color:#8a6d3b}
+.shell-line-output{margin:0;max-height:260px;overflow:auto;border:1px solid #efecf6;border-radius:6px;background:#fff;padding:6px 8px;font-family:var(--sy-mono);font-size:10px;line-height:1.65;color:#5a5d70;white-space:pre-wrap;overflow-wrap:anywhere}
+.shell-line-meta{margin:0;color:#9aa0b5;font-size:9px;font-variant-numeric:tabular-nums}

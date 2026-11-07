@@ -3,6 +3,7 @@ import { ApprovalCard, Composer, Timeline, messages } from '@syaocode/ui';
 import { EMPTY_USAGE, type DesktopPermissionMode, type TreeNode } from '@syaocode/dhp';
 import type { Page, Workbench } from './use-workbench';
 import { ComposerPalette, collectFilePaths, detectTrigger, shellHintFor, type CommandAction } from './composer-palette';
+import { ShellResultBlock, isShellCommand, shellCommandOf, shouldKeepDraft, type ShellOutcome } from './shell-lines';
 import { UsagePage } from './usage-page';
 import { SettingsPage } from './settings-page';
 import { DetailPanel } from './detail-panel';
@@ -98,6 +99,10 @@ function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: '
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState('');
   const [notice, setNotice] = useState('');
+  // `!` 本地命令的**渲染层视图**：不进会话历史、不进模型上下文，切换会话即消失。
+  const [shellLines, setShellLines] = useState<readonly { readonly id: number; readonly command: string; readonly outcome: ShellOutcome | undefined }[]>([]);
+  const [shellBusy, setShellBusy] = useState(false);
+  const shellSeq = useRef(0);
   const bottom = useRef<HTMLDivElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLDivElement>(null);
@@ -114,7 +119,7 @@ function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: '
   useEffect(() => { if (follow.current) bottom.current?.scrollIntoView({ block: 'end' }); }, [w.snapshot?.seq, w.sessionId]);
   useEffect(() => { setPicker(false); }, [w.sessionId]);
   // 切会话时草稿可能来自另一个会话：光标与提示一并重置，避免用旧光标误判触发串。
-  useEffect(() => { setCaret(0); setNotice(''); }, [w.sessionId]);
+  useEffect(() => { setCaret(0); setNotice(''); setShellLines([]); }, [w.sessionId]);
   useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
   // `@` 文件引用只读工作区树（`workspace/tree`，maxDepth 3）；失败时诚实降级，不弹错误窗。
   useEffect(() => {
@@ -160,6 +165,44 @@ function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: '
       if (textarea) textarea.setSelectionRange(next.caret, next.caret);
     });
   };
+  /**
+   * 提交 `!` 命令（FR-N-036）。
+   *
+   * 硬要求：
+   *  1. **绝不走 `w.send`**——命令不能被当成消息发给模型；
+   *  2. 结果只进 `shellLines`（本会话的渲染层视图），不写会话历史；
+   *  3. 只有成功才清空草稿；失败 / 被拒 / 超时都保留草稿，方便修改重试；
+   *  4. `command_denied` 单独识别：显示“被权限规则拒绝 + 原因”，不显示为成功。
+   */
+  const submitShell = async (raw: string) => {
+    const command = shellCommandOf(raw);
+    if (command === '') { showNotice('请在 ! 后输入要执行的命令。'); return; }
+    if (shellBusy) { showNotice('上一条本地命令仍在执行，请稍候。'); return; }
+    const id = ++shellSeq.current;
+    setShellBusy(true);
+    setShellLines((previous) => [...previous, { id, command, outcome: undefined }]);
+    let outcome: ShellOutcome;
+    try {
+      const result = await w.runShellCommand(command);
+      outcome = { result };
+    } catch (error) {
+      // 按 `kind` 分支（契约）；message 里的码只做兜底，避免传输层丢字段时把"被拒"说成"失败"。
+      const candidate = error as { readonly kind?: unknown; readonly code?: unknown } | null;
+      const message = (error as Error).message;
+      const isDenied = candidate?.kind === 'command_denied'
+        || candidate?.code === -32047
+        || message.includes('command_denied')
+        || message.includes('-32047');
+      outcome = isDenied
+        ? { denial: { kind: 'command_denied', message } }
+        : { error: message };
+    }
+    setShellLines((previous) => previous.map((line) => line.id === id ? { ...line, outcome } : line));
+    setShellBusy(false);
+    // 成功才清空草稿；失败保留，用户可以直接改命令再试。
+    if (!shouldKeepDraft(outcome)) w.setDraft('');
+  };
+
   const paletteAction = (action: CommandAction) => {
     switch (action.kind) {
       case 'new': void w.createSession(); break;
@@ -194,6 +237,9 @@ function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: '
         <small className="welcome-notice">本地会话自动保存 · 需要授权的工具操作会先询问你</small>
       </div> : <Timeline rows={w.snapshot.rows} m={m} />}
       {pending.map((p) => <ApprovalCard key={p.id} interaction={p} m={m} onResolve={(id, opt) => void w.resolve(id, opt)} />)}
+      {shellLines.length > 0 && <div className="shell-lines" aria-label="本地命令记录（未发送给模型）">
+        {shellLines.map((line) => <ShellResultBlock key={line.id} command={line.command} outcome={line.outcome} pending={line.outcome === undefined} />)}
+      </div>}
       <div ref={bottom} />
     </div>
     <div
@@ -205,7 +251,12 @@ function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: '
       onSelectCapture={syncCaret}
     >
       {picker && <ModelPicker w={w} close={() => setPicker(false)} />}
-      <Composer value={w.draft} onChange={w.setDraft} onSubmit={(text) => { follow.current = true; void w.send(text); }} m={m} disabled={disabled} busy={w.mutating || (Boolean(w.sessionId) && !idle)} awaitingApproval={pending.length > 0} />
+      <Composer value={w.draft} onChange={w.setDraft} onSubmit={(text) => {
+        follow.current = true;
+        // `!` 分支：本地执行，绝不交给模型（也不经过 w.send）。
+        if (isShellCommand(text)) { void submitShell(text); return; }
+        void w.send(text);
+      }} m={m} disabled={disabled} busy={w.mutating || (Boolean(w.sessionId) && !idle) || shellBusy} awaitingApproval={pending.length > 0} />
       <ComposerPalette text={w.draft} caret={caret} files={files} filesLoading={filesLoading} filesError={filesError} canStop={canStop} disabled={disabled} anchorRef={composer} onAction={paletteAction} onText={applyComposerText} />
       {shellHint && <div className="composer-shell-hint" role="status">{shellHint}</div>}
       {notice && <div className="composer-notice" role="status">{notice}</div>}

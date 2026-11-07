@@ -211,13 +211,14 @@ describe('filterFiles and collectFilePaths', () => {
   });
 });
 
-describe('shellHintFor: `!` is honestly not implemented this round', () => {
+describe('shellHintFor: `!` runs locally behind the permission gate', () => {
   it('returns the honest hint for drafts starting with `!`', () => {
     expect(shellHintFor('!ls')).toBe(SHELL_HINT);
     expect(shellHintFor('  !git status')).toBe(SHELL_HINT);
     expect(shellHintFor('!')).toBe(SHELL_HINT);
-    expect(SHELL_HINT).toContain('尚未接入');
-    expect(SHELL_HINT).toContain('bash');
+    // `!` 现在会真的执行（FR-N-036），提示里不再有“尚未接入”。
+    expect(SHELL_HINT).not.toContain('尚未接入');
+    expect(SHELL_HINT).toContain('执行');
     expect(SHELL_HINT).toContain('权限闸门');
   });
   it('returns null for anything else', () => {
@@ -286,7 +287,7 @@ describe('source contracts: palette wiring never hijacks the send path', () => {
     expect(source).toContain('aria-activedescendant');
     expect(source).toContain('没有匹配的命令');
     expect(source).toContain('未取到工作区文件（可在会话详情查看）');
-    expect(source).toContain('直接执行命令尚未接入');
+    expect(source).not.toContain('直接执行命令尚未接入');
     // 面板打开时 Enter 只作用于面板：在 window 捕获阶段 stopPropagation，Composer 的发送处理器收不到。
     expect(source).toContain('stopPropagation');
     expect(source).toContain("event.key === 'Escape'");

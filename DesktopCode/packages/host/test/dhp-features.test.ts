@@ -575,3 +575,53 @@ describe('单文件改动 diff（FR-N-011，会话口径）', () => {
     });
   });
 });
+
+describe('`!` 直接执行命令（FR-N-036，仍过权限闸门）', () => {
+  it('获准命令经 DHP 执行并返回输出；审计留下记录', async () => {
+    const c = await boot();
+    const sessionId = await newSession(c);
+    const result = await c.request<{ exitCode: number; stdout: string; truncated: boolean }>(
+      F.SessionRunCommand,
+      { sessionId, command: 'echo from-dhp' },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('from-dhp');
+    expect(result.truncated).toBe(false);
+
+    // 审计必须留痕（成功也记）。命令审计与 Git 审计是两张表。
+    const state = JSON.parse(await fs.readFile(path.join(home, 'desktop', 'state-v2.json'), 'utf8')) as {
+      commandAudit: { command: string; result: string; sessionId: string }[];
+    };
+    expect(state.commandAudit.some((r) => r.result === 'success' && r.command.includes('from-dhp'))).toBe(true);
+    expect(state.commandAudit.every((r) => r.sessionId === sessionId)).toBe(true);
+  });
+
+  it('危险命令被内核规则库拒绝（command_denied -32047），且真的没执行', async () => {
+    const c = await boot();
+    const sessionId = await newSession(c);
+    const marker = path.join(root, 'denied-marker.txt');
+
+    // `rm -rf /` 是内核危险命令规则库里的典型命中项。
+    await expect(
+      c.request(F.SessionRunCommand, { sessionId, command: 'rm -rf / --no-preserve-root' }),
+    ).rejects.toMatchObject({ kind: 'command_denied' });
+
+    // 危险命令后面挂的副作用**也不会**发生（整条命令被拒在一次闸门之后）。
+    expect(await fs.stat(marker).catch(() => null)).toBeNull();
+
+    // 审计里必须有 denied 记录，且绝无 success 记录。
+    const state = JSON.parse(await fs.readFile(path.join(home, 'desktop', 'state-v2.json'), 'utf8')) as {
+      commandAudit: { result: string }[];
+    };
+    expect(state.commandAudit.some((r) => r.result === 'denied')).toBe(true);
+    expect(state.commandAudit.some((r) => r.result === 'success')).toBe(false);
+  });
+
+  it('会话不存在 → capability_not_found；空命令 → invalid_request', async () => {
+    const c = await boot();
+    await expect(c.request(F.SessionRunCommand, { sessionId: 'nope', command: 'echo x' }))
+      .rejects.toMatchObject({ kind: 'capability_not_found' });
+    const sessionId = await newSession(c);
+    await expect(c.request(F.SessionRunCommand, { sessionId, command: '' })).rejects.toBeTruthy();
+  });
+});

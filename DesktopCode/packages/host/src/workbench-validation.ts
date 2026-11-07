@@ -45,6 +45,12 @@ export const channelSchema = z.object({
 export const usageQuerySchema = z.object({ from: timestamp, to: timestamp, workspaceRoot: z.string().min(1).optional() }).strict()
   .refine((q) => q.from <= q.to && q.to - q.from <= 36600 * 86400000, 'invalid range (maximum 36600 days)');
 
+/** `!` 前缀直接执行命令（FR-N-036）：命令原文上限与审计条目一致。 */
+export const sessionRunCommandSchema = z.object({
+  sessionId: z.string().min(1).max(200),
+  command: z.string().min(1).max(4096),
+}).strict();
+
 /** 单文件改动 diff（FR-N-011）：路径先过基本形状校验，围栏由采集器把关。 */
 export const sessionChangeDiffSchema = z.object({
   sessionId: z.string().min(1).max(200),

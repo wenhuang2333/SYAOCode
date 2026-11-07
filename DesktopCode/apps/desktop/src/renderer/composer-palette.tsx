@@ -4,7 +4,8 @@
  * 设计约束（与 `07-UI-设计系统与组件规范` 一致）：
  *  - **全部在渲染层完成**：命令只映射到既有 `Workbench` API，不新增 Host 方法；
  *  - `@` 的数据源只读 `workspace/tree`（`w.readTree`），渲染层不直接碰 fs；
- *  - `!` 直接执行命令本轮**未接入**：只显示诚实提示，不假装执行、也不静默当普通消息；
+ *  - `!` 直接执行命令：走 `session/run-command`（与模型 `bash` 同一个权限闸门），
+ *    结果只在本地渲染，不写会话历史、不进模型上下文；
  *  - 颜色不是唯一信息载体：每一项都有文本标题、提示与 `aria-*`；
  *  - 面板打开时 `Enter` 只作用于面板，绝不发送消息（见 `stopPropagation`）。
  *
@@ -46,8 +47,11 @@ export const COMMANDS: readonly Command[] = [
 /** `/help` 插入到输入区的帮助文本（只插入，不发送）。 */
 export const HELP_TEXT = '可用命令：/new 新建会话 · /model 选择模型 · /permission 切换权限 · /stop 停止运行 · /archive 归档会话 · /git Git 侧栏 · /detail 会话详情 · /usage 用量统计 · /help 帮助。输入 @ 引用工作区文件；Enter 发送，Shift Enter 换行。';
 
-/** `!` 前缀的诚实提示：本轮不执行命令，也不假装执行。 */
-export const SHELL_HINT = '! 直接执行命令尚未接入，请让模型通过 bash 工具执行（仍受权限闸门控制）。';
+/**
+ * `!` 前缀的提示：现在会**真的执行**（FR-N-036），但仍与模型的 `bash` 工具
+ * 共用同一个内核权限闸门——危险命令会被直接拒绝，写类命令会先弹审批卡。
+ */
+export const SHELL_HINT = '! 直接在本机会话工作区执行命令（结果不回传给模型）；仍过权限闸门：危险命令会被拒绝，写类命令会先请你批准。';
 
 /** 文件引用列表上限（防止一次渲染几千项）。 */
 export const FILE_LIMIT = 50;

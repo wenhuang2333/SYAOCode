@@ -60,6 +60,22 @@ export interface GitAuthRecord {
   updatedAt: number;
 }
 
+/**
+ * `!` 前缀直接执行命令的审计记录（`27` §4.4）。
+ *
+ * 与 Git 审计**分开存**：两者是不同的操作面，混表会让"谁改了我仓库"查不清。
+ * 同样不含任何凭据值。
+ */
+export interface CommandAuditRecord {
+  at: number;
+  sessionId: string;
+  workspaceRoot: string;
+  command: string;
+  result: 'success' | 'failed' | 'denied';
+  exitCode: number | null;
+  detail: string;
+}
+
 /** 写操作与上传的审计记录（成功与失败都记，不含任何凭据）。 */
 export interface GitAuditRecord {
   at: number;
@@ -89,6 +105,7 @@ export interface DesktopState {
   gitRemotes: Record<string, GitRemoteRecord[]>;
   gitAuth: Record<string, GitAuthRecord>;
   gitAudit: GitAuditRecord[];
+  commandAudit: CommandAuditRecord[];
 }
 
 const image = z.union([
@@ -171,6 +188,10 @@ const gitAuthSchema = z.object({
   configured: z.boolean(), account: z.string().nullable(), scope: z.array(z.string()),
   keyFingerprint: z.string().nullable(), keychainEntry: z.string().nullable(), updatedAt: timestamp,
 }).strict();
+const commandAuditSchema = z.object({
+  at: timestamp, sessionId: z.string().min(1), workspaceRoot: z.string().min(1), command: z.string(),
+  result: z.enum(['success', 'failed', 'denied']), exitCode: z.number().int().nullable(), detail: z.string(),
+}).strict();
 const gitAuditSchema = z.object({
   at: timestamp, workspaceRoot: z.string().min(1), action: z.string().min(1), detail: z.string(),
   result: z.enum(['success', 'failed']), code: z.number().int().nullable(),
@@ -210,6 +231,7 @@ const v2Schema = z.object({
   gitRemotes: z.record(z.array(gitRemoteSchema)),
   gitAuth: z.record(gitAuthSchema),
   gitAudit: z.array(gitAuditSchema),
+  commandAudit: z.array(commandAuditSchema),
 }).strict().superRefine((s, ctx) => {
   identityCheck(s, ctx);
   const groupNames = s.agentGroups.map((g) => g.name);
@@ -225,7 +247,7 @@ function emptyState(): DesktopState {
     workspaces: [], sessions: [], channels: [], ledger: [], contexts: {}, defaults: {},
     changes: {}, artifacts: {}, sources: {}, coverage: {},
     mcp: [], agentGroups: [], agentActive: null,
-    gitRemotes: {}, gitAuth: {}, gitAudit: [],
+    gitRemotes: {}, gitAuth: {}, gitAudit: [], commandAudit: [],
   };
 }
 

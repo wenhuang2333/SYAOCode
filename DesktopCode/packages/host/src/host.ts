@@ -38,6 +38,7 @@ import {
   permissionSchema,
   sessionIdSchema,
   sessionChangeDiffSchema,
+  sessionRunCommandSchema,
   titleSchema,
   usageQuerySchema,
   workspaceRootSchema,
@@ -62,6 +63,7 @@ import {
   type PendingInteraction,
   type SessionCreateResult,
   type SessionForkResult,
+  type SessionRunCommandResult,
   type SessionListResult,
   type SessionSnapshotResult,
   type SessionSubscribeResult,
@@ -73,6 +75,7 @@ import type { Agent } from '@syaocode/core';
 import { buildProvider, createDesktopAgent, parseModelSpec } from './agent-factory.ts';
 import { AgentsService, AgentsServiceError } from './agents-service.ts';
 import { CommitMessageService } from './commit-message.ts';
+import { CommandDeniedError, runCommand as runShellCommand } from './run-command.ts';
 import { ChangesCollector, createChangeToolHooks } from './changes.ts';
 import { IpcCredentialBridge, UnavailableCredentialProvider, processCredentialChannel, type CredentialIpcChannel } from './credential-bridge.ts';
 import { redactSecret, keychainEntryFor, type CredentialProvider } from './credentials.ts';
@@ -988,6 +991,66 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
       throw new DhpProtocolError('capability_not_found', 'this session has no recorded change for that path');
     }
     return { sessionId: p.sessionId, ...diff };
+  });
+
+  // ── 方法：`!` 前缀直接执行命令（FR-N-036，仍过权限闸门）───────────────
+  //
+  // 放行判定**完全**交给内核权限引擎（与模型的 bash 工具同一个 `engine`）：
+  // 危险命令规则库、敏感路径、权限模式全部原样生效。桌面端不另写一套规则，
+  // 否则 `!` 就成了绕过审批的后门。
+
+  register(FeatureMethod.SessionRunCommand, async (params) => {
+    mutable();
+    const p = parseInput(sessionRunCommandSchema, params);
+    const rt = requireRuntime(p.sessionId);
+    const root = workbench.requireWorkspace(rt.state.snapshot.meta.workspaceRoot).root;
+    const agent = ensureAgent(p.sessionId);
+    try {
+      const result = await runShellCommand(
+        {
+          runtime: nodeRuntime(),
+          audit: (record) => {
+            // 命令执行审计与 Git 审计分开存：两者是不同的操作面，
+            // 混在一张表里会让"谁改了我仓库"这个问题查不清。
+            store.data.commandAudit.push({
+              at: record.at,
+              sessionId: record.sessionId,
+              workspaceRoot: record.workspaceRoot,
+              command: redactSecret(record.command),
+              result: record.result,
+              exitCode: record.exitCode,
+              detail: redactSecret(record.detail),
+            });
+            if (store.data.commandAudit.length > 500) {
+              store.data.commandAudit.splice(0, store.data.commandAudit.length - 500);
+            }
+          },
+        },
+        {
+          sessionId: p.sessionId,
+          workspaceRoot: root,
+          command: p.command,
+          // 与 bash 工具同一条判定路径：'bash' + 'exec' + { command }。
+          allow: async () => {
+            const outcome = await agent.engine.checkSubject('bash', 'exec', { command: p.command });
+            if (outcome.outcome === 'allow') return { allowed: true, reason: null };
+            if (outcome.outcome === 'deny') {
+              return { allowed: false, reason: `${outcome.error.code}: ${outcome.error.modelMessage ?? outcome.error.message}` };
+            }
+            // 'ask' 在这里不可能出现（checkSubject 已经把 ask 结算成 allow/deny）。
+            return { allowed: false, reason: 'the permission engine did not decide this command' };
+          },
+        },
+      );
+      // 审计必须先落盘再回话：能丢的审计等于没有审计。
+      await workbench.save();
+      return { sessionId: p.sessionId, command: p.command.trim(), ...result } satisfies SessionRunCommandResult;
+    } catch (error) {
+      // 被拒的命令同样要留下审计（otherwise 只有成功的命令有痕迹）。
+      await workbench.save().catch(() => undefined);
+      if (error instanceof CommandDeniedError) throw new DhpProtocolError('command_denied', error.message);
+      throw serviceError(error);
+    }
   });
 
   register(WorkbenchMethod.SessionInspect, async (params) => {

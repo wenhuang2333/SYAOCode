@@ -5,7 +5,7 @@ import {
   type AckResult, type AgentsListResult, type AgentsSaveParams, type ChannelConfig, type DesktopOverview, type DesktopPermissionMode,
   type GitAuthOauthPollResult, type GitAuthOauthStartResult, type GitAuthStatusResult, type GitBranchesResult, type GitCommitMessageResult, type GitDiffResult, type GitGraphResult, type GitPreflightResult,
   type GitRemotesResult, type GitStatusResult, type GitUploadResult, type McpAddParams, type McpServerInfo, type McpToolSummary,
-  type SessionChangeDiffResult, type SessionChangesNotification, type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
+  type SessionChangeDiffResult, type SessionChangesNotification, type SessionRunCommandResult, type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
   type WorkspaceTreeResult, type WorkspaceReadFileResult,
 } from '@syaocode/dhp';
 import { isSigningFailure, type GitCommitInput } from './git-sidebar';
@@ -643,6 +643,19 @@ export function useWorkbench() {
     setDrafts((prev) => ({ ...prev, [sid]: prev[sid]?.trim() === text.trim() ? '' : prev[sid] ?? '' }));
   }), [perform, command]);
 
+  /**
+   * 在会话工作区根直接执行一条命令（FR-N-036 的 `!` 前缀）。
+   *
+   * **与模型的 `bash` 工具同一个权限闸门**：危险命令会被内核规则库直接拒绝，
+   * 写类命令会弹审批卡。因此这里**不吞错误**——`command_denied` 必须抛给调用方，
+   * 界面才能把"被拒"和"执行失败"分开显示；也绝不自动重试或自动提权。
+   */
+  const runShellCommand = useCallback(async (command: string): Promise<SessionRunCommandResult> => {
+    const sid = active.current;
+    if (!sid) throw new Error('请先创建或选择会话。');
+    return await request<SessionRunCommandResult>(FeatureMethod.SessionRunCommand, { sessionId: sid, command });
+  }, [request]);
+
   const stop = useCallback(() => perform(async () => {
     const executionId = executions.current.get(active.current);
     await command(Method.TurnStop, executionId ? { expectedExecutionId: executionId } : {});
@@ -719,7 +732,7 @@ export function useWorkbench() {
     page, setPage, draft: drafts[sessionId] ?? '',
     setDraft: (text: string) => setDrafts((prev) => ({ ...prev, [sessionId]: text })),
     loadingSession, mutating, query, setQuery, report, loadingUsage,
-    selectSession, selectWorkspace, createSession, openWorkspace, send, stop, sessionChangeDiff,
+    selectSession, selectWorkspace, createSession, openWorkspace, send, stop, runShellCommand, sessionChangeDiff,
     configure, rename, archive, resolve, saveChannel, readTree, readFile,
     // Git（工作区口径）
     gitStatus, gitBranches, gitGraph, gitRemotes, gitAuth, gitPreflight, gitUpload, gitDiff,

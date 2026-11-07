@@ -66,6 +66,9 @@ export const FeatureMethod = {
   // 单文件改动 diff（FR-N-011，会话口径）
   SessionChangeDiff: 'session/change-diff',
 
+  // `!` 前缀直接执行命令（FR-N-036，仍过权限闸门）
+  SessionRunCommand: 'session/run-command',
+
   // 会话 fork / 删除（FR-N-035）
   SessionFork: 'session/fork',
   SessionDelete: 'session/delete',
@@ -110,6 +113,33 @@ export interface FileChange {
   /** 造成该改动的工具名（`write` / `edit` / …）。 */
   readonly tool: string;
   readonly updatedAt: number;
+}
+
+/**
+ * `!` 前缀直接执行命令（FR-N-036）。
+ *
+ * 与模型的 `bash` 工具走**同一套权限闸门**（`27` §4.4「仍过权限闸门」）：
+ * 危险命令被内核规则库直接拒绝、敏感路径强制询问、权限模式照常生效。
+ * 本方法只负责"在已获准之后怎么跑"，不负责放行。
+ */
+export interface SessionRunCommandParams {
+  readonly sessionId: string;
+  /** 用户输入的命令原文（不含前导 `!`）。 */
+  readonly command: string;
+}
+
+export interface SessionRunCommandResult {
+  readonly sessionId: string;
+  readonly command: string;
+  /** 进程退出码；被信号杀死时为负或 1（与 POSIX 惯例一致）。 */
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  /** 输出超过上限时为 `true`（界面必须显示"已截断"）。 */
+  readonly truncated: boolean;
+  /** 是否因超时被杀。 */
+  readonly timedOut: boolean;
+  readonly durationMs: number;
 }
 
 /**

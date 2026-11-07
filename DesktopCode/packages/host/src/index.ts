@@ -119,6 +119,17 @@ export { GitUploadService, dhpCodeForGitError, dhpKindForGitError } from './git-
 export { McpService, McpServiceError, type McpServiceOptions } from './mcp-service.ts';
 export { AgentsService, AgentsServiceError, type AgentsServiceOptions } from './agents-service.ts';
 export {
+  runCommand,
+  CommandDeniedError,
+  MAX_COMMAND_LENGTH,
+  MAX_COMMAND_OUTPUT_BYTES,
+  DEFAULT_COMMAND_TIMEOUT_MS,
+  type CommandAuditRecord,
+  type RunCommandInput,
+  type RunCommandOptions,
+  type RunCommandResult,
+} from './run-command.ts';
+export {
   CommitMessageService,
   buildCommitPrompt,
   sanitizeCommitMessage,
