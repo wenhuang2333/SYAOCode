@@ -6,6 +6,7 @@
  */
 
 import { createElement } from 'react';
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type {
@@ -335,5 +336,29 @@ describe('sidebar static render', () => {
     expect(html).toContain('origin');
     expect(html.toLowerCase()).not.toContain('force');
     expect(html.toLowerCase()).not.toContain('强制推送');
+  });
+});
+
+describe('提交信息生成（FR-N-026）', () => {
+  it('提供生成回调时出现"生成提交信息"按钮，并说明生成是只读的', () => {
+    const html = render({ tab: 'upload', remotes, auth: authStatus, onGenerateMessage: async () => undefined });
+    expect(html).toContain('生成提交信息');
+    expect(html).toContain('生成是只读的，不会提交');
+  });
+
+  it('没有生成回调时不显示按钮（不假装有模型）', () => {
+    const html = render({ tab: 'upload', remotes, auth: authStatus });
+    expect(html).not.toContain('生成提交信息');
+  });
+
+  it('渲染层源码里区分模型生成与兜底文案，且失败不跳上传失败页', () => {
+    const source = readFileSync(new URL('../src/renderer/git-sidebar.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("result.source === 'fallback'");
+    expect(source).toContain('确定性兜底文案');
+    expect(source).toContain('result.truncated');
+    // 生成失败只写一行说明，不把上传流程推进到 failed 步骤。
+    expect(source).toMatch(/生成失败：\$\{\(e as Error\)\.message\}/);
+    // 已手写内容不静默覆盖。
+    expect(source).toContain('用生成的提交信息替换吗');
   });
 });

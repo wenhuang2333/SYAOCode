@@ -3,7 +3,7 @@ import { DhpConnection, ProjectionStore, type WebSocketLike } from '@syaocode/cl
 import {
   FeatureMethod, Method, WorkbenchMethod, isSuccessfulStatus,
   type AckResult, type AgentsListResult, type AgentsSaveParams, type ChannelConfig, type DesktopOverview, type DesktopPermissionMode,
-  type GitAuthStatusResult, type GitBranchesResult, type GitDiffResult, type GitGraphResult, type GitPreflightResult,
+  type GitAuthStatusResult, type GitBranchesResult, type GitCommitMessageResult, type GitDiffResult, type GitGraphResult, type GitPreflightResult,
   type GitRemotesResult, type GitStatusResult, type GitUploadResult, type McpAddParams, type McpServerInfo, type McpToolSummary,
   type SessionChangesNotification, type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
   type WorkspaceTreeResult, type WorkspaceReadFileResult,
@@ -327,6 +327,25 @@ export function useWorkbench() {
     }
   }, [request]);
 
+  /**
+   * 生成提交信息（FR-N-026，只读）。
+   *
+   * 失败时**不抛**：Host 会降级成确定性兜底文案，界面预填并允许改写。
+   * 真正的传输/协议错误仍会抛出，由调用方显示为"生成失败"。
+   */
+  const gitCommitMessage = useCallback(async (
+    root: string,
+    scope: 'staged' | 'session',
+    sessionId?: string,
+  ): Promise<GitCommitMessageResult | undefined> => {
+    if (!root) return undefined;
+    return await request<GitCommitMessageResult>(FeatureMethod.GitCommitMessage, {
+      workspaceRoot: root,
+      scope,
+      ...(sessionId !== undefined && sessionId !== '' ? { sessionId } : {}),
+    });
+  }, [request]);
+
   /** 提交图分页（`skip` 递增，默认 50 条）。 */
   const gitGraphLoad = useCallback(async (root: string, skip = 0): Promise<void> => {
     if (!root) return;
@@ -631,7 +650,7 @@ export function useWorkbench() {
     gitStatus, gitBranches, gitGraph, gitRemotes, gitAuth, gitPreflight, gitUpload, gitDiff,
     gitError, gitLoading, gitProbeUnavailable,
     gitRefresh, gitProbe, gitGraphLoad, gitDiffLoad, gitStage, gitUnstage, gitCommit,
-    gitBranchCreate, gitBranchSwitch, gitPreflightRun, gitUploadRun,
+    gitBranchCreate, gitBranchSwitch, gitPreflightRun, gitUploadRun, gitCommitMessage,
     gitSetToken, gitClearAuth, gitUseSshAgent,
     // MCP / Agent 群
     mcpServers, mcpLoading, mcpError, mcpList, mcpAdd, mcpRemove, mcpRestart, mcpTools,

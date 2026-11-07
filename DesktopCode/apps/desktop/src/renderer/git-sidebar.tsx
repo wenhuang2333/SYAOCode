@@ -15,6 +15,7 @@ import type {
   GitAuthStatusResult,
   GitBranchesResult,
   GitBranchInfo,
+  GitCommitMessageResult,
   GitCommitNode,
   GitDiffResult,
   GitFileEntry,
@@ -424,6 +425,11 @@ export interface GitSidebarProps {
   readonly onPreflight: (input: { readonly remote: string; readonly branch?: string; readonly scope: UploadScope }) => Promise<GitPreflightResult | undefined>;
   readonly onUpload: (input: { readonly remote: string; readonly branch: string; readonly message: string; readonly scope: UploadScope }) => Promise<GitUploadResult | undefined>;
   readonly onOpenDetail: () => void;
+  /**
+   * 生成提交信息（FR-N-026，可选）：只读调用，模型不可用时返回确定性兜底文案。
+   * 未提供时界面不显示"生成"按钮（不假装有模型）。
+   */
+  readonly onGenerateMessage?: ((input: { readonly scope: UploadScope }) => Promise<GitCommitMessageResult | undefined>) | undefined;
   /** 凭据窄桥（可选）：主进程尚未提供时界面明确降级，不假装保存成功。 */
   readonly onSetToken?: ((input: { readonly workspaceRoot: string; readonly remote: string; readonly url: string; readonly token: string }) => Promise<void>) | undefined;
   readonly onUseSshAgent?: ((input: { readonly workspaceRoot: string; readonly remote: string; readonly url: string }) => Promise<void>) | undefined;
@@ -437,7 +443,7 @@ export function GitSidebar(props: GitSidebarProps) {
     workspaceRoot, status, branches, graph, remotes, auth, preflight, upload, diff,
     loading, busy, error, tab, onTab, onClose, onRefresh, onLoadGraph,
     onStage, onUnstage, onCommit, onBranchSwitch, onBranchCreate,
-    onPreflight, onUpload, onOpenDetail, onSetToken, onUseSshAgent, onClearAuth,
+    onPreflight, onUpload, onOpenDetail, onGenerateMessage, onSetToken, onUseSshAgent, onClearAuth,
   } = props;
 
   const groups = useMemo(() => groupByStaging(status?.files ?? []), [status]);
@@ -447,6 +453,8 @@ export function GitSidebar(props: GitSidebarProps) {
   const [branchName, setBranchName] = useState('');
   const [scope, setScope] = useState<UploadScope>('all');
   const [message, setMessage] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [generateNote, setGenerateNote] = useState('');
   const [step, setStep] = useState<UploadStep>('idle');
   const [failure, setFailure] = useState<{ readonly code: number; readonly message: string }>();
   const [token, setToken] = useState('');
@@ -499,6 +507,38 @@ export function GitSidebar(props: GitSidebarProps) {
     } catch (e) {
       setFailure({ code: -32032, message: (e as Error).message });
       setStep('failed');
+    }
+  };
+
+  /**
+   * 生成提交信息（FR-N-026）：只读调用，不产生提交。
+   *
+   * 三条纪律：
+   *  1. 生成失败不等于功能失败——Host 会返回确定性兜底文案，这里预填并**允许改写**；
+   *  2. 来源必须可见：模型生成与兜底文案在界面上有区别（`source`/`reason`/`truncated`）；
+   *  3. 不覆盖用户已经手写的内容：只在输入框为空时自动填入，否则先问一次。
+   */
+  const runGenerate = async () => {
+    if (!onGenerateMessage) return;
+    if (message.trim() !== '' && !window.confirm('输入框已有内容，用生成的提交信息替换吗？')) return;
+    setGenerating(true);
+    setGenerateNote('');
+    try {
+      const result = await onGenerateMessage({ scope });
+      if (!result) { setGenerateNote('生成没有返回结果，请手动填写。'); return; }
+      setMessage(result.message);
+      if (result.source === 'fallback') {
+        setGenerateNote(`模型不可用，已填入确定性兜底文案${result.reason === null ? '' : `（${result.reason}）`}；可直接改写后提交。`);
+      } else if (result.truncated) {
+        setGenerateNote('改动较多，生成时 diff 已截断；建议核对后再提交。');
+      } else {
+        setGenerateNote('已根据已暂存改动生成，可直接改写。');
+      }
+    } catch (e) {
+      // 生成失败不是上传失败：不跳失败页，只给一行说明，用户仍可手填。
+      setGenerateNote(`生成失败：${(e as Error).message}`);
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -726,8 +766,17 @@ export function GitSidebar(props: GitSidebarProps) {
         </div>
         <label className="upload-field">
           <span>提交信息</span>
-          <textarea value={message} rows={3} placeholder="填写本次上传的提交信息" disabled={busy} onChange={(event) => setMessage(event.target.value)} />
+          <textarea value={message} rows={3} placeholder="填写本次上传的提交信息" disabled={busy || generating} onChange={(event) => setMessage(event.target.value)} />
         </label>
+        {onGenerateMessage && (
+          <div className="upload-generate">
+            <button className="btn" disabled={busy || generating} onClick={() => void runGenerate()}>
+              {generating ? '正在生成…' : '生成提交信息'}
+            </button>
+            <span className="data-note">按已暂存改动生成 Conventional Commit 文案；生成是只读的，不会提交。</span>
+          </div>
+        )}
+        {generateNote !== '' && <p className="upload-generate-note" role="status">{generateNote}</p>}
         <button className="btn" disabled={busy || message.trim() === ''} onClick={() => void runPreflight()}>预检并准备确认</button>
       </section>
 
