@@ -7,25 +7,31 @@
 
 import { createElement } from 'react';
 import { readFileSync } from 'node:fs';
+import * as path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type {
   GitAuthInfo, GitAuthStatusResult, GitBranchesResult, GitCommitNode, GitFileEntry, GitPreflightResult, GitRemoteInfo, GitRemotesResult, GitStatusResult,
 } from '@syaocode/dhp';
 import {
-  GIT_TABS, GitSidebar, INITIAL_SIDEBAR_STATE, aheadBehindText, authMethodLabel, authStatusLabel, authStatusTone,
-  branchLabel, gitFileLabel, gitFileStatText, gitStatusBadge, gitStatusSummary, gitTabState, groupByStaging,
-  layoutGitGraph, onlineStateLabel, onlineStateTone, preflightReady, remoteUrlLabel, summarizeGitFiles,
+  GIT_TABS, GitSidebar, INITIAL_SIDEBAR_STATE, LARGE_FILE_THRESHOLD_BYTES, SIGNING_FAILED_CODE,
+  aheadBehindText, authMethodLabel, authStatusLabel, authStatusTone, branchLabel, commitHooksText, executableHooks,
+  formatBytes, gitFileLabel, gitFileStatText, gitStatusBadge, gitStatusSummary, gitTabState, groupByStaging,
+  inactiveHooks, isSigningFailure, largeStagedFiles, layoutGitGraph, onlineStateLabel, onlineStateTone,
+  preflightReady, remoteUrlLabel, signingFailureActions, summarizeGitFiles,
   uploadBlockers, uploadConfirmPayload, uploadFailurePath, type SidebarSlotState,
 } from '../src/renderer/git-sidebar.tsx';
 
+const ROOT = path.resolve(__dirname, '..');
+const read = (p: string): string => readFileSync(path.join(ROOT, p), 'utf8');
+
 const file = (overrides: Partial<GitFileEntry> = {}): GitFileEntry => ({
-  path: 'src/a.ts', status: 'modified', staged: false, oldPath: null, added: 12, removed: 3, stat: 'exact', binary: false, ...overrides,
+  path: 'src/a.ts', status: 'modified', staged: false, oldPath: null, added: 12, removed: 3, stat: 'exact', binary: false, sizeBytes: null, ...overrides,
 });
 
 const status = (overrides: Partial<GitStatusResult> = {}): GitStatusResult => ({
   workspaceRoot: '/workspace', branch: 'main', detached: false, head: 'abc1234', clean: false,
-  ahead: 2, behind: 0, files: [], truncated: false, revision: 7, fetchedAt: 1_760_000_000_000, ...overrides,
+  ahead: 2, behind: 0, files: [], truncated: false, hooks: [], revision: 7, fetchedAt: 1_760_000_000_000, ...overrides,
 });
 
 const auth = (overrides: Partial<GitAuthInfo> = {}): GitAuthInfo => ({
@@ -77,7 +83,7 @@ const render = (overrides: Partial<Parameters<typeof GitSidebar>[0]> = {}): stri
   onLoadGraph: () => { throw new Error('Rendering must not load the graph'); },
   onStage: () => { throw new Error('Rendering must not stage'); },
   onUnstage: () => { throw new Error('Rendering must not unstage'); },
-  onCommit: () => { throw new Error('Rendering must not commit'); },
+  onCommit: async () => { throw new Error('Rendering must not commit'); },
   onBranchSwitch: () => { throw new Error('Rendering must not switch branches'); },
   onBranchCreate: () => { throw new Error('Rendering must not create branches'); },
   onPreflight: async () => { throw new Error('Rendering must not preflight'); },
@@ -360,5 +366,117 @@ describe('提交信息生成（FR-N-026）', () => {
     expect(source).toMatch(/生成失败：\$\{\(e as Error\)\.message\}/);
     // 已手写内容不静默覆盖。
     expect(source).toContain('用生成的提交信息替换吗');
+  });
+});
+
+describe('commit preflight hints and signing-failure paths (§10.5.3)', () => {
+  it('counts only executable hooks and keeps inactive ones visible', () => {
+    const hooks = [
+      { name: 'pre-commit', executable: true },
+      { name: 'commit-msg', executable: true },
+      { name: 'pre-push', executable: false },
+    ];
+    expect(executableHooks(status({ hooks })).map((hook) => hook.name)).toEqual(['pre-commit', 'commit-msg']);
+    expect(inactiveHooks(status({ hooks })).map((hook) => hook.name)).toEqual(['pre-push']);
+    expect(commitHooksText(status({ hooks }))).toBe('将运行 2 个钩子（pre-commit、commit-msg）');
+    expect(commitHooksText(status({ hooks: [{ name: 'pre-commit', executable: true }] }))).toBe('将运行 1 个钩子（pre-commit）');
+    expect(commitHooksText(status({ hooks: [] }))).toBe('没有可执行的提交钩子');
+    expect(commitHooksText(status({ hooks: [{ name: 'pre-push', executable: false }] }))).toBe('没有可执行的提交钩子');
+    expect(commitHooksText(undefined)).toContain('尚未读取');
+  });
+
+  it('lists only staged files above the threshold', () => {
+    const big = LARGE_FILE_THRESHOLD_BYTES + 1;
+    const files = [
+      file({ path: 'assets/big.bin', staged: true, sizeBytes: big }),
+      file({ path: 'assets/just-at.bin', staged: true, sizeBytes: LARGE_FILE_THRESHOLD_BYTES }),
+      file({ path: 'src/small.ts', staged: true, sizeBytes: 1024 }),
+      file({ path: 'src/unstaged.ts', staged: false, sizeBytes: big }),
+      file({ path: 'src/unknown.ts', staged: true, sizeBytes: null }),
+    ];
+    expect(largeStagedFiles(status({ files })).map((entry) => entry.path)).toEqual(['assets/big.bin']);
+    expect(largeStagedFiles(status({ files }), 1024).map((entry) => entry.path)).toEqual(['assets/big.bin', 'assets/just-at.bin']);
+    expect(largeStagedFiles(undefined)).toEqual([]);
+    expect(largeStagedFiles(status({ files }), LARGE_FILE_THRESHOLD_BYTES).every((entry) => entry.staged && entry.sizeBytes !== null)).toBe(true);
+  });
+
+  it('formats bytes across B / KB / MB boundaries', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(1023)).toBe('1023 B');
+    expect(formatBytes(1024)).toBe('1.0 KB');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(1024 * 1024)).toBe('1.0 MB');
+    expect(formatBytes(1.5 * 1024 * 1024)).toBe('1.5 MB');
+    expect(formatBytes(LARGE_FILE_THRESHOLD_BYTES)).toBe('5.0 MB');
+  });
+
+  it('offers exactly three signing-failure paths in the fixed order', () => {
+    const actions = signingFailureActions();
+    expect(actions).toHaveLength(3);
+    expect(actions.map((action) => action.id)).toEqual(['retry', 'unsigned', 'cancel']);
+    expect(actions[1]!.label).toContain('无签名');
+    expect(actions[1]!.hint).toContain('审计');
+    for (const action of actions) {
+      expect(action.label.length).toBeGreaterThan(0);
+      expect(action.hint.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('recognises signing failure by kind, code or message', () => {
+    expect(isSigningFailure({ kind: 'git_signing_failed' })).toBe(true);
+    expect(isSigningFailure({ code: SIGNING_FAILED_CODE })).toBe(true);
+    expect(isSigningFailure(new Error(`提交失败（${SIGNING_FAILED_CODE}）`))).toBe(true);
+    expect(isSigningFailure(new Error('签名失败：gpg: signing failed'))).toBe(true);
+    expect(isSigningFailure(new Error('network down'))).toBe(false);
+    expect(isSigningFailure(null)).toBe(false);
+    expect(isSigningFailure('git_signing_failed')).toBe(false);
+    expect(SIGNING_FAILED_CODE).toBe(-32046);
+  });
+
+  it('renders hooks, the large-file warning and both commit options', () => {
+    const html = render({
+      status: status({
+        hooks: [
+          { name: 'pre-commit', executable: true },
+          { name: 'commit-msg', executable: true },
+          { name: 'pre-push', executable: false },
+        ],
+        files: [file({ path: 'assets/big.bin', staged: true, sizeBytes: LARGE_FILE_THRESHOLD_BYTES + 1024, added: null, removed: null, stat: 'unavailable' })],
+      }),
+    });
+    expect(html).toContain('将运行 2 个钩子');
+    expect(html).toContain('pre-commit');
+    expect(html).toContain('commit-msg');
+    expect(html).toContain('存在但不可执行');
+    expect(html).toContain('pre-push');
+    expect(html).toContain('assets/big.bin');
+    expect(html).toContain('5.0 MB');
+    expect(html).toContain('只提示，不阻止提交');
+    expect(html).toContain('--no-verify');
+    expect(html).toContain('允许空提交');
+    expect(html).toContain('默认拒绝空提交');
+  });
+
+  it('disables the commit button when nothing is staged (empty commit is opt-in)', () => {
+    const html = render({ status: status({ files: [] }) });
+    expect(html).toContain('允许空提交');
+    // 没有已暂存文件、也没勾"允许空提交"时，提交按钮必须是 disabled（空提交默认拒绝）。
+    expect(html).toMatch(/<button class="btn btn-primary" disabled="">提交已暂存改动<\/button>/);
+  });
+
+  it('never auto-degrades to an unsigned commit in source', () => {
+    const source = read('src/renderer/git-sidebar.tsx');
+    expect(source).toContain('git_signing_failed');
+    expect(source).toContain('signingFailureActions');
+    expect(source).toContain('提交签名失败');
+    expect(source).toContain('role="alertdialog"');
+    const start = source.indexOf('const runCommit');
+    const end = source.indexOf('const header =', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    // 自动提交路径里绝不能出现 noSign。
+    expect(source.slice(start, end)).not.toContain('noSign: true');
+    // noSign 只出现在签名失败面板的用户点击里。
+    expect(source).toContain('runCommit({ ...signingFailure.input, noSign: true })');
   });
 });

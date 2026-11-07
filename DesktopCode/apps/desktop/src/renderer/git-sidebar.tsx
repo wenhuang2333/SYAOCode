@@ -21,6 +21,7 @@ import type {
   GitFileEntry,
   GitFileStatus,
   GitGraphResult,
+  GitHookInfo,
   GitPreflightResult,
   GitRemoteInfo,
   GitRemotesResult,
@@ -185,6 +186,93 @@ export function gitStatusBadge(status: GitStatusResult | undefined): string {
   if (totals.files === 0) return '';
   if (totals.added == null || totals.removed == null) return `${totals.files} 个文件`;
   return `+${totals.added} -${totals.removed}`;
+}
+
+// ── 提交前提示与签名失败（`27` §10.5.3）─────────────────────────────────
+
+/** 大文件提示阈值：5 MiB。只提示，不阻止提交。 */
+export const LARGE_FILE_THRESHOLD_BYTES = 5 * 1024 * 1024;
+
+/** 提交签名失败的错误码（`06` §10.2 / `27` §10.5.3）。 */
+export const SIGNING_FAILED_CODE = -32046;
+
+/** 会被 Git 实际执行的提交相关钩子（`executable=false` 的不计入）。 */
+export function executableHooks(status: GitStatusResult | undefined): readonly GitHookInfo[] {
+  return (status?.hooks ?? []).filter((hook) => hook.executable);
+}
+
+/** 存在但不可执行的钩子：仍要在界面里可见，让用户知道"有，但不会运行"。 */
+export function inactiveHooks(status: GitStatusResult | undefined): readonly GitHookInfo[] {
+  return (status?.hooks ?? []).filter((hook) => !hook.executable);
+}
+
+/** 提交前钩子提示：只数可执行钩子；0 个时明确说"没有可执行的提交钩子"。 */
+export function commitHooksText(status: GitStatusResult | undefined): string {
+  if (!status) return '钩子状态尚未读取';
+  const hooks = executableHooks(status);
+  if (hooks.length === 0) return '没有可执行的提交钩子';
+  return `将运行 ${hooks.length} 个钩子（${hooks.map((hook) => hook.name).join('、')}）`;
+}
+
+/** 已暂存且超过阈值的大文件（未暂存 / `sizeBytes=null` 一律不算）。 */
+export function largeStagedFiles(
+  status: GitStatusResult | undefined,
+  thresholdBytes: number = LARGE_FILE_THRESHOLD_BYTES,
+): readonly GitFileEntry[] {
+  return (status?.files ?? []).filter((file) => file.staged && file.sizeBytes !== null && file.sizeBytes > thresholdBytes);
+}
+
+/** 人类可读字节数（B / KB / MB，KB 与 MB 保留 1 位小数）。 */
+export function formatBytes(bytes: number): string {
+  const value = Number.isFinite(bytes) ? Math.max(0, bytes) : 0;
+  if (value < 1024) return `${Math.round(value)} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * 提交参数（`onCommit` 的唯一入参）。
+ *
+ * `noSign` **只能**由用户在签名失败面板里显式选择——任何自动传入都是违规的。
+ */
+export interface GitCommitInput {
+  readonly message: string;
+  readonly allowEmpty?: boolean;
+  readonly noVerify?: boolean;
+  readonly noSign?: boolean;
+}
+
+export type SigningFailureActionId = 'retry' | 'unsigned' | 'cancel';
+
+export interface SigningFailureAction {
+  readonly id: SigningFailureActionId;
+  readonly label: string;
+  readonly hint: string;
+}
+
+/** 签名失败后的三条路径（顺序固定；绝不自动重试、绝不自动降级为无签名）。 */
+export function signingFailureActions(): readonly SigningFailureAction[] {
+  return [
+    { id: 'retry', label: '重试', hint: '用同样的参数再提交一次；不会自动重试。' },
+    { id: 'unsigned', label: '无签名提交', hint: '本次提交不签名（--no-gpg-sign），会记审计。' },
+    { id: 'cancel', label: '取消', hint: '不做任何提交，保留已填写的提交信息。' },
+  ];
+}
+
+/**
+ * 判断错误是否是"提交签名失败"。
+ *
+ * 优先按 `kind` 分支（契约）；数字码与消息里的码只做兜底（传输层可能只留下 message）。
+ */
+export function isSigningFailure(error: unknown): boolean {
+  if (error === null || typeof error !== 'object') return false;
+  const candidate = error as { readonly kind?: unknown; readonly code?: unknown; readonly message?: unknown };
+  if (candidate.kind === 'git_signing_failed') return true;
+  if (candidate.code === SIGNING_FAILED_CODE) return true;
+  if (typeof candidate.message !== 'string') return false;
+  return candidate.message.includes(String(SIGNING_FAILED_CODE))
+    || candidate.message.includes('git_signing_failed')
+    || candidate.message.includes('签名失败');
 }
 
 /** 领先 / 落后文案；未知时是"未知"（不是 0）。 */
@@ -419,7 +507,8 @@ export interface GitSidebarProps {
   readonly onLoadGraph: (skip?: number) => void;
   readonly onStage: (paths: readonly string[]) => void;
   readonly onUnstage: (paths: readonly string[]) => void;
-  readonly onCommit: (message: string) => void;
+  /** 提交（本地写操作）：返回 Promise 以便提交区识别签名失败并给出三路径。 */
+  readonly onCommit: (input: GitCommitInput) => Promise<void>;
   readonly onBranchSwitch: (name: string) => void;
   readonly onBranchCreate: (name: string) => void;
   readonly onPreflight: (input: { readonly remote: string; readonly branch?: string; readonly scope: UploadScope }) => Promise<GitPreflightResult | undefined>;
@@ -448,6 +537,10 @@ export function GitSidebar(props: GitSidebarProps) {
 
   const groups = useMemo(() => groupByStaging(status?.files ?? []), [status]);
   const layout = useMemo(() => layoutGitGraph(graph?.commits ?? []), [graph]);
+  const hookText = commitHooksText(status);
+  const inactiveHookNames = inactiveHooks(status).map((hook) => hook.name);
+  const largeFiles = largeStagedFiles(status);
+  const stagedCount = groups.staged.length;
 
   const [remoteName, setRemoteName] = useState('');
   const [branchName, setBranchName] = useState('');
@@ -461,6 +554,12 @@ export function GitSidebar(props: GitSidebarProps) {
   const [credentialNote, setCredentialNote] = useState('');
   const [newBranch, setNewBranch] = useState('');
   const [commitMessage, setCommitMessage] = useState('');
+  // 提交前提示（`27` §10.5.3）：钩子 / 大文件 / 跳过钩子 / 空提交。
+  const [allowEmpty, setAllowEmpty] = useState(false);
+  const [noVerify, setNoVerify] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [commitNote, setCommitNote] = useState('');
+  const [signingFailure, setSigningFailure] = useState<{ readonly input: GitCommitInput; readonly message: string }>();
   const confirmRef = useRef<HTMLButtonElement>(null);
   const confirmBoxRef = useRef<HTMLDivElement>(null);
   const tabRef = useRef<HTMLButtonElement>(null);
@@ -565,6 +664,40 @@ export function GitSidebar(props: GitSidebarProps) {
     }
   };
 
+  /**
+   * 提交（本地写操作，`27` §10.5.3）。
+   *
+   * 纪律：
+   *  1. 只有成功才清空提交信息；失败 / 取消都保留用户输入；
+   *  2. 签名失败**不静默降级**：进入"重试 / 无签名提交 / 取消"三路径，等用户显式选择；
+   *  3. `noSign` 只在用户点击"无签名提交"时传入。
+   */
+  const runCommit = async (input: GitCommitInput) => {
+    if (committing) return;
+    setCommitting(true);
+    setSigningFailure(undefined);
+    setCommitNote('');
+    try {
+      await onCommit(input);
+      setCommitMessage('');
+      setCommitNote(input.noSign === true ? '本次提交未签名（已记审计）。' : '提交已完成。');
+    } catch (e) {
+      if (isSigningFailure(e)) {
+        setSigningFailure({ input, message: (e as Error).message });
+      } else {
+        setCommitNote(`提交失败：${(e as Error).message}`);
+      }
+    } finally {
+      setCommitting(false);
+    }
+  };
+
+  const commitInput = (): GitCommitInput => ({
+    message: commitMessage.trim(),
+    ...(noVerify ? { noVerify: true } : {}),
+    ...(allowEmpty ? { allowEmpty: true } : {}),
+  });
+
   const submitToken = async () => {
     if (!selectedRemote || !token) return;
     setCredentialNote('');
@@ -633,10 +766,72 @@ export function GitSidebar(props: GitSidebarProps) {
             </section>
           ))}
         </div>}
-      <section className="git-commit-box">
+      <section className="git-commit-box" aria-label="提交已暂存改动">
         <label htmlFor="git-commit-message">提交信息</label>
-        <input id="git-commit-message" value={commitMessage} placeholder="填写提交信息（提交前会二次确认）" disabled={busy} onChange={(event) => setCommitMessage(event.target.value)} />
-        <button className="btn" disabled={busy || commitMessage.trim() === '' || groups.staged.length === 0} onClick={() => { onCommit(commitMessage.trim()); setCommitMessage(''); }}>提交已暂存改动</button>
+        <input id="git-commit-message" value={commitMessage} placeholder="填写提交信息" disabled={busy || committing} onChange={(event) => setCommitMessage(event.target.value)} />
+
+        {/* 提交前提示（§10.5.3）：钩子数量 / 不可执行钩子 / 大文件。只提示，不阻止。 */}
+        <p className="git-hook-note" role="status">{hookText}</p>
+        {inactiveHookNames.length > 0 && <p className="data-note">存在但不可执行（Git 不会运行）：{inactiveHookNames.join('、')}</p>}
+        {largeFiles.length > 0 && (
+          <div className="git-large-warning" role="status">
+            <p>以下已暂存文件超过 {formatBytes(LARGE_FILE_THRESHOLD_BYTES)}：</p>
+            <ul className="git-large-list">
+              {largeFiles.map((file) => (
+                <li key={file.path}><code>{file.path}</code><span>{file.sizeBytes === null ? '未知大小' : formatBytes(file.sizeBytes)}</span></li>
+              ))}
+            </ul>
+            <p className="data-note">只提示，不阻止提交。</p>
+          </div>
+        )}
+
+        <label className="git-commit-option">
+          <input type="checkbox" checked={noVerify} disabled={busy || committing} onChange={(event) => setNoVerify(event.target.checked)} />
+          <span>跳过钩子（--no-verify，会记审计）</span>
+        </label>
+        <label className="git-commit-option">
+          <input type="checkbox" checked={allowEmpty} disabled={busy || committing} onChange={(event) => setAllowEmpty(event.target.checked)} />
+          <span>允许空提交（--allow-empty）</span>
+        </label>
+        <p className="data-note">默认拒绝空提交：没有已暂存文件时，需勾选"允许空提交"才能提交。</p>
+
+        <button
+          className="btn btn-primary"
+          disabled={busy || committing || commitMessage.trim() === '' || (stagedCount === 0 && !allowEmpty)}
+          onClick={() => void runCommit(commitInput())}
+        >{committing ? '正在提交…' : '提交已暂存改动'}</button>
+        {commitNote !== '' && <p className="git-commit-note" role="status">{commitNote}</p>}
+
+        {/* 签名失败三路径：不自动重试、不自动降级（§10.5.3）。 */}
+        {signingFailure && (
+          <section className="git-signing-failure" role="alertdialog" aria-label="提交签名失败">
+            <h4>提交签名失败</h4>
+            <p className="data-note">{signingFailure.message}</p>
+            <p className="data-note">签名失败不会自动降级。请选择一条路径：</p>
+            <div className="git-signing-actions">
+              {signingFailureActions().map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  className={`btn${action.id === 'unsigned' ? ' btn-danger' : ''}`}
+                  aria-label={`${action.label}：${action.hint}`}
+                  title={action.hint}
+                  disabled={busy || committing}
+                  onClick={() => {
+                    if (action.id === 'retry') void runCommit(signingFailure.input);
+                    else if (action.id === 'unsigned') void runCommit({ ...signingFailure.input, noSign: true });
+                    else setSigningFailure(undefined);
+                  }}
+                >
+                  <span>{action.label}</span>
+                  <small className="git-signing-hint">{action.hint}</small>
+                </button>
+              ))}
+            </div>
+            <p className="data-note">取消会保留提交信息，不会执行任何提交。</p>
+          </section>
+        )}
+
         <p className="data-note">提交属于本地写操作：先暂存，再提交；不提供强制推送。</p>
       </section>
     </div>

@@ -8,6 +8,7 @@ import {
   type SessionChangesNotification, type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
   type WorkspaceTreeResult, type WorkspaceReadFileResult,
 } from '@syaocode/dhp';
+import { isSigningFailure, type GitCommitInput } from './git-sidebar';
 
 interface Bridge {
   readonly host: { info(): Promise<{ port: number; workspaceRoot: string }> };
@@ -390,14 +391,34 @@ export function useWorkbench() {
     await gitWrite(FeatureMethod.GitUnstage, { workspaceRoot: root, paths }, root);
   }), [perform, gitWrite]);
 
-  const gitCommit = useCallback((root: string, message: string, options: { readonly includeUnstaged?: boolean; readonly noVerify?: boolean } = {}) => perform(async () => {
-    await gitWrite(FeatureMethod.GitCommit, {
-      workspaceRoot: root,
-      message,
-      ...(options.includeUnstaged === undefined ? {} : { includeUnstaged: options.includeUnstaged }),
-      ...(options.noVerify === undefined ? {} : { noVerify: options.noVerify }),
-    }, root);
-  }), [perform, gitWrite]);
+  /**
+   * 提交（本地写操作，`27` §10.5.3）。
+   *
+   * 与其它写操作不同：错误必须**抛回提交区**——签名失败时界面要给出
+   * "重试 / 无签名提交 / 取消"三路径，不能只在错误条里吞掉。
+   * 签名失败也不写普通错误条，避免与三路径面板重复。
+   */
+  const gitCommit = useCallback(async (root: string, input: GitCommitInput): Promise<void> => {
+    if (actionPending.current) throw new Error('已有操作正在进行，请稍后重试。');
+    actionPending.current = true;
+    setMutating(true);
+    setError('');
+    try {
+      await gitWrite(FeatureMethod.GitCommit, {
+        workspaceRoot: root,
+        message: input.message,
+        ...(input.allowEmpty === undefined ? {} : { allowEmpty: input.allowEmpty }),
+        ...(input.noVerify === undefined ? {} : { noVerify: input.noVerify }),
+        ...(input.noSign === undefined ? {} : { noSign: input.noSign }),
+      }, root);
+    } catch (e) {
+      if (!isSigningFailure(e)) setError((e as Error).message);
+      throw e;
+    } finally {
+      actionPending.current = false;
+      setMutating(false);
+    }
+  }, [gitWrite]);
 
   const gitBranchCreate = useCallback((root: string, name: string, checkout = false) => perform(async () => {
     await gitWrite(FeatureMethod.GitBranchCreate, { workspaceRoot: root, name, checkout }, root);

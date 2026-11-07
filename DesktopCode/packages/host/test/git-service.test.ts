@@ -365,3 +365,71 @@ describe.skipIf(!hasGit)('GitService 只读能力', () => {
     expect(status.truncated).toBe(true);
   }, 60_000);
 });
+
+describe('提交前提示所需的数据（27 §10.5.3）', () => {
+  it.skipIf(!hasGit)('sizeBytes 只反映**已暂存内容**：暂存有值、未暂存与未跟踪为 null', async () => {
+    const root = await repo();
+    // 1000 字节的已暂存内容。
+    await fs.writeFile(path.join(root, 'staged.txt'), 'x'.repeat(1000));
+    git(root, ['add', '--', 'staged.txt']);
+    // 未暂存的新内容（不进索引）。
+    await fs.writeFile(path.join(root, 'unstaged.txt'), 'y'.repeat(20));
+    // 未跟踪文件。
+    await fs.writeFile(path.join(root, 'untracked.txt'), 'z'.repeat(30));
+
+    const status = await service.status(root);
+    const byPath = new Map(status.files.map((file) => [file.path, file]));
+
+    const staged = byPath.get('staged.txt');
+    expect(staged?.staged).toBe(true);
+    expect(staged?.sizeBytes).toBe(1000);
+
+    const unstaged = byPath.get('unstaged.txt');
+    expect(unstaged?.staged).toBe(false);
+    // 未暂存条目没有"将要提交的 blob"，不能用工作区大小冒充。
+    expect(unstaged?.sizeBytes).toBeNull();
+
+    const untracked = byPath.get('untracked.txt');
+    expect(untracked?.status).toBe('untracked');
+    expect(untracked?.sizeBytes).toBeNull();
+  });
+
+  it.skipIf(!hasGit)('sizeBytes 取的是 blob 大小：工作区内容与暂存内容不同时也不撒谎', async () => {
+    const root = await repo();
+    await fs.writeFile(path.join(root, 'a.txt'), 'first\n');
+    git(root, ['add', '--', 'a.txt']);
+    // 暂存后又改了工作区：将要提交的是索引里的 6 字节，不是工作区的新内容。
+    await fs.writeFile(path.join(root, 'a.txt'), 'a much longer working tree content\n');
+
+    const status = await service.status(root);
+    const entry = status.files.find((file) => file.path === 'a.txt');
+    expect(entry?.staged).toBe(true);
+    expect(entry?.sizeBytes).toBe('first\n'.length);
+  });
+
+  it.skipIf(!hasGit)('hooks：只列存在的提交相关钩子，可执行性如实标注', async () => {
+    const root = await repo();
+    const hooksDir = path.join(root, '.git', 'hooks');
+    await fs.mkdir(hooksDir, { recursive: true });
+    // 可执行的 pre-commit 与不可执行的 commit-msg；pre-push 不存在。
+    await fs.writeFile(path.join(hooksDir, 'pre-commit'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    await fs.chmod(path.join(hooksDir, 'pre-commit'), 0o755);
+    await fs.writeFile(path.join(hooksDir, 'commit-msg'), 'not executable\n', { mode: 0o644 });
+    await fs.chmod(path.join(hooksDir, 'commit-msg'), 0o644);
+
+    const status = await service.status(root);
+    const byName = new Map(status.hooks.map((hook) => [hook.name, hook]));
+    expect(byName.get('pre-commit')?.executable).toBe(true);
+    expect(byName.get('commit-msg')?.executable).toBe(false);
+    expect(byName.has('pre-push')).toBe(false);
+    // 不存在的钩子不得凭空出现。
+    expect(status.hooks.every((hook) => ['pre-commit', 'commit-msg', 'pre-push'].includes(hook.name))).toBe(true);
+  });
+
+  it.skipIf(!hasGit)('hooks：没有钩子时是空数组（不是 null，也不猜）', async () => {
+    const root = await repo();
+    const status = await service.status(root);
+    expect(Array.isArray(status.hooks)).toBe(true);
+    expect(status.hooks).toEqual([]);
+  });
+});

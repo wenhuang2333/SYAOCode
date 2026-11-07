@@ -114,7 +114,7 @@ export {
   type GitAuthHydrateRecord,
 } from './git-auth.ts';
 export { GitService, type GitServiceOptions } from './git-service.ts';
-export { GitWriteService, type GitAuditSink, type GitStatusReader } from './git-write.ts';
+export { GitWriteService, isSigningFailure, type GitAuditSink, type GitStatusReader } from './git-write.ts';
 export { GitUploadService, dhpCodeForGitError, dhpKindForGitError } from './git-upload.ts';
 export { McpService, McpServiceError, type McpServiceOptions } from './mcp-service.ts';
 export { AgentsService, AgentsServiceError, type AgentsServiceOptions } from './agents-service.ts';

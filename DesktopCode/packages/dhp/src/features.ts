@@ -285,6 +285,26 @@ export interface GitFileEntry {
   readonly removed: number | null;
   readonly stat: 'exact' | 'unavailable';
   readonly binary: boolean;
+  /**
+   * **已暂存内容**（即将提交的 blob）的字节数；无暂存内容或不可读时为 `null`。
+   *
+   * 用于提交前的大文件提示（`27` §10.5.3）：超过阈值只提示、不阻止。
+   * 未暂存条目一律为 `null`——不能用工作区文件大小冒充"将要提交的大小"。
+   */
+  readonly sizeBytes: number | null;
+}
+
+/**
+ * 仓库里的 Git 钩子（`27` §10.5.3）。
+ *
+ * 钩子是**用户仓库里的可执行脚本**：执行前必须在确认框里标注"将运行 N 个钩子"，
+ * 跳过（`--no-verify`）需单独勾选并记审计。
+ */
+export interface GitHookInfo {
+  /** 钩子名，例如 `pre-commit` / `commit-msg` / `pre-push`。 */
+  readonly name: string;
+  /** 是否可执行（不可执行的钩子 Git 不会运行，界面不能把它算进"将运行的 N 个"）。 */
+  readonly executable: boolean;
 }
 
 export interface GitStatusResult {
@@ -298,6 +318,12 @@ export interface GitStatusResult {
   readonly files: readonly GitFileEntry[];
   /** 条目数超过上限时为 `true`（UI 必须显示"已截断"）。 */
   readonly truncated: boolean;
+  /**
+   * 仓库里存在且**可执行**的提交相关钩子（`pre-commit` / `commit-msg` / `pre-push`）。
+   *
+   * 只列存在项；`executable=false` 的也列出来，但界面不能把它算进"将运行的钩子数"。
+   */
+  readonly hooks: readonly GitHookInfo[];
   /**
    * Git 状态版本：写操作的 `baseRevision` 就是它。
    * 只随写操作与工作区状态变化前进，不随流式事件变化。
@@ -519,6 +545,14 @@ export interface GitCommitParams {
   readonly includeUnstaged?: boolean;
   /** 跳过钩子（`--no-verify`）需单独勾选并记审计；默认 `false`。 */
   readonly noVerify?: boolean;
+  /** 允许空提交（`--allow-empty`）：无改动时默认拒绝，需显式勾选。 */
+  readonly allowEmpty?: boolean;
+  /**
+   * 本次提交不签名（`--no-gpg-sign`）。
+   *
+   * 只在**签名失败后由用户显式选择**时使用（`27` §10.5.3）：签名失败绝不静默降级。
+   */
+  readonly noSign?: boolean;
 }
 
 export interface GitBranchCreateParams {

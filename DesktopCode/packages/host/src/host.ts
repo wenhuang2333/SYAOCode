@@ -1236,6 +1236,8 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
     const result = await gitWrite.commit(requireRoot(p.workspaceRoot), p.message, { commandId: p.commandId, baseRevision: p.baseRevision }, {
       ...(p.includeUnstaged !== undefined ? { includeUnstaged: p.includeUnstaged } : {}),
       ...(p.noVerify !== undefined ? { noVerify: p.noVerify } : {}),
+      ...(p.allowEmpty !== undefined ? { allowEmpty: p.allowEmpty } : {}),
+      ...(p.noSign !== undefined ? { noSign: p.noSign } : {}),
     }).catch(serviceError);
     if (result.status === 'accepted') gitService.bumpRevision(requireRoot(p.workspaceRoot));
     await workbench.save();

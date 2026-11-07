@@ -90,6 +90,10 @@ export const gitCommitSchema = workspaceRootSchema.extend({
   message: z.string().min(1).max(4000),
   includeUnstaged: z.boolean().optional(),
   noVerify: z.boolean().optional(),
+  /** 允许空提交（`--allow-empty`）；默认拒绝。 */
+  allowEmpty: z.boolean().optional(),
+  /** 本次不签名（`--no-gpg-sign`）；只在签名失败后由用户显式选择。 */
+  noSign: z.boolean().optional(),
 }).strict();
 
 export const gitBranchSchema = workspaceRootSchema.extend({

@@ -11,13 +11,15 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import * as os from 'node:os';
+import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import type { GitFileEntry, GitFileStatus, GitStatusResult } from '@syaocode/dhp';
 import { MemoryCredentialProvider, keychainEntryFor } from '../src/credentials.ts';
 import { GitUploadError, GitUploadService } from '../src/git-upload.ts';
@@ -30,11 +32,27 @@ import {
 
 // ── 环境与清理 ────────────────────────────────────────────────────────
 
+/**
+ * 本文件用**私有 TMPDIR**。
+ *
+ * 原因：有一条断言要检查"凭据临时目录用完即删"（`27` §10.9 红线 3），
+ * 而 `os.tmpdir()` 是全进程共享的——其它测试文件在并行 worker 里同时创建
+ * `syaocode-git-cred-*` 时，这条断言会随机变红（真实发生过的 flake）。
+ * 把本文件的 TMPDIR 指向私有目录后，`readdir(os.tmpdir())` 只会看到本文件
+ * 自己的临时目录，断言既严格又稳定。
+ */
+const privateTmp = mkdtempSync(path.join(tmpdir(), 'syaocode-gw-tmp-'));
+process.env['TMPDIR'] = privateTmp;
+
 const hasGit = spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0;
 const dirs: string[] = [];
 
 afterEach(async () => {
   for (const dir of dirs.splice(0)) await fs.rm(dir, { recursive: true, force: true });
+});
+
+afterAll(async () => {
+  await fs.rm(privateTmp, { recursive: true, force: true });
 });
 
 async function tempDir(prefix: string): Promise<string> {
@@ -104,6 +122,7 @@ function parsePorcelain(output: string): GitFileEntry[] {
       removed: null,
       stat: 'unavailable',
       binary: false,
+      sizeBytes: null,
     });
   }
   return entries;
@@ -137,6 +156,7 @@ function makeReader(): TestReader {
       behind: null,
       files,
       truncated: false,
+      hooks: [],
       revision: hashNumber(`${headOut}\n${porcelain}`),
       fetchedAt: Date.now(),
     };
@@ -653,5 +673,61 @@ describe('凭据注入与审计脱敏', () => {
     await expect(upload.preflight(root, 'upstream')).rejects.toMatchObject({
       dhpKind: 'git_command_failed',
     });
+  });
+});
+
+describe('提交细节（27 §10.5.3）：空提交 / 签名失败 / 无签名提交', () => {
+  it.skipIf(!hasGit)('无改动时默认拒绝提交；allowEmpty=true 才允许空提交', async () => {
+    const root = await makeRepo();
+    const reader = makeReader();
+    const audit: GitAuditRecord[] = [];
+    const writer = new GitWriteService({ reader, audit: (record) => { audit.push(record); } });
+    const head = git(root, ['rev-parse', 'HEAD']).stdout.trim();
+
+    // 没有暂存内容：默认必须被拒（git 非零退出 → 抛错），且不产生提交。
+    await expect(
+      writer.commit(root, 'chore: empty', { commandId: 'cmd-empty-0001', baseRevision: await reader.revisionOf(root) }),
+    ).rejects.toBeTruthy();
+    expect(git(root, ['rev-parse', 'HEAD']).stdout.trim()).toBe(head);
+
+    // 显式 allowEmpty 才允许；审计里必须留痕。
+    const result = await writer.commit(root, 'chore: empty', { commandId: 'cmd-empty-0002', baseRevision: await reader.revisionOf(root) }, { allowEmpty: true });
+    expect(result.status).toBe('accepted');
+    expect(git(root, ['rev-parse', 'HEAD']).stdout.trim()).not.toBe(head);
+    expect(audit.some((r) => r.detail.includes('允许空提交'))).toBe(true);
+  });
+
+  it.skipIf(!hasGit)('签名失败 → git_signing_failed；noSign=true 才允许无签名提交（并记审计）', async () => {
+    const root = await makeRepo();
+    // 故意配置一个必然失败的签名程序：`false` 退出码 1。
+    git(root, ['config', 'commit.gpgsign', 'true']);
+    git(root, ['config', 'gpg.program', 'false']);
+    await fs.writeFile(path.join(root, 'b.txt'), 'signed?\n');
+    git(root, ['add', '--', 'b.txt']);
+
+    const reader = makeReader();
+    const audit: GitAuditRecord[] = [];
+    const writer = new GitWriteService({ reader, audit: (record) => { audit.push(record); } });
+    const head = git(root, ['rev-parse', 'HEAD']).stdout.trim();
+
+    // 1) 签名失败必须是**独立 kind**，不能混进 git_command_failed。
+    const failure = await writer
+      .commit(root, 'feat: signed', { commandId: 'cmd-sign-0001', baseRevision: await reader.revisionOf(root) })
+      .then(() => undefined)
+      .catch((error: unknown) => error);
+    expect(failure).toBeTruthy();
+    expect((failure as { kind?: string }).kind).toBe('git_signing_failed');
+    expect(git(root, ['rev-parse', 'HEAD']).stdout.trim()).toBe(head);
+
+    // 2) 只有用户显式选择 noSign 才能提交，且审计里必须有"未签名"。
+    const unsigned = await writer.commit(
+      root,
+      'feat: signed',
+      { commandId: 'cmd-sign-0002', baseRevision: await reader.revisionOf(root) },
+      { noSign: true },
+    );
+    expect(unsigned.status).toBe('accepted');
+    expect(git(root, ['rev-parse', 'HEAD']).stdout.trim()).not.toBe(head);
+    expect(audit.some((r) => r.detail.includes('未签名'))).toBe(true);
   });
 });

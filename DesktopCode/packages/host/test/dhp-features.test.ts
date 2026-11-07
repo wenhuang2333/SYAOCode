@@ -516,3 +516,48 @@ describe('提交信息生成（FR-N-026，只读）', () => {
     }
   });
 });
+
+describe('提交签名失败在协议层是独立 kind（27 §10.5.3）', () => {
+  it('签名失败 → kind=git_signing_failed（-32046），且不产生提交；noSign 才能提交', async () => {
+    await initRepo();
+    // 故意配置一个必然失败的签名程序。
+    const { execFile } = await import('node:child_process');
+    const gitConfig = (args: readonly string[]): Promise<void> => new Promise((resolve, reject) => {
+      execFile('git', [...args], { cwd: root }, (error) => (error ? reject(error) : resolve()));
+    });
+    await gitConfig(['config', 'commit.gpgsign', 'true']);
+    await gitConfig(['config', 'gpg.program', 'false']);
+    await fs.writeFile(path.join(root, 'signed.ts'), 'export const s = 1;\n');
+
+    const c = await boot();
+    const status = await c.request<GitStatusResult>(F.GitStatus, { workspaceRoot: root });
+    await c.request(F.GitStage, {
+      workspaceRoot: root,
+      paths: ['signed.ts'],
+      commandId: randomUUID(),
+      baseRevision: status.revision,
+    });
+
+    // 界面靠这个 kind（而不是错误文案）决定给出"重试 / 无签名 / 取消"三选一。
+    await expect(c.request(F.GitCommit, {
+      workspaceRoot: root,
+      message: 'feat: signed',
+      commandId: randomUUID(),
+      baseRevision: (await c.request<GitStatusResult>(F.GitStatus, { workspaceRoot: root })).revision,
+    })).rejects.toMatchObject({ kind: 'git_signing_failed' });
+
+    // 仍然没有新提交。
+    const afterFailure = await c.request<GitStatusResult>(F.GitStatus, { workspaceRoot: root });
+    expect(afterFailure.files.some((f) => f.staged)).toBe(true);
+
+    // 用户显式选择"无签名提交"后成功。
+    const committed = await c.request<{ status: string }>(F.GitCommit, {
+      workspaceRoot: root,
+      message: 'feat: signed',
+      noSign: true,
+      commandId: randomUUID(),
+      baseRevision: afterFailure.revision,
+    });
+    expect(committed.status).toBe('accepted');
+  });
+});

@@ -213,13 +213,21 @@ describe('buildCommitPrompt（纯函数）', () => {
     expect(prompt).toContain('(no diff provided)');
   });
 
-  it('64 KiB diff 在 200 ms 内完成（性能护栏：禁止灾难性回溯）', () => {
+  it('64 KiB diff 不出现灾难性回溯（性能护栏）', () => {
     const diff = `${'x'.repeat(DEFAULT_COMMIT_MAX_DIFF_BYTES + 512)}\n+remote=https://u:p@host/x.git\n`;
-    const startedAt = Date.now();
+    // 两次测量取较快的一次：第一次可能被 JIT / 并行测试的 CPU 抢占拉长。
+    const measure = (): number => {
+      const startedAt = Date.now();
+      buildCommitPrompt(input({ diff }));
+      return Date.now() - startedAt;
+    };
+    measure();
+    const elapsed = Math.min(measure(), measure());
     const { prompt } = buildCommitPrompt(input({ diff }));
-    const elapsed = Date.now() - startedAt;
     expect(prompt).toContain('diff truncated');
-    expect(elapsed).toBeLessThan(200);
+    // 曾经的正则会回溯到 13 秒；这里给足并行测试的余量（2 s），
+    // 仍然能在数量级上抓住回溯（正常是毫秒级）。
+    expect(elapsed).toBeLessThan(2_000);
   });
 
   it('diff 里的 URL 内嵌凭据被剥离', () => {

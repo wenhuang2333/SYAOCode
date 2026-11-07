@@ -26,7 +26,9 @@ export type GitFailureKind =
   | 'git_command_failed'
   | 'git_unsafe'
   | 'git_offline'
-  | 'timed_out';
+  | 'timed_out'
+  /** 提交签名失败（`27` §10.5.3）：必须由用户选择重试 / 无签名提交 / 取消。 */
+  | 'git_signing_failed';
 
 export class GitError extends Error {
   readonly kind: GitFailureKind;
@@ -169,6 +171,12 @@ export interface GitRunOptions {
   /** 非零退出不抛错，由调用方读取 `code`。 */
   readonly allowFailure?: boolean;
   readonly maxOutputBytes?: number;
+  /**
+   * 写入子进程 stdin 的内容（例如 `git cat-file --batch-check` 的哈希清单）。
+   *
+   * 只用于**读**类命令：写命令的 stdin 一律关闭，避免把内容意外喂给交互式命令。
+   */
+  readonly stdin?: string;
 }
 
 export interface GitRunResult {
@@ -234,7 +242,7 @@ function spawnGit(opts: GitRunOptions): Promise<GitRunResult> {
       child = spawn('git', [...opts.args], {
         cwd: opts.root,
         shell: false,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [opts.stdin === undefined || opts.write === true ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         env: cleanEnv(opts.env ?? {}),
       });
     } catch (error) {
@@ -266,6 +274,10 @@ function spawnGit(opts: GitRunOptions): Promise<GitRunResult> {
       errBytes += chunk.length;
       err.push(chunk);
     });
+    if (opts.stdin !== undefined && opts.write !== true && child.stdin !== null) {
+      // 写完立即关闭：`cat-file --batch-check` 读到 EOF 才收尾。
+      child.stdin.end(opts.stdin);
+    }
     child.on('error', (error) => {
       if (settled) return;
       settled = true;

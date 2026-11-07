@@ -102,6 +102,27 @@ type Prepared =
  * 然后按 DHP 方法逐个转发 `stage` / `unstage` / `commit` / `createBranch` /
  * `switchBranch`。
  */
+/**
+ * 这条 stderr 是否表示"签名失败"（`27` §10.5.3）。
+ *
+ * 只做保守匹配：宁可不匹配（退回 `git_command_failed`）也不要把普通失败误判成签名问题——
+ * 误判会让界面给出"无签名提交"这个危险选项。
+ */
+export function isSigningFailure(stderr: string | undefined): boolean {
+  if (stderr === undefined || stderr === '') return false;
+  const text = stderr.toLowerCase();
+  const signatures = [
+    'gpg failed to sign',
+    'failed to write commit object',
+    'error: gpg failed',
+    'signing failed',
+    'gpg: signing failed',
+    'could not sign',
+    'ssh signing',
+  ];
+  return signatures.some((needle) => text.includes(needle));
+}
+
 export class GitWriteService {
   private readonly reader: GitStatusReader;
   private readonly credentials: CredentialProvider | undefined;
@@ -205,16 +226,18 @@ export class GitWriteService {
     root: string,
     message: string,
     envelope: GitCommandEnvelope,
-    opts?: { includeUnstaged?: boolean; noVerify?: boolean },
+    opts?: { includeUnstaged?: boolean; noVerify?: boolean; allowEmpty?: boolean; noSign?: boolean },
   ): Promise<GitAckResult> {
     const action = 'git.commit';
     const includeUnstaged = opts?.includeUnstaged === true;
     const noVerify = opts?.noVerify === true;
+    const allowEmpty = opts?.allowEmpty === true;
+    const noSign = opts?.noSign === true;
     try {
       this.assertEnvelope(envelope);
       const text = message.trim();
       if (text.length === 0) return await this.reject(root, action, envelope, '提交信息不能为空');
-      const hash = requestHash(action, root, { message: text, includeUnstaged, noVerify });
+      const hash = requestHash(action, root, { message: text, includeUnstaged, noVerify, allowEmpty, noSign });
       const prepared = await this.prepare(root, envelope, hash);
       if (!prepared.ok) {
         await this.record(root, action, `未执行（${prepared.reply.status}）：${prepared.reply.reason ?? ''}`, 'failed', null);
@@ -223,12 +246,15 @@ export class GitWriteService {
       const notes: string[] = [];
       if (includeUnstaged) notes.push('包含未暂存改动');
       if (noVerify) notes.push('已跳过钩子');
+      if (allowEmpty) notes.push('允许空提交');
+      // `noSign` 只可能在用户看到签名失败后显式选择；审计里必须留痕。
+      if (noSign) notes.push('本次未签名（用户显式选择）');
       await this.recordIntent(
         root,
         action,
         `准备提交${notes.length > 0 ? `（${notes.join('，')}）` : ''}`,
       );
-      const command = await this.commitCommand(text, includeUnstaged, noVerify);
+      const command = await this.commitCommand(text, includeUnstaged, noVerify, allowEmpty, noSign);
       try {
         await runGit({ root, args: command.args, write: true });
       } finally {
@@ -246,12 +272,22 @@ export class GitWriteService {
       await this.record(
         root,
         action,
-        `提交成功：${sha.slice(0, 12)}${noVerify ? '（已跳过钩子）' : ''}`,
+        `提交成功：${sha.slice(0, 12)}${noVerify ? '（已跳过钩子）' : ''}${noSign ? '（未签名）' : ''}`,
         'success',
         null,
       );
       return result;
     } catch (error) {
+      // 签名失败必须是**独立 kind**：界面要给出"重试 / 无签名提交 / 取消"三选一，
+      // 而不是把它混进 git_command_failed 让用户以为"提交坏了"。
+      if (error instanceof GitError && error.kind === 'git_command_failed' && isSigningFailure(error.stderrTail)) {
+        const signing = new GitError('git_signing_failed', 'commit signing failed; choose retry, unsigned commit, or cancel', {
+          ...(error.exitCode !== undefined ? { exitCode: error.exitCode } : {}),
+          ...(error.stderrTail !== undefined ? { stderrTail: error.stderrTail } : {}),
+        });
+        await this.reportFailure(root, action, signing);
+        throw signing;
+      }
       await this.reportFailure(root, action, error);
       throw error;
     }
@@ -458,10 +494,15 @@ export class GitWriteService {
     message: string,
     includeUnstaged: boolean,
     noVerify: boolean,
+    allowEmpty: boolean,
+    noSign: boolean,
   ): Promise<{ args: string[]; dispose: () => Promise<void> }> {
     const args = ['commit'];
     if (includeUnstaged) args.push('-a');
     if (noVerify) args.push('--no-verify');
+    if (allowEmpty) args.push('--allow-empty');
+    // 签名失败**绝不静默降级**：只有用户在失败面板里显式选择"无签名提交"才走到这里。
+    if (noSign) args.push('--no-gpg-sign');
     if (!/[\r\n]/.test(message)) {
       args.push('-m', message);
       return { args, dispose: async () => { /* 无临时文件 */ } };

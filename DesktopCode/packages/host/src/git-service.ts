@@ -33,11 +33,13 @@
  * 与"HEAD 历史的第 N 条"不是一回事（2026-11-07 拍板）。
  */
 
+import { constants as fsConstants } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type {
   DiffHunk,
   GitAuthInfo,
+  GitHookInfo,
   GitBranchInfo,
   GitBranchesResult,
   GitCommitNode,
@@ -102,6 +104,31 @@ interface StatusRecord {
   readonly oldPath: string | null;
 }
 
+/** 提交相关的钩子名（`27` §10.5.3）：只关心这三个。 */
+const COMMIT_HOOK_NAMES = ['pre-commit', 'commit-msg', 'pre-push'] as const;
+
+/** `git ls-files -s` 的一条索引记录。 */
+interface IndexEntry {
+  readonly sha: string;
+  readonly path: string;
+}
+
+/** 解析 `git ls-files -s -z`：`<mode> <sha> <stage>\t<path>\0`。 */
+function parseIndexEntries(stdout: string): IndexEntry[] {
+  const entries: IndexEntry[] = [];
+  for (const record of stdout.split('\0')) {
+    if (record === '') continue;
+    const tab = record.indexOf('\t');
+    if (tab < 0) continue;
+    const meta = record.slice(0, tab).split(' ');
+    const sha = meta[1];
+    const filePath = record.slice(tab + 1);
+    if (sha === undefined || filePath === '') continue;
+    entries.push({ sha, path: filePath });
+  }
+  return entries;
+}
+
 /** 一次 numstat 记录。 */
 interface NumStat {
   readonly added: number | null;
@@ -153,7 +180,7 @@ export class GitService {
     const workspaceRoot = path.resolve(root);
     const prefix = await this.repoPrefix(root);
 
-    const [statusOut, netOut, unstagedOut, stagedOut, headOut, symOut, abOut] = await Promise.all([
+    const [statusOut, netOut, unstagedOut, stagedOut, headOut, symOut, abOut, stagedSizes, hooks] = await Promise.all([
       this.git(root, ['status', '--porcelain=v2', '-z', '--untracked-files=all'], { maxOutputBytes: MAX_STATUS_OUTPUT_BYTES }),
       this.git(root, ['diff', 'HEAD', '--numstat', '-z'], { allowFailure: true }),
       this.git(root, ['diff', '--numstat', '-z'], { allowFailure: true }),
@@ -162,6 +189,8 @@ export class GitService {
       this.git(root, ['symbolic-ref', '--short', 'HEAD'], { allowFailure: true }),
       // 没有上游时 rev-list 会失败（exit 128）；这是**正常状态**，不是错误。
       this.git(root, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}'], { allowFailure: true }),
+      this.stagedBlobSizes(root, prefix),
+      this.commitHooks(root),
     ]);
 
     const head = headOut.code === 0 ? headOut.stdout.trim() || null : null;
@@ -185,7 +214,7 @@ export class GitService {
         truncated = true;
         break;
       }
-      const entry = await this.toFileEntry(root, prefix, record, net, staged, unstaged);
+      const entry = await this.toFileEntry(root, prefix, record, net, staged, unstaged, stagedSizes);
       if (entry !== null) files.push(entry);
     }
 
@@ -207,6 +236,7 @@ export class GitService {
       behind,
       files,
       truncated,
+      hooks,
       revision: this.revisionOf(root),
       fetchedAt: Date.now(),
     };
@@ -446,7 +476,7 @@ export class GitService {
   private async git(
     root: string,
     args: readonly string[],
-    opts: { allowFailure?: boolean; maxOutputBytes?: number } = {},
+    opts: { allowFailure?: boolean; maxOutputBytes?: number; stdin?: string } = {},
   ): Promise<GitRunResult> {
     const request: GitRunOptions = {
       root,
@@ -454,6 +484,7 @@ export class GitService {
       timeoutMs: this.timeoutMs,
       allowFailure: opts.allowFailure ?? false,
       ...(opts.maxOutputBytes !== undefined ? { maxOutputBytes: opts.maxOutputBytes } : {}),
+      ...(opts.stdin !== undefined ? { stdin: opts.stdin } : {}),
     };
     return await runGit(request);
   }
@@ -483,6 +514,77 @@ export class GitService {
     return repoPath;
   }
 
+  /**
+   * 已暂存内容（即将提交的 blob）的字节数：`path → size`。
+   *
+   * 口径说明（**不能拿工作区文件大小冒充**）：
+   *  - 用 `git ls-files -s` 拿索引里的 blob 哈希，再用 `git cat-file --batch-check`
+   *    一次批量取大小——两次子进程，不随文件数线性增长；
+   *  - 只覆盖**索引区**条目：未暂存 / 未跟踪文件一律不出现在这里（`sizeBytes=null`）；
+   *  - 取不到（超时 / 输出截断 / `missing`）就跳过，界面显示"大小不可统计"，不猜数字。
+   */
+  private async stagedBlobSizes(root: string, prefix: string): Promise<Map<string, number>> {
+    const sizes = new Map<string, number>();
+    const listed = await this.git(root, ['ls-files', '-s', '-z'], { allowFailure: true, maxOutputBytes: 4 * 1024 * 1024 });
+    if (listed.code !== 0) return sizes;
+    /** blob 哈希 → 工作区相对路径（同一 blob 被多个路径引用时都要记）。 */
+    const byHash = new Map<string, string[]>();
+    for (const record of parseIndexEntries(listed.stdout)) {
+      if (!isInsideWorkspace(prefix, record.path)) continue;
+      const relative = this.toWorkspacePath(prefix, record.path);
+      const paths = byHash.get(record.sha);
+      if (paths === undefined) byHash.set(record.sha, [relative]);
+      else paths.push(relative);
+    }
+    if (byHash.size === 0) return sizes;
+    const hashes = [...byHash.keys()];
+    const batch = await this.git(root, ['cat-file', '--batch-check'], {
+      allowFailure: true,
+      stdin: hashes.map((hash) => `${hash}\n`).join(''),
+      maxOutputBytes: 4 * 1024 * 1024,
+    });
+    if (batch.code !== 0) return sizes;
+    for (const line of batch.stdout.split('\n')) {
+      // 形如 `<sha> blob <size>`；`missing` / `ambiguous` 一律跳过。
+      const parts = line.trim().split(/\s+/);
+      if (parts.length !== 3 || parts[1] !== 'blob') continue;
+      const sha = parts[0] ?? '';
+      const size = Number(parts[2]);
+      if (!Number.isFinite(size) || size < 0) continue;
+      for (const relative of byHash.get(sha) ?? []) sizes.set(relative, size);
+    }
+    return sizes;
+  }
+
+  /**
+   * 仓库里存在的提交相关钩子（`pre-commit` / `commit-msg` / `pre-push`）。
+   *
+   * 钩子目录用 `git rev-parse --git-path hooks` 解析——这样 worktree / submodule /
+   * `core.hooksPath` 都能拿到真实位置，不靠猜 `.git/hooks`。
+   * **只报事实**：`executable` 用 `X_OK` 判定；不可执行的钩子 Git 不会运行，
+   * 界面不能把它算进"将运行的 N 个"。
+   */
+  private async commitHooks(root: string): Promise<GitHookInfo[]> {
+    const resolved = await this.git(root, ['rev-parse', '--git-path', 'hooks'], { allowFailure: true });
+    if (resolved.code !== 0) return [];
+    const dir = resolved.stdout.trim();
+    if (dir === '') return [];
+    const hooks: GitHookInfo[] = [];
+    for (const name of COMMIT_HOOK_NAMES) {
+      const file = path.resolve(root, dir, name);
+      try {
+        const stat = await fs.stat(file);
+        if (!stat.isFile()) continue;
+        let executable = false;
+        try { await fs.access(file, fsConstants.X_OK); executable = true; } catch { executable = false; }
+        hooks.push({ name, executable });
+      } catch {
+        // 不存在就是不存在：不报、不猜。
+      }
+    }
+    return hooks;
+  }
+
   /** 把一条状态记录翻译成 `GitFileEntry`。 */
   private async toFileEntry(
     root: string,
@@ -491,6 +593,7 @@ export class GitService {
     net: Map<string, NumStat>,
     staged: Map<string, NumStat>,
     unstaged: Map<string, NumStat>,
+    stagedSizes: Map<string, number>,
   ): Promise<GitFileEntry | null> {
     if (record.path === '') return null;
     // 工作区根不是仓库根时，只报工作区范围内的文件：否则一半路径是工作区相对、
@@ -512,6 +615,8 @@ export class GitService {
         removed: lines === null ? null : 0,
         stat: lines === null ? 'unavailable' : 'exact',
         binary: stat.kind === 'binary',
+        // 未跟踪文件不在索引区，没有"将要提交的 blob"。
+        sizeBytes: null,
       };
     }
 
@@ -532,6 +637,8 @@ export class GitService {
       removed: counts?.removed ?? null,
       stat: counts === undefined ? 'unavailable' : counts.binary ? 'unavailable' : 'exact',
       binary: counts?.binary ?? false,
+      // 只有进索引区的条目才有"将要提交的内容大小"；删除条目为 0（提交里是删除）。
+      sizeBytes: !isStaged ? null : (stagedSizes.get(relative) ?? (status === 'deleted' ? 0 : null)),
     };
   }
 
