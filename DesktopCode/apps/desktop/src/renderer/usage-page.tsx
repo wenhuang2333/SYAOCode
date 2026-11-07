@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import type { ChannelInfo, UsageDay, UsageGroup, UsageQuery, UsageReport, UsageTotals, WorkspaceInfo } from '@syaocode/dhp';
+import { tv, type Lang } from './i18n-views';
 
 export interface UsagePageProps {
   readonly report: UsageReport | undefined;
@@ -8,11 +9,18 @@ export interface UsagePageProps {
   readonly query: UsageQuery;
   readonly loading: boolean;
   readonly onQuery: (query: UsageQuery) => void;
+  /** 界面语言；默认中文（与桌面端默认一致）。 */
+  readonly lang?: Lang | undefined;
 }
 
 type TrendMetric = 'tokens' | 'cost' | 'requests';
 export type DatePreset = 'today' | '7d' | '30d' | 'custom';
-const METRICS: Readonly<Record<TrendMetric, string>> = { tokens: 'Tokens', cost: '成本 (USD)', requests: '请求数' };
+export function metrics(lang: Lang = 'zh'): Readonly<Record<TrendMetric, string>> {
+  return { tokens: tv(lang, 'usage.metric.tokens'), cost: tv(lang, 'usage.metric.cost'), requests: tv(lang, 'usage.metric.requests') };
+}
+
+/** 中文指标名（默认语言），保留给既有调用方与测试。 */
+export const METRICS: Readonly<Record<TrendMetric, string>> = metrics('zh');
 const numberFormat = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 });
 
 export function formatNumber(value: number | null | undefined): string {
@@ -49,23 +57,23 @@ function parseLocalDate(value: string): Date | undefined {
   return Number.isFinite(date.getTime()) && localDateValue(date.getTime()) === value ? date : undefined;
 }
 
-export function usageQueryForDates(from: string, to: string, workspaceRoot?: string):
+export function usageQueryForDates(from: string, to: string, workspaceRoot?: string, lang: Lang = 'zh'):
   { readonly ok: true; readonly query: UsageQuery } | { readonly ok: false; readonly error: string } {
   const start = parseLocalDate(from);
   const end = parseLocalDate(to);
-  if (!start || !end) return { ok: false, error: '请选择有效的开始日期和结束日期。' };
-  if (start > end) return { ok: false, error: '开始日期不能晚于结束日期，请调整日期范围。' };
+  if (!start || !end) return { ok: false, error: tv(lang, 'usage.error.dateRangeRequired') };
+  if (start > end) return { ok: false, error: tv(lang, 'usage.error.dateOrder') };
   // Local calendar arithmetic, not +86,400,000: DST days can be 23 or 25 hours.
   end.setDate(end.getDate() + 1);
   end.setMilliseconds(-1);
   return { ok: true, query: { from: start.getTime(), to: end.getTime(), ...(workspaceRoot ? { workspaceRoot } : {}) } };
 }
 
-export function presetUsageQuery(preset: Exclude<DatePreset, 'custom'>, workspaceRoot?: string, now = Date.now()): UsageQuery {
+export function presetUsageQuery(preset: Exclude<DatePreset, 'custom'>, workspaceRoot?: string, now = Date.now(), lang: Lang = 'zh'): UsageQuery {
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - (preset === 'today' ? 0 : preset === '7d' ? 6 : 29));
-  const result = usageQueryForDates(localDateValue(start.getTime()), localDateValue(now), workspaceRoot);
+  const result = usageQueryForDates(localDateValue(start.getTime()), localDateValue(now), workspaceRoot, lang);
   if (!result.ok) throw new Error(result.error);
   return result.query;
 }
@@ -86,16 +94,28 @@ export function cacheHitRate(totals: UsageTotals | undefined): number | null {
   return totals.cacheReadTokens / totals.inputTokens;
 }
 
-export function costCoverage(totals: UsageTotals | undefined): string {
-  if (!totals) return '等待用量报告';
-  if (totals.requests === 0) return '暂无请求记录';
+export function costCoverage(totals: UsageTotals | undefined, lang: Lang = 'zh'): string {
+  if (!totals) return tv(lang, 'usage.coverage.waiting');
+  if (totals.requests === 0) return tv(lang, 'usage.coverage.noRequests');
   const known = Math.max(0, totals.requests - totals.unknownCostRequests);
-  return `${totals.unknownCostRequests > 0 ? (known > 0 ? '部分已知' : '成本未提供') : '已知成本'} · 覆盖 ${formatPercent(known / totals.requests)} (${formatNumber(known)}/${formatNumber(totals.requests)} 次)`;
+  const state = totals.unknownCostRequests > 0
+    ? (known > 0 ? tv(lang, 'usage.coverage.partialKnown') : tv(lang, 'usage.coverage.costUnknown'))
+    : tv(lang, 'usage.coverage.known');
+  return tv(lang, 'usage.coverage.costLine', {
+    state,
+    percent: formatPercent(known / totals.requests),
+    known: formatNumber(known),
+    total: formatNumber(totals.requests),
+  });
 }
 
-export function cacheCoverage(totals: UsageTotals | undefined): string {
-  if (!totals || totals.requests === 0) return '暂无缓存上报';
-  return `${totals.cacheReportedRequests < totals.requests ? '部分覆盖' : '上报覆盖'} · ${formatNumber(totals.cacheReportedRequests)}/${formatNumber(totals.requests)} 次请求`;
+export function cacheCoverage(totals: UsageTotals | undefined, lang: Lang = 'zh'): string {
+  if (!totals || totals.requests === 0) return tv(lang, 'usage.coverage.noCache');
+  return tv(lang, 'usage.coverage.cacheLine', {
+    state: totals.cacheReportedRequests < totals.requests ? tv(lang, 'usage.coverage.cachePartial') : tv(lang, 'usage.coverage.cacheCovered'),
+    reported: formatNumber(totals.cacheReportedRequests),
+    total: formatNumber(totals.requests),
+  });
 }
 
 function tokenValue(totals: UsageTotals | undefined, key: 'totalTokens' | 'inputTokens' | 'outputTokens'): number | null {
@@ -138,9 +158,12 @@ function niceMaximum(value: number, integer: boolean): number {
   return integer ? Math.max(4, step * scale) : step * scale;
 }
 
-function Chart({ report, query, metric }: { report: UsageReport | undefined; query: UsageQuery; metric: TrendMetric | 'sessions' }): React.JSX.Element {
+function Chart({ report, query, metric, lang }: {
+  report: UsageReport | undefined; query: UsageQuery; metric: TrendMetric | 'sessions'; lang: Lang;
+}): React.JSX.Element {
   const id = useId();
-  const title = metric === 'sessions' ? '每日活跃会话' : `${METRICS[metric]} 趋势`;
+  const labels = metrics(lang);
+  const title = metric === 'sessions' ? tv(lang, 'usage.chart.dailyActiveSessions') : tv(lang, 'usage.chart.trendOf', { metric: labels[metric] });
   const days = [...(report?.days ?? [])].sort((a, b) => a.date.localeCompare(b.date));
   const from = report?.from ?? query.from;
   const to = report?.to ?? query.to;
@@ -170,7 +193,7 @@ function Chart({ report, query, metric }: { report: UsageReport | undefined; que
   return <div className="usage-chart-wrap">
     <svg className="usage-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={`${id}-title ${id}-desc`}>
       <title id={`${id}-title`}>{title}</title>
-      <desc id={`${id}-desc`}>按本地日期统计。横轴为日期，纵轴为{metric === 'sessions' ? '会话数' : METRICS[metric]}。精确值见下方每日明细；未知值留空，不按零绘制。</desc>
+      <desc id={`${id}-desc`}>{tv(lang, 'usage.chart.desc', { axis: metric === 'sessions' ? tv(lang, 'usage.chart.axisSessions') : labels[metric] })}</desc>
       <defs><linearGradient id={`${id}-bar`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8063e5"/><stop offset="100%" stopColor="#c7b7f7"/></linearGradient></defs>
       {[0, 1, 2, 3, 4].map((tick) => <g key={tick}>
         <line className="usage-grid-line" x1={left} x2={width - right} y1={y(maximum * tick / 4)} y2={y(maximum * tick / 4)} />
@@ -182,24 +205,31 @@ function Chart({ report, query, metric }: { report: UsageReport | undefined; que
       >{localDateValue(first + range * fraction).slice(5).replace('-', '/')}</text>)}
       {!noRequests && metric !== 'sessions' && <path className="usage-trend-line" d={line} fill="none"/>}
       {!noRequests && points.map((point) => point.value === null ? null : metric === 'sessions'
-        ? <rect key={point.day.date} x={Math.min(width - right - barWidth, Math.max(left, point.x - barWidth / 2))} y={y(point.value)} width={barWidth} height={Math.max(0, y(0) - y(point.value))} rx="3" fill={`url(#${id}-bar)`}><title>{`${point.day.date} · ${exactNumber(point.value)} 个活跃会话`}</title></rect>
-        : <circle className="usage-chart-point" key={point.day.date} cx={point.x} cy={y(point.value)} r={points.length > 60 ? 1.8 : 3.5}><title>{`${point.day.date} · ${METRICS[metric]} ${metric === 'cost' ? formatUsd(point.value) : exactNumber(point.value)}${metric === 'cost' ? `；${costCoverage(point.day.totals)}` : ''}`}</title></circle>)}
-      {(noRequests || allUnknown || !report) && <text className="usage-chart-empty" x={(left + width - right) / 2} y={top + plotHeight / 2} textAnchor="middle">{!report ? '等待用量报告' : noRequests ? '所选范围暂无请求记录' : '该指标尚未提供'}</text>}
+        ? <rect key={point.day.date} x={Math.min(width - right - barWidth, Math.max(left, point.x - barWidth / 2))} y={y(point.value)} width={barWidth} height={Math.max(0, y(0) - y(point.value))} rx="3" fill={`url(#${id}-bar)`}><title>{tv(lang, 'usage.chart.pointSessions', { date: point.day.date, value: exactNumber(point.value) })}</title></rect>
+        : <circle className="usage-chart-point" key={point.day.date} cx={point.x} cy={y(point.value)} r={points.length > 60 ? 1.8 : 3.5}><title>{metric === 'cost'
+          ? tv(lang, 'usage.chart.pointWithCoverage', {
+            base: tv(lang, 'usage.chart.pointValue', { date: point.day.date, metric: labels[metric], value: formatUsd(point.value) }),
+            coverage: costCoverage(point.day.totals, lang),
+          })
+          : tv(lang, 'usage.chart.pointValue', { date: point.day.date, metric: labels[metric], value: exactNumber(point.value) })}</title></circle>)}
+      {(noRequests || allUnknown || !report) && <text className="usage-chart-empty" x={(left + width - right) / 2} y={top + plotHeight / 2} textAnchor="middle">{!report ? tv(lang, 'usage.chart.emptyWaiting') : noRequests ? tv(lang, 'usage.chart.emptyNoRequests') : tv(lang, 'usage.chart.emptyUnknown')}</text>}
     </svg>
-    <div className="usage-chart-legend"><span className="usage-dot usage-dot-accent"/>{metric === 'sessions' ? '有请求的会话（每日去重）' : METRICS[metric]}<span className="usage-chart-legend-note">{metric === 'cost' ? '仅绘制已知成本，缺失值留空' : '按请求发生的本地日期'}</span></div>
+    <div className="usage-chart-legend"><span className="usage-dot usage-dot-accent"/>{metric === 'sessions' ? tv(lang, 'usage.chart.legendSessions') : labels[metric]}<span className="usage-chart-legend-note">{metric === 'cost' ? tv(lang, 'usage.chart.legendCostNote') : tv(lang, 'usage.chart.legendDateNote')}</span></div>
   </div>;
 }
 
-function Distribution({ title, groups, available }: { title: string; groups: readonly UsageGroup[]; available: boolean }): React.JSX.Element {
+function Distribution({ title, groups, available, lang }: {
+  title: string; groups: readonly UsageGroup[]; available: boolean; lang: Lang;
+}): React.JSX.Element {
   const id = useId();
   const total = groups.reduce((sum, group) => sum + group.totals.totalTokens, 0);
   const circumference = 2 * Math.PI * 65;
   let offset = 0;
   return <section className="dash-panel usage-distribution">
-    <div className="dash-panel-heading"><h2>{title}分布</h2><span className="dash-caption">按已知 Tokens</span></div>
+    <div className="dash-panel-heading"><h2>{tv(lang, 'usage.distribution.title', { title })}</h2><span className="dash-caption">{tv(lang, 'usage.distribution.byKnownTokens')}</span></div>
     <div className="usage-distribution-visual">
       <svg className="usage-donut" viewBox="0 0 180 180" role="img" aria-labelledby={`${id}-title`}>
-        <title id={`${id}-title`}>{`${title} Tokens 分布，总计 ${available ? exactNumber(total) : '未提供'}。各分组数值见图例和明细表。`}</title>
+        <title id={`${id}-title`}>{tv(lang, 'usage.distribution.donutTitle', { title, total: available ? exactNumber(total) : tv(lang, 'usage.distribution.notProvided') })}</title>
         <circle className="usage-donut-track" cx="90" cy="90" r="65" fill="none" strokeWidth="18"/>
         {groups.map((group) => {
           const length = total > 0 ? group.totals.totalTokens / total * circumference : 0;
@@ -207,61 +237,65 @@ function Distribution({ title, groups, available }: { title: string; groups: rea
           return length > 0 ? <circle key={group.id} cx="90" cy="90" r="65" fill="none" strokeWidth="18" stroke={usageGroupColor(group.id)} strokeDasharray={`${length} ${circumference}`} strokeDashoffset={-start} transform="rotate(-90 90 90)"><title>{`${group.name}: ${exactNumber(group.totals.totalTokens)} Tokens`}</title></circle> : null;
         })}
         <text className="usage-donut-value" x="90" y="88" textAnchor="middle">{available ? formatCompact(total) : '—'}</text>
-        <text className="usage-donut-label" x="90" y="109" textAnchor="middle">已知 Tokens</text>
+        <text className="usage-donut-label" x="90" y="109" textAnchor="middle">{tv(lang, 'usage.distribution.knownTokens')}</text>
       </svg>
-      <ul className="usage-distribution-legend" aria-label={`${title}分布图例`}>
-        {groups.length === 0 ? <li className="usage-legend-empty">{available ? '暂无分组数据' : '等待用量报告'}</li> : groups.map((group) => <li key={group.id}>
+      <ul className="usage-distribution-legend" aria-label={tv(lang, 'usage.distribution.legendAria', { title })}>
+        {groups.length === 0 ? <li className="usage-legend-empty">{available ? tv(lang, 'usage.distribution.emptyGroups') : tv(lang, 'usage.distribution.waiting')}</li> : groups.map((group) => <li key={group.id}>
           <span className="usage-dot" style={{ backgroundColor: usageGroupColor(group.id) }}/><span className="usage-legend-name" title={group.name}>{group.name}</span>
           <strong title={exactNumber(group.totals.totalTokens)}>{formatCompact(tokenValue(group.totals, 'totalTokens'))}</strong><span>{formatPercent(total > 0 ? group.totals.totalTokens / total : null)}</span>
         </li>)}
       </ul>
     </div>
-    <div className="dash-table-scroll" tabIndex={0} role="region" aria-label={`${title}用量明细，可横向滚动`}>
-      <table className="dash-table"><caption>{title}用量明细 · 精确值</caption><thead><tr><th scope="col">{title}</th><th scope="col">请求</th><th scope="col">输入 / 输出</th><th scope="col">缓存读取</th><th scope="col">成本 (USD)</th></tr></thead>
-        <tbody>{groups.length === 0 ? <tr><td colSpan={5} className="dash-table-empty">{available ? '所选范围暂无记录' : '等待用量报告'}</td></tr> : groups.map((group) => <tr key={group.id}>
+    <div className="dash-table-scroll" tabIndex={0} role="region" aria-label={tv(lang, 'usage.distribution.regionAria', { title })}>
+      <table className="dash-table"><caption>{tv(lang, 'usage.distribution.caption', { title })}</caption><thead><tr><th scope="col">{title}</th><th scope="col">{tv(lang, 'usage.distribution.tableRequests')}</th><th scope="col">{tv(lang, 'usage.distribution.tableTokens')}</th><th scope="col">{tv(lang, 'usage.distribution.tableCache')}</th><th scope="col">{tv(lang, 'usage.distribution.tableCost')}</th></tr></thead>
+        <tbody>{groups.length === 0 ? <tr><td colSpan={5} className="dash-table-empty">{available ? tv(lang, 'usage.distribution.emptyRange') : tv(lang, 'usage.distribution.waiting')}</td></tr> : groups.map((group) => <tr key={group.id}>
           <th scope="row"><span className="usage-table-name"><span className="usage-dot" style={{ backgroundColor: usageGroupColor(group.id) }}/><span title={group.id}>{group.name}</span></span></th>
-          <td>{exactNumber(group.totals.requests)}<small>{formatNumber(group.totals.errors)} 次错误</small></td>
-          <td>{exactNumber(tokenValue(group.totals, 'inputTokens'))} / {exactNumber(tokenValue(group.totals, 'outputTokens'))}{group.totals.unknownUsageRequests > 0 && <small>{formatNumber(group.totals.unknownUsageRequests)} 次用量未知</small>}</td>
-          <td>{exactNumber(group.totals.cacheReadTokens)}<small>{cacheCoverage(group.totals)}</small></td>
-          <td title={group.totals.costUsd === null ? '未提供' : `${exactNumber(group.totals.costUsd)} USD`}>{formatUsd(group.totals.costUsd)}<small>{costCoverage(group.totals)}</small></td>
+          <td>{exactNumber(group.totals.requests)}<small>{tv(lang, 'usage.distribution.errorsSuffix', { count: formatNumber(group.totals.errors) })}</small></td>
+          <td>{exactNumber(tokenValue(group.totals, 'inputTokens'))} / {exactNumber(tokenValue(group.totals, 'outputTokens'))}{group.totals.unknownUsageRequests > 0 && <small>{tv(lang, 'usage.distribution.unknownUsageSuffix', { count: formatNumber(group.totals.unknownUsageRequests) })}</small>}</td>
+          <td>{exactNumber(group.totals.cacheReadTokens)}<small>{cacheCoverage(group.totals, lang)}</small></td>
+          <td title={group.totals.costUsd === null ? tv(lang, 'usage.kpi.notProvided') : `${exactNumber(group.totals.costUsd)} USD`}>{formatUsd(group.totals.costUsd)}<small>{costCoverage(group.totals, lang)}</small></td>
         </tr>)}</tbody>
       </table>
     </div>
   </section>;
 }
 
-export function channelRequestHealth(totals: UsageTotals | undefined): { label: string; tone: 'neutral' | 'good' | 'warning' } {
-  if (!totals || totals.requests === 0) return { label: '暂无请求记录', tone: 'neutral' };
-  if (totals.errors > 0) return { label: `错误率 ${formatPercent(totals.errors / totals.requests)}`, tone: 'warning' };
-  return { label: '历史请求无错误', tone: 'good' };
+export function channelRequestHealth(totals: UsageTotals | undefined, lang: Lang = 'zh'): { label: string; tone: 'neutral' | 'good' | 'warning' } {
+  if (!totals || totals.requests === 0) return { label: tv(lang, 'usage.coverage.healthNoRequests'), tone: 'neutral' };
+  if (totals.errors > 0) return { label: tv(lang, 'usage.coverage.healthErrors', { percent: formatPercent(totals.errors / totals.requests) }), tone: 'warning' };
+  return { label: tv(lang, 'usage.coverage.healthOk'), tone: 'good' };
 }
 
-function snapshotTime(timestamp: number): string {
-  return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString('zh-CN', { hour12: false }) : '时间未提供';
+function snapshotTime(timestamp: number, lang: Lang): string {
+  if (!Number.isFinite(timestamp)) return tv(lang, 'usage.health.timeMissing');
+  return new Date(timestamp).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { hour12: false });
 }
 
-function ChannelHealth({ channels, report }: { channels: readonly ChannelInfo[]; report: UsageReport | undefined }): React.JSX.Element {
+function ChannelHealth({ channels, report, lang }: {
+  channels: readonly ChannelInfo[]; report: UsageReport | undefined; lang: Lang;
+}): React.JSX.Element {
   const ids = [...new Set([...channels.map((channel) => channel.id), ...(report?.channels.map((group) => group.id) ?? [])])];
   return <section className="dash-panel usage-health">
-    <div className="dash-panel-heading"><div><h2>渠道健康</h2><p className="dash-caption">当前筛选范围的请求结果，不代表实时连通性</p></div><span className="dash-tag">本地请求观测</span></div>
-    <div className="usage-health-grid">{ids.length === 0 ? <p className="dash-empty">暂无渠道配置或历史请求。</p> : ids.map((id) => {
+    <div className="dash-panel-heading"><div><h2>{tv(lang, 'usage.health.title')}</h2><p className="dash-caption">{tv(lang, 'usage.health.caption')}</p></div><span className="dash-tag">{tv(lang, 'usage.health.tag')}</span></div>
+    <div className="usage-health-grid">{ids.length === 0 ? <p className="dash-empty">{tv(lang, 'usage.health.empty')}</p> : ids.map((id) => {
       const channel = channels.find((item) => item.id === id);
       const group = report?.channels.find((item) => item.id === id);
-      const health = channelRequestHealth(group?.totals);
+      const health = channelRequestHealth(group?.totals, lang);
       return <article className="usage-channel-card" key={id}>
-        <div className="usage-channel-heading"><strong>{channel?.name ?? group?.name ?? id}</strong><span className={`dash-tag dash-tag-${health.tone}`}>{!report ? '等待报告' : health.label}</span></div>
-        <p className="usage-channel-credential">{channel?.protocol === 'mock' ? <span className="dash-tag dash-tag-demo">离线演示 · Mock</span> : channel ? (channel.credentialReady ? '凭据已配置 · 未检测连通性' : '凭据未配置') : '历史渠道 · 当前未配置'}</p>
-        <dl className="usage-channel-numbers"><div><dt>请求数</dt><dd>{formatNumber(report ? group?.totals.requests ?? 0 : null)}</dd></div><div><dt>错误</dt><dd>{formatNumber(report ? group?.totals.errors ?? 0 : null)}</dd></div><div><dt>取消</dt><dd>{formatNumber(report ? group?.totals.cancelled ?? 0 : null)}</dd></div></dl>
-        <div className="usage-channel-balance"><span>账户余额</span><strong>{channel?.balance ? `${formatNumber(channel.balance.amount)} ${channel.balance.currency}` : '未提供'}</strong></div>
-        <p className="usage-snapshot-note">{channel?.balance ? `手动录入 · ${snapshotTime(channel.balance.updatedAt)} · 非实时` : '未接入账单 API；不从本地成本推算余额'}</p>
-        {channel?.quota ? <div className="usage-quota"><div><span>手动配额 · {channel.quota.unit}</span><strong>{formatNumber(channel.quota.used)} / {formatNumber(channel.quota.limit)}</strong></div><progress max={channel.quota.limit > 0 ? channel.quota.limit : 1} value={Math.min(channel.quota.used, Math.max(1, channel.quota.limit))} aria-label={`${channel.name} 手动配额使用量`}/><p className="usage-snapshot-note">记录于 {snapshotTime(channel.quota.updatedAt)}{channel.quota.used >= channel.quota.limit ? ' · 已达额度上限' : ''}{channel.quota.resetsAt !== undefined ? ` · 重置 ${snapshotTime(channel.quota.resetsAt)}` : ''}</p></div> : <p className="usage-snapshot-note">配额未提供</p>}
+        <div className="usage-channel-heading"><strong>{channel?.name ?? group?.name ?? id}</strong><span className={`dash-tag dash-tag-${health.tone}`}>{!report ? tv(lang, 'usage.health.waiting') : health.label}</span></div>
+        <p className="usage-channel-credential">{channel?.protocol === 'mock' ? <span className="dash-tag dash-tag-demo">{tv(lang, 'usage.health.mockDemo')}</span> : channel ? (channel.credentialReady ? tv(lang, 'usage.health.credentialReady') : tv(lang, 'usage.health.credentialNotReady')) : tv(lang, 'usage.health.historyOnly')}</p>
+        <dl className="usage-channel-numbers"><div><dt>{tv(lang, 'usage.health.requests')}</dt><dd>{formatNumber(report ? group?.totals.requests ?? 0 : null)}</dd></div><div><dt>{tv(lang, 'usage.health.errors')}</dt><dd>{formatNumber(report ? group?.totals.errors ?? 0 : null)}</dd></div><div><dt>{tv(lang, 'usage.health.cancelled')}</dt><dd>{formatNumber(report ? group?.totals.cancelled ?? 0 : null)}</dd></div></dl>
+        <div className="usage-channel-balance"><span>{tv(lang, 'usage.health.balance')}</span><strong>{channel?.balance ? `${formatNumber(channel.balance.amount)} ${channel.balance.currency}` : tv(lang, 'usage.kpi.notProvided')}</strong></div>
+        <p className="usage-snapshot-note">{channel?.balance ? tv(lang, 'usage.health.manualEntry', { time: snapshotTime(channel.balance.updatedAt, lang) }) : tv(lang, 'usage.health.noBillingApi')}</p>
+        {channel?.quota ? <div className="usage-quota"><div><span>{tv(lang, 'usage.health.quotaLabel', { unit: channel.quota.unit })}</span><strong>{formatNumber(channel.quota.used)} / {formatNumber(channel.quota.limit)}</strong></div><progress max={channel.quota.limit > 0 ? channel.quota.limit : 1} value={Math.min(channel.quota.used, Math.max(1, channel.quota.limit))} aria-label={tv(lang, 'usage.health.quotaProgressAria', { name: channel.name })}/><p className="usage-snapshot-note">{tv(lang, 'usage.health.recordedAt', { time: snapshotTime(channel.quota.updatedAt, lang) })}{channel.quota.used >= channel.quota.limit ? tv(lang, 'usage.health.atLimit') : ''}{channel.quota.resetsAt !== undefined ? tv(lang, 'usage.health.resetsAt', { time: snapshotTime(channel.quota.resetsAt, lang) }) : ''}</p></div> : <p className="usage-snapshot-note">{tv(lang, 'usage.health.quotaMissing')}</p>}
       </article>;
     })}</div>
   </section>;
 }
 
-export function UsagePage({ report, channels, workspaces, query, loading, onQuery }: UsagePageProps): React.JSX.Element {
+export function UsagePage({ report, channels, workspaces, query, loading, onQuery, lang = 'zh' }: UsagePageProps): React.JSX.Element {
   const id = useId();
+  const labels = metrics(lang);
   const [metric, setMetric] = useState<TrendMetric>('tokens');
   const [from, setFrom] = useState(() => localDateValue(query.from));
   const [to, setTo] = useState(() => localDateValue(query.to));
@@ -275,7 +309,7 @@ export function UsagePage({ report, channels, workspaces, query, loading, onQuer
 
   const changeDates = (start: string, end: string, root = workspaceRoot): void => {
     setFrom(start); setTo(end); setWorkspaceRoot(root);
-    const result = usageQueryForDates(start, end, root);
+    const result = usageQueryForDates(start, end, root, lang);
     if (!result.ok) { setRangeError(result.error); setPreset('custom'); return; }
     setRangeError(''); setPreset(identifyDatePreset(result.query)); onQuery(result.query);
   };
@@ -284,40 +318,46 @@ export function UsagePage({ report, channels, workspaces, query, loading, onQuer
     setFrom(localDateValue(nextQuery.from)); setTo(localDateValue(nextQuery.to)); setPreset(next); setRangeError(''); onQuery(nextQuery);
   };
   const totals = report?.totals;
-  const tokensNote = totals?.unknownUsageRequests ? `已知小计 · ${formatNumber(totals.unknownUsageRequests)} 次用量未提供` : '输入 + 输出，不重复计缓存';
+  const tokensNote = totals?.unknownUsageRequests
+    ? tv(lang, 'usage.kpi.knownSubtotal', { count: formatNumber(totals.unknownUsageRequests) })
+    : tv(lang, 'usage.kpi.inputPlusOutput');
   const hasMock = report?.channels.some((group) => channels.some((channel) => channel.id === group.id && channel.protocol === 'mock')) ?? false;
   const stats = [
-    { label: '总 Tokens', value: formatCompact(tokenValue(totals, 'totalTokens')), exact: exactNumber(tokenValue(totals, 'totalTokens')), note: tokensNote, symbol: 'Σ', accent: true },
-    { label: '输入 Tokens', value: formatCompact(tokenValue(totals, 'inputTokens')), exact: exactNumber(tokenValue(totals, 'inputTokens')), note: totals?.unknownUsageRequests ? tokensNote : '含缓存读取，不重复累加', symbol: '↙' },
-    { label: '输出 Tokens', value: formatCompact(tokenValue(totals, 'outputTokens')), exact: exactNumber(tokenValue(totals, 'outputTokens')), note: totals?.unknownUsageRequests ? tokensNote : '模型生成的输出', symbol: '↗' },
-    { label: '缓存读取', value: formatCompact(totals?.cacheReadTokens), exact: exactNumber(totals?.cacheReadTokens), note: cacheCoverage(totals), symbol: '▱' },
-    { label: '缓存命中率', value: formatPercent(cacheHitRate(totals)), exact: formatPercent(cacheHitRate(totals)), note: totals && totals.cacheReportedRequests < totals.requests ? '上报不完整，无法确定命中率' : '缓存读取 / 输入 Tokens', symbol: '%' },
-    { label: '活跃会话', value: formatNumber(totals?.activeSessions), exact: exactNumber(totals?.activeSessions), note: '范围内有请求的会话，去重', symbol: '◷' },
-    { label: '活跃渠道', value: formatNumber(totals?.activeChannels), exact: exactNumber(totals?.activeChannels), note: '范围内实际发起请求的渠道', symbol: '⇄' },
-    { label: '成本 · USD', value: formatUsd(totals?.costUsd), exact: totals?.costUsd == null ? '未提供' : `${exactNumber(totals.costUsd)} USD`, note: costCoverage(totals), symbol: '$', accent: true },
-    { label: '请求数', value: formatNumber(totals?.requests), exact: exactNumber(totals?.requests), note: `按 Provider 调用计数${totals ? ` · ${formatNumber(totals.cancelled)} 次取消` : ''}`, symbol: '⌁' },
-    { label: '错误率', value: formatPercent(totals && totals.requests > 0 ? totals.errors / totals.requests : null), exact: totals ? `${totals.errors}/${totals.requests}` : '未提供', note: '错误请求 / 全部请求，不含取消', symbol: '!' },
+    { label: tv(lang, 'usage.kpi.totalTokens'), value: formatCompact(tokenValue(totals, 'totalTokens')), exact: exactNumber(tokenValue(totals, 'totalTokens')), note: tokensNote, symbol: 'Σ', accent: true },
+    { label: tv(lang, 'usage.kpi.inputTokens'), value: formatCompact(tokenValue(totals, 'inputTokens')), exact: exactNumber(tokenValue(totals, 'inputTokens')), note: totals?.unknownUsageRequests ? tokensNote : tv(lang, 'usage.kpi.inputIncludesCache'), symbol: '↙' },
+    { label: tv(lang, 'usage.kpi.outputTokens'), value: formatCompact(tokenValue(totals, 'outputTokens')), exact: exactNumber(tokenValue(totals, 'outputTokens')), note: totals?.unknownUsageRequests ? tokensNote : tv(lang, 'usage.kpi.outputGenerated'), symbol: '↗' },
+    { label: tv(lang, 'usage.kpi.cacheRead'), value: formatCompact(totals?.cacheReadTokens), exact: exactNumber(totals?.cacheReadTokens), note: cacheCoverage(totals, lang), symbol: '▱' },
+    { label: tv(lang, 'usage.kpi.cacheHitRate'), value: formatPercent(cacheHitRate(totals)), exact: formatPercent(cacheHitRate(totals)), note: totals && totals.cacheReportedRequests < totals.requests ? tv(lang, 'usage.kpi.cacheIncomplete') : tv(lang, 'usage.kpi.cacheFormula'), symbol: '%' },
+    { label: tv(lang, 'usage.kpi.activeSessions'), value: formatNumber(totals?.activeSessions), exact: exactNumber(totals?.activeSessions), note: tv(lang, 'usage.kpi.sessionsNote'), symbol: '◷' },
+    { label: tv(lang, 'usage.kpi.activeChannels'), value: formatNumber(totals?.activeChannels), exact: exactNumber(totals?.activeChannels), note: tv(lang, 'usage.kpi.channelsNote'), symbol: '⇄' },
+    { label: tv(lang, 'usage.kpi.cost'), value: formatUsd(totals?.costUsd), exact: totals?.costUsd == null ? tv(lang, 'usage.kpi.notProvided') : `${exactNumber(totals.costUsd)} USD`, note: costCoverage(totals, lang), symbol: '$', accent: true },
+    { label: tv(lang, 'usage.kpi.requests'), value: formatNumber(totals?.requests), exact: exactNumber(totals?.requests), note: tv(lang, 'usage.kpi.requestsNote', { cancelled: totals ? tv(lang, 'usage.kpi.requestsCancelled', { count: formatNumber(totals.cancelled) }) : '' }), symbol: '⌁' },
+    { label: tv(lang, 'usage.kpi.errorRate'), value: formatPercent(totals && totals.requests > 0 ? totals.errors / totals.requests : null), exact: totals ? `${totals.errors}/${totals.requests}` : tv(lang, 'usage.kpi.notProvided'), note: tv(lang, 'usage.kpi.errorsNote'), symbol: '!' },
   ];
   return <main className="usage-page dash-page" aria-labelledby={`${id}-title`}>
-    <header className="dash-page-header"><div><p className="dash-eyebrow">WORKSPACE ANALYTICS</p><h1 id={`${id}-title`}>用量统计</h1><p className="dash-subtitle">每一次请求，都有迹可循。</p></div><span className="dash-tag">本地用量账本</span></header>
+    <header className="dash-page-header"><div><p className="dash-eyebrow">{tv(lang, 'usage.header.eyebrow')}</p><h1 id={`${id}-title`}>{tv(lang, 'usage.header.title')}</h1><p className="dash-subtitle">{tv(lang, 'usage.header.subtitle')}</p></div><span className="dash-tag">{tv(lang, 'usage.header.tag')}</span></header>
     <div className="usage-toolbar">
-      <div className="dash-segmented" role="group" aria-label="日期预设">{([['today', '今天'], ['7d', '近 7 天'], ['30d', '近 30 天']] as const).map(([key, label]) => <button type="button" key={key} aria-pressed={preset === key} onClick={() => choosePreset(key)}>{label}</button>)}</div>
-      <div className="usage-date-range"><label><span>开始日期</span><input type="date" value={from} aria-invalid={Boolean(rangeError)} aria-describedby={rangeError ? `${id}-range-error` : undefined} onChange={(event) => changeDates(event.target.value, to)}/></label><span className="usage-date-divider" aria-hidden="true">—</span><label><span>结束日期（含全天）</span><input type="date" value={to} aria-invalid={Boolean(rangeError)} aria-describedby={rangeError ? `${id}-range-error` : undefined} onChange={(event) => changeDates(from, event.target.value)}/></label></div>
-      <label className="usage-project-filter"><span>项目</span><select value={workspaceRoot} onChange={(event) => changeDates(from, to, event.target.value)}><option value="">全部项目</option>{workspaceRoot && !workspaces.some((workspace) => workspace.root === workspaceRoot) && <option value={workspaceRoot}>{workspaceRoot}（未登记）</option>}{workspaces.map((workspace) => <option key={workspace.root} value={workspace.root}>{workspace.name}</option>)}</select></label>
+      <div className="dash-segmented" role="group" aria-label={tv(lang, 'usage.toolbar.presetAria')}>{([['today', tv(lang, 'usage.toolbar.today')], ['7d', tv(lang, 'usage.toolbar.last7d')], ['30d', tv(lang, 'usage.toolbar.last30d')]] as const).map(([key, label]) => <button type="button" key={key} aria-pressed={preset === key} onClick={() => choosePreset(key)}>{label}</button>)}</div>
+      <div className="usage-date-range"><label><span>{tv(lang, 'usage.toolbar.startDate')}</span><input type="date" value={from} aria-invalid={Boolean(rangeError)} aria-describedby={rangeError ? `${id}-range-error` : undefined} onChange={(event) => changeDates(event.target.value, to)}/></label><span className="usage-date-divider" aria-hidden="true">—</span><label><span>{tv(lang, 'usage.toolbar.endDate')}</span><input type="date" value={to} aria-invalid={Boolean(rangeError)} aria-describedby={rangeError ? `${id}-range-error` : undefined} onChange={(event) => changeDates(from, event.target.value)}/></label></div>
+      <label className="usage-project-filter"><span>{tv(lang, 'usage.toolbar.project')}</span><select value={workspaceRoot} onChange={(event) => changeDates(from, to, event.target.value)}><option value="">{tv(lang, 'usage.toolbar.allProjects')}</option>{workspaceRoot && !workspaces.some((workspace) => workspace.root === workspaceRoot) && <option value={workspaceRoot}>{tv(lang, 'usage.toolbar.unregistered', { root: workspaceRoot })}</option>}{workspaces.map((workspace) => <option key={workspace.root} value={workspace.root}>{workspace.name}</option>)}</select></label>
     </div>
     {rangeError && <p className="dash-notice dash-notice-error" role="alert" id={`${id}-range-error`}>{rangeError}</p>}
-    <div className="usage-report-status" role="status">{loading ? (report ? '正在刷新，当前显示上次查询结果…' : '正在加载用量报告…') : report ? `${localDateValue(report.from)} — ${localDateValue(report.to)} · 本地日期，结束日含全天` : '尚未收到用量报告'}{preset === 'custom' && <span className="dash-tag">自定义范围</span>}</div>
-    {hasMock && <p className="dash-notice dash-notice-demo">包含 Mock 离线演示数据：测试用量不代表真实模型调用或账单。</p>}
+    <div className="usage-report-status" role="status">{loading
+      ? (report ? tv(lang, 'usage.status.refreshing') : tv(lang, 'usage.status.loading'))
+      : report
+        ? tv(lang, 'usage.status.range', { from: localDateValue(report.from), to: localDateValue(report.to) })
+        : tv(lang, 'usage.status.none')}{preset === 'custom' && <span className="dash-tag">{tv(lang, 'usage.status.custom')}</span>}</div>
+    {hasMock && <p className="dash-notice dash-notice-demo">{tv(lang, 'usage.mockNotice')}</p>}
     <div className="usage-report-content" aria-busy={loading}>
-      <section className="usage-kpi-grid" aria-label="用量概览，10 项指标">{stats.map((stat) => <Kpi key={stat.label} {...stat}/>)}</section>
+      <section className="usage-kpi-grid" aria-label={tv(lang, 'usage.aria.kpiGrid')}>{stats.map((stat) => <Kpi key={stat.label} {...stat}/>)}</section>
       <div className="usage-chart-grid">
-        <section className="dash-panel usage-trend"><div className="dash-panel-heading"><div><h2>用量趋势</h2><p className="dash-caption">{metric === 'cost' ? costCoverage(totals) : '观察每天的工作节奏'}</p></div><div className="dash-segmented usage-metric-tabs" role="group" aria-label="趋势指标">{(Object.keys(METRICS) as TrendMetric[]).map((key) => <button type="button" key={key} aria-pressed={metric === key} onClick={() => setMetric(key)}>{key === 'cost' ? '成本' : METRICS[key]}</button>)}</div></div><Chart report={report} query={query} metric={metric}/></section>
-        <section className="dash-panel usage-activity"><div className="dash-panel-heading"><div><h2>会话活跃</h2><p className="dash-caption">每日去重，不可跨日相加</p></div><span className="usage-panel-number">{formatNumber(totals?.activeSessions)}<small> 个会话</small></span></div><Chart report={report} query={query} metric="sessions"/></section>
+        <section className="dash-panel usage-trend"><div className="dash-panel-heading"><div><h2>{tv(lang, 'usage.chart.trendTitle')}</h2><p className="dash-caption">{metric === 'cost' ? costCoverage(totals, lang) : tv(lang, 'usage.chart.trendCaption')}</p></div><div className="dash-segmented usage-metric-tabs" role="group" aria-label={tv(lang, 'usage.chart.metricAria')}>{(Object.keys(METRICS) as TrendMetric[]).map((key) => <button type="button" key={key} aria-pressed={metric === key} onClick={() => setMetric(key)}>{key === 'cost' ? tv(lang, 'usage.metric.costShort') : labels[key]}</button>)}</div></div><Chart report={report} query={query} metric={metric} lang={lang}/></section>
+        <section className="dash-panel usage-activity"><div className="dash-panel-heading"><div><h2>{tv(lang, 'usage.chart.activityTitle')}</h2><p className="dash-caption">{tv(lang, 'usage.chart.activityCaption')}</p></div><span className="usage-panel-number">{formatNumber(totals?.activeSessions)}<small>{tv(lang, 'usage.chart.sessionUnit')}</small></span></div><Chart report={report} query={query} metric="sessions" lang={lang}/></section>
       </div>
-      <div className="usage-distribution-grid"><Distribution title="模型" groups={report?.models ?? []} available={report !== undefined}/><Distribution title="项目" groups={report?.projects ?? []} available={report !== undefined}/></div>
-      <details className="dash-panel usage-daily-details"><summary>每日用量明细 <span>趋势与活跃图的精确数值</span></summary><div className="dash-table-scroll" tabIndex={0} role="region" aria-label="每日用量明细，可横向滚动"><table className="dash-table"><caption>同一筛选结果的按日统计</caption><thead><tr><th scope="col">日期</th><th scope="col">Tokens</th><th scope="col">成本 (USD)</th><th scope="col">请求</th><th scope="col">错误 / 取消</th><th scope="col">活跃会话</th></tr></thead><tbody>{!report?.days.length ? <tr><td colSpan={6} className="dash-table-empty">{report ? '所选范围暂无记录' : '等待用量报告'}</td></tr> : report.days.map((day) => <tr key={day.date}><th scope="row">{day.date}</th><td>{exactNumber(tokenValue(day.totals, 'totalTokens'))}{day.totals.unknownUsageRequests > 0 && <small>{formatNumber(day.totals.unknownUsageRequests)} 次用量未知</small>}</td><td title={day.totals.costUsd === null ? '未提供' : `${exactNumber(day.totals.costUsd)} USD`}>{formatUsd(day.totals.costUsd)}<small>{costCoverage(day.totals)}</small></td><td>{exactNumber(day.totals.requests)}</td><td>{exactNumber(day.totals.errors)} / {exactNumber(day.totals.cancelled)}</td><td>{exactNumber(day.totals.activeSessions)}</td></tr>)}</tbody></table></div></details>
-      <ChannelHealth channels={channels} report={report}/>
-      <p className="usage-footnote">统计来自当前查询的同一份请求报告。Tokens 为已上报用量；输入已包含缓存。成本为 USD 已知金额（可能采用用户配置单价估算），不是上游账单。余额和配额是独立的手动快照。</p>
+      <div className="usage-distribution-grid"><Distribution title={tv(lang, 'usage.distribution.models')} groups={report?.models ?? []} available={report !== undefined} lang={lang}/><Distribution title={tv(lang, 'usage.distribution.projects')} groups={report?.projects ?? []} available={report !== undefined} lang={lang}/></div>
+      <details className="dash-panel usage-daily-details"><summary>{tv(lang, 'usage.daily.summary')} <span>{tv(lang, 'usage.daily.summaryNote')}</span></summary><div className="dash-table-scroll" tabIndex={0} role="region" aria-label={tv(lang, 'usage.daily.regionAria')}><table className="dash-table"><caption>{tv(lang, 'usage.daily.caption')}</caption><thead><tr><th scope="col">{tv(lang, 'usage.daily.columnDate')}</th><th scope="col">{tv(lang, 'usage.daily.columnTokens')}</th><th scope="col">{tv(lang, 'usage.daily.columnCost')}</th><th scope="col">{tv(lang, 'usage.daily.columnRequests')}</th><th scope="col">{tv(lang, 'usage.daily.columnErrors')}</th><th scope="col">{tv(lang, 'usage.daily.columnSessions')}</th></tr></thead><tbody>{!report?.days.length ? <tr><td colSpan={6} className="dash-table-empty">{report ? tv(lang, 'usage.daily.emptyRange') : tv(lang, 'usage.daily.waiting')}</td></tr> : report.days.map((day) => <tr key={day.date}><th scope="row">{day.date}</th><td>{exactNumber(tokenValue(day.totals, 'totalTokens'))}{day.totals.unknownUsageRequests > 0 && <small>{tv(lang, 'usage.distribution.unknownUsageSuffix', { count: formatNumber(day.totals.unknownUsageRequests) })}</small>}</td><td title={day.totals.costUsd === null ? tv(lang, 'usage.kpi.notProvided') : `${exactNumber(day.totals.costUsd)} USD`}>{formatUsd(day.totals.costUsd)}<small>{costCoverage(day.totals, lang)}</small></td><td>{exactNumber(day.totals.requests)}</td><td>{exactNumber(day.totals.errors)} / {exactNumber(day.totals.cancelled)}</td><td>{exactNumber(day.totals.activeSessions)}</td></tr>)}</tbody></table></div></details>
+      <ChannelHealth channels={channels} report={report} lang={lang}/>
+      <p className="usage-footnote">{tv(lang, 'usage.footnote')}</p>
     </div>
   </main>;
 }

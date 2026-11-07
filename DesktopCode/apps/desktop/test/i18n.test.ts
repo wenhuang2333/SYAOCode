@@ -111,6 +111,10 @@ describe('已抽取模块不许再出现裸中文字面量', () => {
     expect(scan('src/renderer/composer-palette.tsx')).toEqual([]);
   });
 
+  it('detail-panel.tsx 的用户可见文案已全部进目录', () => {
+    expect(scan('src/renderer/detail-panel.tsx')).toEqual([]);
+  });
+
   it('git-sidebar.tsx 的用户可见文案已全部进目录', () => {
     expect(scan('src/renderer/git-sidebar.tsx')).toEqual([]);
   });
@@ -149,6 +153,31 @@ describe('文案与行为一致性（本轮核实的几处）', () => {
   it('签名失败识别同时认中英措辞，不依赖本地化文案', () => {
     // Host 返回英文消息；只匹配中文会永远命中不了。
     expect(gitSidebar).toContain("message.includes('signing failed')");
+  });
+});
+
+describe('会话详情：抽取不得改变既有文案与语义', () => {
+  it('引号与占位符必须原样保留（回归：抽取时丢掉了"域名/来源工具"）', () => {
+    const zh = desktopMessages('zh');
+    expect(zh.detail.changeLineAria).toBe('{path}，新增 {added} 行，删除 {removed} 行');
+    expect(zh.detail.changeLineAriaUnknown).toBe('{path}，不可统计行数');
+    expect(zh.detail.changeSummaryIncomplete).toBe('改动 {files} 个文件 · 统计不完整');
+    expect(zh.detail.artifactLineAria).toContain('来源工具 {tool}');
+    expect(zh.detail.sourceLineAria).toContain('域名 {domain}');
+    expect(zh.detail.changesScopeNote).toContain('与 Git 侧栏的');
+  });
+
+  it('不可统计一律说"不可统计"，绝不出现 +0 -0', () => {
+    expect(desktopMessages('zh').detail.unavailableStat).toBe('不可统计');
+    expect(desktopMessages('en').detail.unavailableStat).not.toBe('');
+  });
+
+  it('能力清单没有兜底断言（Host 说 supported=true 时不能声称"未接入"）', () => {
+    const panel = readFileSync(new URL('../src/renderer/detail-panel.tsx', import.meta.url), 'utf8');
+    // 旧兜底列表里写死过 "尚未接入受信任的 MCP 执行服务" / "当前使用单 Agent 运行"。
+    expect(panel).not.toContain('尚未接入受信任的 MCP');
+    expect(panel).not.toContain('当前使用单 Agent 运行');
+    expect(panel).toContain("t(lang, 'detail.capabilitiesNotLoaded')");
   });
 });
 

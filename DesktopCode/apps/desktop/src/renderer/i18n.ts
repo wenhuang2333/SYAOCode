@@ -605,6 +605,132 @@ export interface DesktopMessages {
     };
   };
 
+  readonly detail: {
+    /** 6 个分区的标题（顺序固定）。 */
+    readonly sections: Readonly<Record<'overview' | 'changes' | 'artifacts' | 'sources' | 'context' | 'capabilities', string>>;
+    /** 改动状态的文字说明（颜色之外的第二载体）。 */
+    readonly changeStatus: Readonly<Record<'added' | 'modified' | 'deleted' | 'renamed', string>>;
+    /** 产出类型。 */
+    readonly artifactKind: Readonly<Record<'file' | 'image' | 'patch' | 'report' | 'archive', string>>;
+    /** 三个分区的空态。 */
+    readonly emptyChanges: string;
+    readonly emptyArtifacts: string;
+    readonly emptySources: string;
+    /** 未知状态（防御性，正常不会出现）。 */
+    readonly unknownStatus: string;
+    /** 不可统计（**不是 0**）。 */
+    readonly unavailableStat: string;
+    /** 改动折叠摘要。 */
+    readonly changeSummaryZero: string;
+    readonly changeSummary: string;
+    readonly changeSummaryIncomplete: string;
+    /** 改动行的无障碍标签。 */
+    readonly changeLineAria: string;
+    readonly changeLineAriaUnknown: string;
+    readonly changeLineExpanded: string;
+    readonly changeLineCollapsed: string;
+    /** 产出操作。 */
+    readonly actionPreview: string;
+    readonly actionCopyPath: string;
+    readonly actionReveal: string;
+    readonly previewCollapse: string;
+    readonly copiedPath: string;
+    readonly copyFailed: string;
+    readonly previewFailed: string;
+    readonly previewFailedWith: string;
+    readonly revealFailed: string;
+    readonly revealFailedWith: string;
+    readonly revealTitle: string;
+    readonly revealUnavailableTitle: string;
+    readonly reading: string;
+    /** 预览的四种不可用原因。 */
+    readonly previewBinary: string;
+    readonly previewTooLarge: string;
+    readonly previewMissing: string;
+    readonly previewEmpty: string;
+    readonly previewTruncated: string;
+    /** 来源可信度。 */
+    readonly trustVerified: string;
+    readonly trustDeclared: string;
+    readonly trustUnverified: string;
+    /** 来源出现次数。 */
+    readonly sourceCount: string;
+    /** 产出的无障碍标签与元信息。 */
+    readonly sourceLineAria: string;
+    /** diff 的四种不可用原因。 */
+    readonly diffBinary: string;
+    readonly diffTooLarge: string;
+    readonly diffNoSnapshot: string;
+    readonly diffDeleted: string;
+    readonly diffNoText: string;
+    readonly diffTruncatedNote: string;
+    readonly diffNotRecorded: string;
+    readonly diffReadFailed: string;
+    readonly diffReadFailedWith: string;
+    readonly diffRuntimeEmpty: string;
+    readonly previewRuntimeEmpty: string;
+    /** 改动统计的覆盖说明。 */
+    readonly coverageFallback: string;
+    /** 概览分区的字段名。 */
+    readonly overviewTurns: string;
+    readonly overviewRequests: string;
+    readonly overviewCost: string;
+    readonly overviewCacheRead: string;
+    readonly overviewTotalTokens: string;
+    readonly overviewDuration: string;
+    readonly overviewInput: string;
+    readonly overviewOutput: string;
+    readonly overviewErrors: string;
+    readonly overviewNoSession: string;
+    readonly overviewCostNote: string;
+    readonly overviewWorkspace: string;
+    readonly overviewModel: string;
+    readonly overviewPermission: string;
+    readonly overviewUsageNote: string;
+    /** 上下文分区的文案。 */
+    readonly contextEstimated: string;
+    readonly contextSegmentFallback1: string;
+    readonly contextSegmentFallback2: string;
+    readonly contextSegmentFallback3: string;
+    readonly contextNote: string;
+    readonly contextCapacityConfigured: string;
+    readonly contextRemaining: string;
+    readonly contextNoCompaction: string;
+    /** 能力分区的文案。 */
+    readonly capabilitiesSubtitle: string;
+    readonly capabilityAvailable: string;
+    readonly capabilityUnavailable: string;
+    readonly capabilityOpenHelp: string;
+    /** 还没读到能力清单时的说明（不能断言"MCP 未接入"——那可能已经不成立）。 */
+    readonly capabilitiesNotLoaded: string;
+    /** 权限模式名称（与内核档位一一对应）。 */
+    readonly permissionNames: Readonly<Record<'plan' | 'strict' | 'default' | 'acceptEdits' | 'bypass', string>>;
+    /** 分区关闭按钮。 */
+    readonly closeAria: string;
+    readonly title: string;
+    /** 数据口径说明。 */
+    readonly changesScopeNote: string;
+    /** diff 区域的无障碍名称。 */
+    readonly diffAria: string;
+    /** 分区折叠标题的无障碍名称。 */
+    readonly sectionAria: string;
+    readonly sourceTool: string;
+    readonly artifactsCount: string;
+    readonly sourcesCount: string;
+    readonly artifactsNone: string;
+    readonly sourcesNone: string;
+    readonly changeDiffReading: string;
+    readonly changeDiffNoResult: string;
+    readonly contextNotCollected: string;
+    readonly contextCapacityAdapter: string;
+    readonly contextCapacityFallback: string;
+    readonly unknownCostNote: string;
+    readonly usageTotalsNote: string;
+    readonly artifactSizeLabel: string;
+    readonly artifactToolLabel: string;
+    /** 产出 aria-label 里的"来源工具"后缀。 */
+    readonly artifactLineAria: string;
+  };
   readonly relative: {
     /** 刚刚（含未来时间戳，避免显示"负几分钟前"）。 */
     readonly justNow: string;
@@ -960,6 +1086,108 @@ const zh: DesktopMessages = {
     deniedNote: '没有执行任何命令；如需执行，请调整命令或权限规则。',
     meta: '退出码 {code} · 耗时 {ms} ms',
   },
+
+  detail: {
+    sections: { overview: '概览', changes: '改动', artifacts: '产出', sources: '来源', context: '上下文', capabilities: '能力' },
+    changeStatus: { added: '新增', modified: '修改', deleted: '删除', renamed: '重命名' },
+    artifactKind: { file: '文件', image: '图片', patch: '补丁', report: '报告', archive: '归档' },
+    emptyChanges: '本会话没有文件改动',
+    emptyArtifacts: '本会话没有产出文件',
+    emptySources: '本会话没有参考来源',
+    unknownStatus: '未知状态',
+    unavailableStat: '不可统计',
+    changeSummaryZero: '改动 0 个文件',
+    changeSummary: '改动 {files} 个文件 · +{added} -{removed}',
+    changeSummaryIncomplete: '改动 {files} 个文件 · 统计不完整',
+    changeLineAria: '{path}，新增 {added} 行，删除 {removed} 行',
+    changeLineAriaUnknown: '{path}，不可统计行数',
+    changeLineExpanded: '，已展开只读 diff',
+    changeLineCollapsed: '，点击查看只读 diff',
+    actionPreview: '预览',
+    actionCopyPath: '复制路径',
+    actionReveal: '在文件管理器中显示',
+    previewCollapse: '收起预览',
+    copiedPath: '已复制路径',
+    copyFailed: '复制失败，请手动选择路径',
+    previewFailed: '预览失败',
+    previewFailedWith: '预览失败：{message}',
+    revealFailed: '无法在文件管理器中显示',
+    revealFailedWith: '无法在文件管理器中显示：{message}',
+    revealTitle: '在文件管理器中显示该文件',
+    revealUnavailableTitle: '主进程未提供显示文件的通道',
+    reading: '正在读取…',
+    previewBinary: '二进制/图片文件，无法预览文本',
+    previewTooLarge: '文件过大，无法在这里预览；完整内容请用外部编辑器打开',
+    previewMissing: '文件已不存在（可能已被删除或移动）',
+    previewEmpty: '文件是空的（0 字节），没有可预览的内容',
+    previewTruncated: '文件过大，只显示前一部分；完整内容请用外部编辑器打开',
+    trustVerified: '已验证',
+    trustDeclared: '未验证（来源声明）',
+    trustUnverified: '未验证',
+    sourceCount: '出现 {count} 次',
+    sourceLineAria: '{name}，域名 {domain}，{count}，{trust}',
+    diffBinary: '二进制文件，无法显示文本 diff',
+    diffTooLarge: '差异过大，只显示行数',
+    diffNoSnapshot: '本次会话没有留下改动前的内容（例如应用重启后），无法对比',
+    diffDeleted: '文件已删除，显示删除前的行数',
+    diffNoText: '本次会话没有产生文本差异（或只有权限/模式变化）',
+    diffTruncatedNote: '差异过长，下面只显示前一部分',
+    diffNotRecorded: '本会话没有记录过这个路径的改动，无法生成 diff',
+    diffReadFailed: '读取 diff 失败',
+    diffReadFailedWith: '读取 diff 失败：{message}',
+    diffRuntimeEmpty: '运行时没有返回该文件的 diff',
+    previewRuntimeEmpty: '运行时没有返回预览内容',
+    coverageFallback: '命令改动未逐文件统计',
+    overviewTurns: '轮次',
+    overviewRequests: '请求',
+    overviewCost: '估算成本',
+    overviewCacheRead: '缓存读取',
+    overviewTotalTokens: '总 tokens',
+    overviewDuration: '请求耗时',
+    overviewInput: '输入',
+    overviewOutput: '输出',
+    overviewErrors: '错误请求',
+    overviewNoSession: '未选择会话',
+    overviewCostNote: '成本按当前渠道单价估算，非账单。',
+    overviewWorkspace: '工作区',
+    overviewModel: '模型',
+    overviewPermission: '权限',
+    overviewUsageNote: '用量来自本地记录，按天汇总。',
+    contextEstimated: '估算占用',
+    contextSegmentFallback1: '系统提示',
+    contextSegmentFallback2: '工具定义',
+    contextSegmentFallback3: '对话历史',
+    contextNote: '最近请求的文本估算，非精确 tokenizer 计数。',
+    contextCapacityConfigured: '用户配置',
+    contextRemaining: '剩余 {tokens} tokens',
+    contextNoCompaction: '未启用自动压缩',
+    capabilitiesSubtitle: '本会话可用能力',
+    capabilityAvailable: '可用',
+    capabilityUnavailable: '未接入',
+    capabilityOpenHelp: '查看能力说明 →',
+    capabilitiesNotLoaded: '尚未读取能力清单。',
+    permissionNames: { plan: '只读规划', strict: '严格审批', default: '标准权限', acceptEdits: '自动编辑', bypass: '完全授权' },
+    closeAria: '关闭',
+    title: '会话',
+    changesScopeNote: '会话口径：只统计本会话的工具改动，与 Git 侧栏的"工作区未提交改动"互不相加。',
+    diffAria: '{path} 的会话口径只读 diff',
+    sectionAria: '{title}分区',
+    sourceTool: '来源工具',
+    artifactsCount: '{count} 项产出',
+    sourcesCount: '{count} 条来源',
+    artifactsNone: '暂无产出',
+    sourcesNone: '暂无来源',
+    changeDiffReading: '正在读取会话 diff…',
+    changeDiffNoResult: '没有取到该文件的 diff。',
+    contextNotCollected: '尚未采集',
+    contextCapacityAdapter: '适配器默认',
+    contextCapacityFallback: '未知来源',
+    unknownCostNote: '{count} 次请求未提供定价，成本仅为已知部分。',
+    usageTotalsNote: '累计用量不等于当前上下文或上游账单。',
+    artifactSizeLabel: '大小',
+    artifactToolLabel: '来源工具',
+    artifactLineAria: '{name}，{kind}，{size}，来源工具 {tool}',
+  },
   relative: {
     justNow: '刚刚',
     minutesAgo: '{n} 分钟前',
@@ -1303,6 +1531,108 @@ const en: DesktopMessages = {
     stderrSeparator: '--- stderr ---',
     deniedNote: 'No command was run. Adjust the command or the permission rules to proceed.',
     meta: 'exit code {code} · {ms} ms',
+  },
+
+  detail: {
+    sections: { overview: 'Overview', changes: 'Changes', artifacts: 'Artifacts', sources: 'Sources', context: 'Context', capabilities: 'Capabilities' },
+    changeStatus: { added: 'Added', modified: 'Modified', deleted: 'Deleted', renamed: 'Renamed' },
+    artifactKind: { file: 'File', image: 'Image', patch: 'Patch', report: 'Report', archive: 'Archive' },
+    emptyChanges: 'This session has no file changes',
+    emptyArtifacts: 'This session has no artifacts',
+    emptySources: 'This session has no reference sources',
+    unknownStatus: 'Unknown status',
+    unavailableStat: 'not countable',
+    changeSummaryZero: '0 files changed',
+    changeSummary: '{files} file(s) changed · +{added} -{removed}',
+    changeSummaryIncomplete: '{files} file(s) changed · line counts unavailable ({unavailable} file(s))',
+    changeLineAria: '{path}, {status}, {added} line(s) added, {removed} removed',
+    changeLineAriaUnknown: '{path}, {status}, line counts unavailable',
+    changeLineExpanded: ', read-only diff expanded',
+    changeLineCollapsed: ', click to view the read-only diff',
+    actionPreview: 'Preview',
+    actionCopyPath: 'Copy path',
+    actionReveal: 'Show in file manager',
+    previewCollapse: 'Collapse preview',
+    copiedPath: 'Path copied',
+    copyFailed: 'Copy failed; select the path manually',
+    previewFailed: 'Preview failed',
+    previewFailedWith: 'Preview failed: {message}',
+    revealFailed: 'Could not show the file in the file manager',
+    revealFailedWith: 'Could not show the file in the file manager: {message}',
+    revealTitle: 'Show this file in the file manager',
+    revealUnavailableTitle: 'The main process does not expose a reveal channel',
+    reading: 'Loading…',
+    previewBinary: 'Binary or image file; text can not be previewed',
+    previewTooLarge: 'The file is too large to preview here; open it in an external editor',
+    previewMissing: 'The file no longer exists (it may have been deleted or moved)',
+    previewEmpty: 'The file is empty (0 bytes), so there is nothing to preview',
+    previewTruncated: 'The file is too large; only the beginning is shown. Open it in an external editor for the full content',
+    trustVerified: 'Verified',
+    trustDeclared: 'Unverified (declared by the source)',
+    trustUnverified: 'Unverified',
+    sourceCount: 'seen {count} time(s)',
+    sourceLineAria: '{name}, {kind}, {trust}',
+    diffBinary: 'Binary file; no textual diff can be shown',
+    diffTooLarge: 'The diff is too large; only line counts are shown',
+    diffNoSnapshot: 'This session kept no pre-change content (for example after an app restart), so there is nothing to compare',
+    diffDeleted: 'The file was deleted; the line count before deletion is shown',
+    diffNoText: 'This session produced no textual difference (or only permission/mode changes)',
+    diffTruncatedNote: 'The diff is long; only the first part is shown below',
+    diffNotRecorded: 'This session recorded no change for this path, so no diff can be produced',
+    diffReadFailed: 'Could not read the diff',
+    diffReadFailedWith: 'Could not read the diff: {message}',
+    diffRuntimeEmpty: 'The runtime returned no diff for this file',
+    previewRuntimeEmpty: 'The runtime returned no preview content',
+    coverageFallback: 'Command changes were not counted per file',
+    overviewTurns: 'Turns',
+    overviewRequests: 'Requests',
+    overviewCost: 'Estimated cost',
+    overviewCacheRead: 'Cache reads',
+    overviewTotalTokens: 'Total tokens',
+    overviewDuration: 'Request time',
+    overviewInput: 'Input',
+    overviewOutput: 'Output',
+    overviewErrors: 'Failed requests',
+    overviewNoSession: 'No session selected',
+    overviewCostNote: 'Cost is estimated from the current channel pricing, not a bill.',
+    overviewWorkspace: 'Workspace',
+    overviewModel: 'Model',
+    overviewPermission: 'Permissions',
+    overviewUsageNote: 'Usage comes from local records, aggregated by day.',
+    contextEstimated: 'estimated usage',
+    contextSegmentFallback1: 'System prompt',
+    contextSegmentFallback2: 'Tool definitions',
+    contextSegmentFallback3: 'Conversation history',
+    contextNote: 'A text estimate of the most recent request, not an exact tokenizer count.',
+    contextCapacityConfigured: 'user configured',
+    contextRemaining: '{tokens} tokens remaining',
+    contextNoCompaction: 'Automatic compaction is off',
+    capabilitiesSubtitle: 'Capabilities available in this session',
+    capabilityAvailable: 'Available',
+    capabilityUnavailable: 'Not connected',
+    capabilityOpenHelp: 'See what this capability does →',
+    capabilitiesNotLoaded: 'The capability list has not been read yet.',
+    permissionNames: { plan: 'Read-only planning', strict: 'Strict approval', default: 'Standard permissions', acceptEdits: 'Auto-edit', bypass: 'Full authorization' },
+    closeAria: 'Close',
+    title: 'Session',
+    changesScopeNote: 'Session scope: only this session\'s tool changes are counted; they are never added to the Git sidebar\'s uncommitted working-tree changes.',
+    diffAria: 'Read-only session-scope diff of {path}',
+    sectionAria: '{title} section',
+    sourceTool: 'Source tool',
+    artifactsCount: '{count} artifact(s)',
+    sourcesCount: '{count} source(s)',
+    artifactsNone: 'No artifacts yet',
+    sourcesNone: 'No sources yet',
+    changeDiffReading: 'Reading the session diff…',
+    changeDiffNoResult: 'No diff was returned for this file.',
+    contextNotCollected: 'not collected yet',
+    contextCapacityAdapter: 'adapter default',
+    contextCapacityFallback: 'unknown source',
+    unknownCostNote: '{count} request(s) reported no pricing, so the cost covers only the known part.',
+    usageTotalsNote: 'Cumulative usage is not the current context, nor an upstream bill.',
+    artifactSizeLabel: 'Size',
+    artifactToolLabel: 'Source tool',
+    artifactLineAria: '{name}, {kind}, {size}, source tool {tool}',
   },
   relative: {
     justNow: 'just now',

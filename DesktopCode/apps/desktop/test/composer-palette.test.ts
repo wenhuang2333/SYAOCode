@@ -301,7 +301,9 @@ describe('source contracts: palette wiring never hijacks the send path', () => {
     expect(source).toContain('ComposerPalette');
     expect(source).toContain('detectTrigger');
     expect(source).toContain('void w.send(text)');
-    expect(source).toContain('Shift Enter 换行');
+    // 提示文案已进目录（`workbench.conversation.enterHint`）：断言接线 + 目录内容。
+    expect(source).toContain("tv(w.language, 'workbench.conversation.enterHint')");
+    expect(read('src/renderer/i18n-views.ts')).toContain('Shift Enter 换行');
     expect(source).toContain('onSubmit={(text)');
     // `/permission` 聚焦真实存在的权限下拉。
     expect(source).toContain('id="composer-permission"');

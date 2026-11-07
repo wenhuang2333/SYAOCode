@@ -157,8 +157,10 @@ describe('界面语言跟随配置（FR-N-037 / config 是单一真相）', () =
 
   it('未翻译的文案保持中文，不出现占位符或空白（诚实降级）', () => {
     // 部分界面仍是中文，设置页要如实说明，而不是让用户以为切换无效。
+    // 文案已进目录（`settings.language.untranslatedNote`）：断言接线 + 目录内容。
     const settings = read('src/renderer/settings-page.tsx');
-    expect(settings).toContain('仍只有中文');
+    expect(settings).toContain("tv(lang, 'settings.language.untranslatedNote')");
+    expect(read('src/renderer/i18n-views.ts')).toContain('仍只有中文');
   });
 
   it('能力面板与文案最终一致：ui 包的 Messages 覆盖面没有缩小', () => {
