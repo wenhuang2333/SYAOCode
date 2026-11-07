@@ -303,3 +303,24 @@ body{font-size:13px;background:#fff;line-height:1.6}button,input,select,textarea
 .change-diff-note{margin:0;padding:7px 9px;background:#fff8ee;color:#8a6d3b;font-size:10px;line-height:1.6}
 .change-diff-error{background:#fff4f5;color:#ac4056}
 .change-diff-stats{margin:0;padding:0 9px 7px;color:#9aa0b5;font-size:9px;font-variant-numeric:tabular-nums}
+
+/* ════════════════════════════════════════════════════════════════════════
+   N-9 / `27` §10.7.6：Git 浏览器授权（设备码）
+   - 厂商可用性如实展示：内置 client_id / 需自填 / 不支持设备码；
+   - verificationUri 只显示文本，必须由用户点击才打开浏览器；
+   - 轮询状态与剩余有效期可见；取消随时可用。
+   ════════════════════════════════════════════════════════════════════════ */
+.oauth-block{margin-top:9px;padding:9px;border:1px solid #eef0f6;border-radius:9px;background:#fff;display:flex;flex-direction:column;gap:7px}
+.oauth-block h4{margin:0;color:#5f6276;font-size:11px;font-weight:600}
+.oauth-start,.oauth-flow{display:flex;flex-direction:column;gap:7px}
+.oauth-providers{display:flex;flex-direction:column;gap:4px}
+.oauth-provider{display:flex;align-items:flex-start;gap:7px;padding:6px 8px;border:1px solid #eef0f6;border-radius:8px;background:#fdfdff;color:#5a5d70;font-size:10px;line-height:1.55;cursor:pointer}
+.oauth-provider.selected{border-color:#d9ccf6;background:#f8f5ff}
+.oauth-provider.disabled{opacity:.6;cursor:not-allowed}
+.oauth-provider input{margin:2px 0 0;flex-shrink:0}
+.oauth-provider>span{flex-shrink:0;font-weight:600;color:#4f5265}
+.oauth-provider>small{color:#9aa0b5;font-size:9px}
+.oauth-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.oauth-code{font-family:var(--sy-mono);font-size:14px;letter-spacing:1.5px;color:#4f3d86;background:#f4f1fd;border:1px solid #e7e0f6;border-radius:7px;padding:3px 8px}
+.oauth-uri{font-family:var(--sy-mono);font-size:10px;color:#6f5aa8;overflow-wrap:anywhere;user-select:text}
+.oauth-poll{margin:0;padding:6px 8px;border-radius:7px;background:#f6f4fc;color:#6b5f86;font-size:10px;line-height:1.6}

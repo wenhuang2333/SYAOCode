@@ -377,6 +377,29 @@ function registerIpc(): void {
     electron: process.versions.electron,
   }));
 
+  /**
+   * 用系统浏览器打开 http(s) 链接（只给白名单协议）。
+   *
+   * 唯一用途：Git 登录的浏览器授权（`27` §10.7.6 设备码流程）需要在浏览器里
+   * 输入用户码。渲染层**不能**自己开窗口，也不能把任意协议交过来。
+   */
+  ipcMain.handle('app:openExternal', async (_event, payload: unknown) => {
+    const request = payload as { url?: string };
+    const raw = typeof request?.url === 'string' ? request.url : '';
+    if (raw === '') throw new Error('missing url');
+    let parsed: URL;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      throw new Error('invalid url');
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new Error('only http(s) links can be opened');
+    }
+    await shell.openExternal(parsed.toString());
+    return { opened: true };
+  });
+
   ipcMain.handle('dialog:openDirectory', async () => {
     if (mainWindow === undefined) return undefined;
     const r = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });

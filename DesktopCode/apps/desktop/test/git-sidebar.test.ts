@@ -11,13 +11,14 @@ import * as path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type {
-  GitAuthInfo, GitAuthStatusResult, GitBranchesResult, GitCommitNode, GitFileEntry, GitPreflightResult, GitRemoteInfo, GitRemotesResult, GitStatusResult,
+  GitAuthInfo, GitAuthStatusResult, GitBranchesResult, GitCommitNode, GitFileEntry, GitOauthProvider, GitPreflightResult, GitRemoteInfo, GitRemotesResult, GitStatusResult,
 } from '@syaocode/dhp';
 import {
-  GIT_TABS, GitSidebar, INITIAL_SIDEBAR_STATE, LARGE_FILE_THRESHOLD_BYTES, SIGNING_FAILED_CODE,
+  GIT_TABS, GitSidebar, INITIAL_SIDEBAR_STATE, LARGE_FILE_THRESHOLD_BYTES, OAUTH_MAX_DELAY_MS, OAUTH_MIN_DELAY_MS, OAUTH_POLL_LIMIT, SIGNING_FAILED_CODE,
   aheadBehindText, authMethodLabel, authStatusLabel, authStatusTone, branchLabel, commitHooksText, executableHooks,
   formatBytes, gitFileLabel, gitFileStatText, gitStatusBadge, gitStatusSummary, gitTabState, groupByStaging,
   inactiveHooks, isSigningFailure, largeStagedFiles, layoutGitGraph, onlineStateLabel, onlineStateTone,
+  oauthFailureText, oauthPollDelay, oauthPollLabel, oauthProviderHint, oauthProviderState, oauthRemainingText,
   preflightReady, remoteUrlLabel, signingFailureActions, summarizeGitFiles,
   uploadBlockers, uploadConfirmPayload, uploadFailurePath, type SidebarSlotState,
 } from '../src/renderer/git-sidebar.tsx';
@@ -478,5 +479,111 @@ describe('commit preflight hints and signing-failure paths (§10.5.3)', () => {
     expect(source.slice(start, end)).not.toContain('noSign: true');
     // noSign 只出现在签名失败面板的用户点击里。
     expect(source).toContain('runCommit({ ...signingFailure.input, noSign: true })');
+  });
+});
+
+describe('Git browser authorization (device flow, N-9)', () => {
+  const provider = (overrides: Partial<GitOauthProvider> = {}): GitOauthProvider => ({
+    id: 'github', label: 'GitHub', deviceFlow: true, builtinClientId: true, ...overrides,
+  });
+  const providersAuth = (providers: readonly GitOauthProvider[]): GitAuthStatusResult => ({
+    workspaceRoot: '/workspace', remotes: [remote()], providers,
+  });
+
+  it('classifies providers into ready / needs-client-id / unsupported', () => {
+    expect(oauthProviderState(provider())).toBe('ready');
+    expect(oauthProviderState(provider({ builtinClientId: false }))).toBe('needs-client-id');
+    expect(oauthProviderState(provider({ deviceFlow: false, builtinClientId: false }))).toBe('unsupported');
+    expect(oauthProviderHint(provider())).toContain('无需填 client_id');
+    expect(oauthProviderHint(provider({ builtinClientId: false }))).toContain('client_id');
+    expect(oauthProviderHint(provider({ deviceFlow: false }))).toContain('SSH');
+    // 三种状态的文案互不相同。
+    expect(new Set([oauthProviderHint(provider()), oauthProviderHint(provider({ builtinClientId: false })), oauthProviderHint(provider({ deviceFlow: false }))]).size).toBe(3);
+  });
+
+  it('computes poll delays for all five statuses, doubling slow_down with caps', () => {
+    expect(oauthPollDelay('pending', 5000)).toBe(5000);
+    expect(oauthPollDelay('slow_down', 5000)).toBe(10000);
+    expect(oauthPollDelay('slow_down', OAUTH_MAX_DELAY_MS)).toBe(OAUTH_MAX_DELAY_MS);
+    expect(oauthPollDelay('slow_down', 40_000)).toBe(OAUTH_MAX_DELAY_MS);
+    expect(oauthPollDelay('pending', 0)).toBe(OAUTH_MIN_DELAY_MS);
+    expect(oauthPollDelay('ready', 5000)).toBeNull();
+    expect(oauthPollDelay('denied', 5000)).toBeNull();
+    expect(oauthPollDelay('expired', 5000)).toBeNull();
+    expect(OAUTH_POLL_LIMIT).toBeGreaterThan(0);
+  });
+
+  it('formats the remaining validity and expires at the boundary', () => {
+    expect(oauthRemainingText(1000 + 200_000, 1000)).toBe('剩余 3 分 20 秒');
+    expect(oauthRemainingText(1000 + 45_000, 1000)).toBe('剩余 45 秒');
+    expect(oauthRemainingText(1000, 1000)).toBe('已过期');
+    expect(oauthRemainingText(1000, 2000)).toBe('已过期');
+    expect(oauthRemainingText(1000 + 500, 1000)).toBe('剩余 1 秒');
+  });
+
+  it('gives denied and expired distinct failure texts that never claim success', () => {
+    expect(oauthFailureText('denied')).not.toBe(oauthFailureText('expired'));
+    expect(oauthFailureText('denied')).toContain('拒绝');
+    expect(oauthFailureText('expired')).toContain('过期');
+    for (const status of ['denied', 'expired'] as const) {
+      expect(oauthFailureText(status)).not.toContain('成功');
+    }
+    expect(oauthFailureText('pending')).toBe('');
+    expect(oauthFailureText('ready')).toBe('');
+    expect(oauthPollLabel('pending')).toContain('等待');
+    expect(oauthPollLabel('slow_down')).toContain('放慢');
+    expect(oauthPollLabel('ready')).toContain('成功');
+    expect(oauthPollLabel('denied')).not.toBe(oauthPollLabel('expired'));
+  });
+
+  it('does not show the browser-auth entry when the host exposes no providers', () => {
+    const html = render({ tab: 'upload', auth: providersAuth([]), onOauthStart: async () => ({ flowId: 'f', userCode: 'u', verificationUri: 'https://example.com', expiresIn: 60, interval: 5 }) });
+    expect(html).not.toContain('浏览器授权（设备码）');
+  });
+
+  it('asks for a client_id when the provider has no builtin one', () => {
+    const html = render({
+      tab: 'upload',
+      auth: providersAuth([provider({ builtinClientId: false })]),
+      onOauthStart: async () => ({ flowId: 'f', userCode: 'u', verificationUri: 'https://example.com', expiresIn: 60, interval: 5 }),
+    });
+    expect(html).toContain('浏览器授权（设备码）');
+    expect(html).toContain('OAuth App client_id');
+    expect(html).toContain('type="text"');
+    expect(html).toContain('需要填入你自己的 OAuth App client_id');
+    // 未填 client_id 时开始按钮必须 disabled（不能点了才失败）。
+    expect(html).toMatch(/<button class="btn btn-primary" disabled="">开始浏览器授权<\/button>/);
+  });
+
+  it('allows builtin-client-id providers without asking for a client_id', () => {
+    const html = render({
+      tab: 'upload',
+      auth: providersAuth([provider()]),
+      onOauthStart: async () => ({ flowId: 'f', userCode: 'u', verificationUri: 'https://example.com', expiresIn: 60, interval: 5 }),
+    });
+    expect(html).toContain('浏览器授权（设备码）');
+    expect(html).not.toContain('OAuth App client_id');
+    expect(html).not.toMatch(/<button class="btn btn-primary" disabled="">开始浏览器授权<\/button>/);
+  });
+
+  it('disables device-flow-less providers and explains the fallback', () => {
+    const html = render({
+      tab: 'upload',
+      auth: providersAuth([provider({ id: 'gitlab', label: 'GitLab', deviceFlow: false, builtinClientId: false })]),
+      onOauthStart: async () => ({ flowId: 'f', userCode: 'u', verificationUri: 'https://example.com', expiresIn: 60, interval: 5 }),
+    });
+    expect(html).toContain('该厂商暂不支持设备码流程');
+    expect(html).toContain('disabled=""');
+  });
+
+  it('cleans up polling timers and only opens the browser from a user gesture in source', () => {
+    const source = read('src/renderer/git-sidebar.tsx');
+    expect(source).toContain('clearTimeout');
+    expect(source).toContain('clearInterval');
+    expect(source).toContain('OAUTH_POLL_LIMIT');
+    expect(source).toContain('oauthExpiresAt');
+    // 打开浏览器必须发生在 onClick 回调里（不得在 effect / 渲染期自动调用）。
+    expect(source).toMatch(/onClick=\{[^}]*onOpenExternal\(/);
+    expect(source).not.toMatch(/useEffect\([^)]*onOpenExternal/);
   });
 });

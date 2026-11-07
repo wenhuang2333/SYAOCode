@@ -22,6 +22,10 @@ import type {
   GitFileStatus,
   GitGraphResult,
   GitHookInfo,
+  GitAuthOauthPollResult,
+  GitAuthOauthStartResult,
+  GitOauthPollStatus,
+  GitOauthProvider,
   GitPreflightResult,
   GitRemoteInfo,
   GitRemotesResult,
@@ -303,6 +307,91 @@ export function authMethodLabel(method: GitAuthInfo['method']): string {
   }
 }
 
+// ── 浏览器授权（设备码，N-9 / `27` §10.7.6）────────────────────────────
+
+/** 轮询安全上限：即使还没到 `expiresIn`，也绝不超过这么多次（防无限轮询）。 */
+export const OAUTH_POLL_LIMIT = 600;
+
+/** 单次轮询间隔的下限/上限（毫秒）：下限防打爆授权服务器，上限防"看起来卡死"。 */
+export const OAUTH_MIN_DELAY_MS = 1000;
+export const OAUTH_MAX_DELAY_MS = 60_000;
+
+export type OauthProviderState = 'ready' | 'needs-client-id' | 'unsupported';
+
+/**
+ * 厂商可用性（**这是这条 UI 的核心**）。
+ *
+ * 开源仓库故意不内置 `client_id`：`builtinClientId=false` 时 `oauth/start` 必然抛
+ * `git_oauth_unavailable`，所以界面必须先判断，不能让用户点了才失败。
+ */
+export function oauthProviderState(provider: GitOauthProvider): OauthProviderState {
+  if (!provider.deviceFlow) return 'unsupported';
+  return provider.builtinClientId ? 'ready' : 'needs-client-id';
+}
+
+/** 三种状态各一句人话（禁用时也要说清"为什么"与"改用哪条路"）。 */
+export function oauthProviderHint(provider: GitOauthProvider): string {
+  switch (oauthProviderState(provider)) {
+    case 'ready':
+      return '点开始后按提示在浏览器完成授权，无需填 client_id。';
+    case 'needs-client-id':
+      return '需要填入你自己的 OAuth App client_id（开源仓库不内置）。client_id 只保存在本页内存，不落盘。';
+    case 'unsupported':
+      return '该厂商暂不支持设备码流程，请改用 SSH 凭据或访问令牌。';
+  }
+}
+
+/** 下一次轮询的延迟（毫秒）；`null` = 停止轮询。`slow_down` 把间隔翻倍一次。 */
+export function oauthPollDelay(status: GitOauthPollStatus, intervalMs: number): number | null {
+  if (status === 'ready' || status === 'denied' || status === 'expired') return null;
+  // 非法/非正的 interval 回落到安全下限；正常值按契约原样使用（不擅自改小）。
+  const base = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : OAUTH_MIN_DELAY_MS;
+  const wanted = status === 'slow_down' ? base * 2 : base;
+  return Math.min(OAUTH_MAX_DELAY_MS, wanted);
+}
+
+/** 轮询状态文案（不是日志，是给用户看的"现在在等什么"）。 */
+export function oauthPollLabel(status: GitOauthPollStatus): string {
+  switch (status) {
+    case 'pending': return '等待浏览器授权…';
+    case 'slow_down': return '授权服务器要求放慢轮询，已加大间隔继续等待…';
+    case 'ready': return '授权成功';
+    case 'denied': return '你在浏览器拒绝了授权';
+    case 'expired': return '设备码已过期';
+  }
+}
+
+/** `denied` / `expired` 的失败文案（互不相同；其它状态返回空串）。 */
+export function oauthFailureText(status: GitOauthPollStatus): string {
+  if (status === 'denied') return '你在浏览器拒绝授权；如需重试请重新开始授权流程。';
+  if (status === 'expired') return '设备码已过期，请重新开始（过期后旧的设备码不可再用）。';
+  return '';
+}
+
+/** 剩余有效期文案：`剩余 3 分 20 秒` / `剩余 45 秒` / `已过期`。 */
+export function oauthRemainingText(expiresAt: number, now: number): string {
+  const remainingMs = expiresAt - now;
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) return '已过期';
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `剩余 ${seconds} 秒`;
+  return `剩余 ${minutes} 分 ${seconds} 秒`;
+}
+
+/** 授权相关错误的人话说明（不把协议错误伪装成成功，也不泄漏敏感内容）。 */
+export function describeOauthError(error: unknown): string {
+  const candidate = error as { readonly kind?: unknown; readonly message?: unknown } | null;
+  const kind = candidate?.kind;
+  const message = typeof candidate?.message === 'string' ? candidate.message : '';
+  if (kind === 'git_oauth_unavailable' || message.includes('git_oauth_unavailable')) {
+    return '该厂商的浏览器授权当前不可用：开源仓库不内置 client_id，请填入你自己的 OAuth App client_id，或改用 SSH / 访问令牌。';
+  }
+  if (kind === 'git_oauth_pending' || message.includes('git_oauth_pending')) return '授权仍在进行中，请稍候再试。';
+  if (kind === 'git_oauth_denied' || message.includes('git_oauth_denied')) return oauthFailureText('denied');
+  return message === '' ? '浏览器授权失败' : `浏览器授权失败：${message}`;
+}
+
 /** 认证状态点：绿=就绪，琥珀=未配置/未校验，灰=未知。 */
 export function authStatusTone(auth: GitAuthInfo | undefined): 'green' | 'amber' | 'grey' {
   if (!auth) return 'grey';
@@ -523,6 +612,17 @@ export interface GitSidebarProps {
   readonly onSetToken?: ((input: { readonly workspaceRoot: string; readonly remote: string; readonly url: string; readonly token: string }) => Promise<void>) | undefined;
   readonly onUseSshAgent?: ((input: { readonly workspaceRoot: string; readonly remote: string; readonly url: string }) => Promise<void>) | undefined;
   readonly onClearAuth?: ((input: { readonly workspaceRoot: string; readonly remote: string; readonly url: string }) => Promise<void>) | undefined;
+  /** 浏览器授权（设备码）：开始 / 轮询 / 取消。未提供时整块入口不显示（不假装支持）。 */
+  readonly onOauthStart?: ((input: {
+    readonly workspaceRoot: string;
+    readonly remote: string;
+    readonly provider: string;
+    readonly clientId?: string;
+  }) => Promise<GitAuthOauthStartResult>) | undefined;
+  readonly onOauthPoll?: ((flowId: string) => Promise<GitAuthOauthPollResult>) | undefined;
+  readonly onOauthCancel?: ((flowId: string) => Promise<{ readonly cancelled: true }>) | undefined;
+  /** 打开浏览器（主进程只放行 http(s)）；**只能由用户点击触发**，不得自动打开。 */
+  readonly onOpenExternal?: ((url: string) => Promise<boolean>) | undefined;
 }
 
 type UploadStep = 'idle' | 'preflight' | 'confirm' | 'uploading' | 'success' | 'failed';
@@ -533,6 +633,7 @@ export function GitSidebar(props: GitSidebarProps) {
     loading, busy, error, tab, onTab, onClose, onRefresh, onLoadGraph,
     onStage, onUnstage, onCommit, onBranchSwitch, onBranchCreate,
     onPreflight, onUpload, onOpenDetail, onGenerateMessage, onSetToken, onUseSshAgent, onClearAuth,
+    onOauthStart, onOauthPoll, onOauthCancel, onOpenExternal,
   } = props;
 
   const groups = useMemo(() => groupByStaging(status?.files ?? []), [status]);
@@ -560,6 +661,26 @@ export function GitSidebar(props: GitSidebarProps) {
   const [committing, setCommitting] = useState(false);
   const [commitNote, setCommitNote] = useState('');
   const [signingFailure, setSigningFailure] = useState<{ readonly input: GitCommitInput; readonly message: string }>();
+  // ── 浏览器授权（设备码）状态 ─────────────────────────────────────────
+  const [oauthProviderId, setOauthProviderId] = useState('');
+  const [oauthClientId, setOauthClientId] = useState('');
+  const [oauthFlow, setOauthFlow] = useState<GitAuthOauthStartResult>();
+  const [oauthExpiresAt, setOauthExpiresAt] = useState(0);
+  const [oauthNow, setOauthNow] = useState(() => Date.now());
+  const [oauthPolls, setOauthPolls] = useState(0);
+  const [oauthStatus, setOauthStatus] = useState<GitOauthPollStatus>();
+  const [oauthOutcome, setOauthOutcome] = useState<'waiting' | 'ready' | 'denied' | 'expired' | 'failed'>('waiting');
+  const [oauthAccount, setOauthAccount] = useState<string | null>(null);
+  const [oauthStarting, setOauthStarting] = useState(false);
+  const [oauthError, setOauthError] = useState('');
+  const oauthTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const oauthTicket = useRef(0);
+  const oauthAlive = useRef(true);
+  // 父层回调每渲染都是新函数：用 ref 保存最新值，避免把父层重渲染变成"重新计时"。
+  const oauthPollRef = useRef(onOauthPoll);
+  oauthPollRef.current = onOauthPoll;
+  const refreshRef = useRef(onRefresh);
+  refreshRef.current = onRefresh;
   const confirmRef = useRef<HTMLButtonElement>(null);
   const confirmBoxRef = useRef<HTMLDivElement>(null);
   const tabRef = useRef<HTMLButtonElement>(null);
@@ -697,6 +818,190 @@ export function GitSidebar(props: GitSidebarProps) {
     ...(noVerify ? { noVerify: true } : {}),
     ...(allowEmpty ? { allowEmpty: true } : {}),
   });
+
+  // ── 浏览器授权：定时器清理是硬要求 ───────────────────────────────────
+
+  /** 停掉轮询：清 timer + 作废 ticket（已发出的响应回来也不再改状态）。 */
+  const stopOauthPolling = (): void => {
+    oauthTicket.current += 1;
+    if (oauthTimer.current !== undefined) {
+      clearTimeout(oauthTimer.current);
+      oauthTimer.current = undefined;
+    }
+  };
+
+  // 组件卸载：停止轮询 + 标记已死，避免 setState on unmounted。
+  useEffect(() => {
+    oauthAlive.current = true;
+    return () => {
+      oauthAlive.current = false;
+      oauthTicket.current += 1;
+      if (oauthTimer.current !== undefined) {
+        clearTimeout(oauthTimer.current);
+        oauthTimer.current = undefined;
+      }
+    };
+  }, []);
+
+  // 侧栏关闭（组件仍在但不可见）/ 换远端：停止轮询并回到步骤 1。
+  useEffect(() => {
+    if (!oauthFlow) return;
+    const providerStillValid = (auth?.providers ?? []).some((provider) => provider.id === oauthProviderId);
+    if (providerStillValid) return;
+    stopOauthPolling();
+    setOauthFlow(undefined);
+    setOauthOutcome('waiting');
+    setOauthStatus(undefined);
+  }, [auth?.providers, oauthProviderId, oauthFlow]);
+
+  // 倒计时只用于显示剩余有效期；它自己不做轮询调度，也不延长总时长。
+  useEffect(() => {
+    if (!oauthFlow || oauthOutcome !== 'waiting') return;
+    const timer = setInterval(() => setOauthNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [oauthFlow, oauthOutcome]);
+
+  /**
+   * 轮询一次，并按结果决定是否继续。
+   *
+   * 五个状态分别处理：
+   *  - `pending`     → 继续（`onUpdate` 时给文案）
+   *  - `slow_down`   → 间隔翻倍，仍继续
+   *  - `ready`       → 成功：停止 + 重拉 `git/auth/status`
+   *  - `denied`      → 停止 + 明确失败文案（与 `expired` 不同）
+   *  - `expired`     → 停止 + 明确失败文案
+   * 另外：`OAUTH_POLL_LIMIT` 与 `expiresIn` 是双保险，任一命中即停止。
+   */
+  const pollOnce = async (flowId: string, ticket: number, attempt: number, delayMs: number, expiresAt: number): Promise<void> => {
+    if (!oauthAlive.current || ticket !== oauthTicket.current) return;
+    // 双保险 1：设备码过期后不再发轮询（即使定时器因为节流晚到）。
+    if (expiresAt !== 0 && Date.now() >= expiresAt) {
+      stopOauthPolling();
+      setOauthOutcome('expired');
+      setOauthError(oauthFailureText('expired'));
+      return;
+    }
+    try {
+      const poll = oauthPollRef.current;
+      if (!poll) { setOauthOutcome('failed'); setOauthError('运行时未提供轮询接口'); return; }
+      const result = await poll(flowId);
+      if (!oauthAlive.current || ticket !== oauthTicket.current) return;
+      setOauthStatus(result.status);
+      setOauthPolls(attempt);
+      setOauthNow(Date.now());
+      if (result.status === 'ready') {
+        stopOauthPolling();
+        setOauthOutcome('ready');
+        setOauthAccount(result.account);
+        setOauthError('');
+        refreshRef.current();
+        return;
+      }
+      if (result.status === 'denied' || result.status === 'expired') {
+        stopOauthPolling();
+        setOauthOutcome(result.status);
+        setOauthError(oauthFailureText(result.status));
+        return;
+      }
+      const nextDelay = oauthPollDelay(result.status, delayMs);
+      if (nextDelay === null) { stopOauthPolling(); setOauthOutcome('failed'); return; }
+      if (attempt >= OAUTH_POLL_LIMIT) {
+        stopOauthPolling();
+        setOauthOutcome('expired');
+        setOauthError(`已检查 ${OAUTH_POLL_LIMIT} 次仍未完成授权，已停止轮询。`);
+        return;
+      }
+      if (expiresAt !== 0 && Date.now() >= expiresAt) {
+        stopOauthPolling();
+        setOauthOutcome('expired');
+        setOauthError(oauthFailureText('expired'));
+        return;
+      }
+      const remaining = expiresAt === 0 ? nextDelay : expiresAt - Date.now();
+      if (remaining <= 0) {
+        stopOauthPolling();
+        setOauthOutcome('expired');
+        setOauthError(oauthFailureText('expired'));
+        return;
+      }
+      oauthTimer.current = setTimeout(() => {
+        oauthTimer.current = undefined;
+        void pollOnce(flowId, ticket, attempt + 1, nextDelay, expiresAt);
+      }, Math.min(nextDelay, remaining));
+    } catch (error) {
+      if (!oauthAlive.current || ticket !== oauthTicket.current) return;
+      // 网络 / 协议错误：显示出来，但**不假装成功**，也不继续轮询。
+      stopOauthPolling();
+      setOauthOutcome('failed');
+      setOauthError(describeOauthError(error));
+    }
+  };
+
+  const startOauth = async (): Promise<void> => {
+    if (!selectedRemote || !onOauthStart) return;
+    const list = auth?.providers ?? [];
+    const provider = list.find((item) => item.id === oauthProviderId)
+      ?? list.find((item) => oauthProviderState(item) === 'ready')
+      ?? list.find((item) => oauthProviderState(item) === 'needs-client-id');
+    if (!provider) return;
+    const state = oauthProviderState(provider);
+    // 不可用的分支在这里就拦住：绝不发出一个必然失败的请求。
+    if (state === 'unsupported') { setOauthError(oauthProviderHint(provider)); setOauthOutcome('failed'); return; }
+    if (state === 'needs-client-id' && oauthClientId.trim() === '') {
+      setOauthError('请先填入你自己的 OAuth App client_id。');
+      setOauthOutcome('failed');
+      return;
+    }
+    stopOauthPolling();
+    setOauthProviderId(provider.id);
+    const ticket = ++oauthTicket.current;
+    setOauthStarting(true);
+    setOauthError('');
+    setOauthOutcome('waiting');
+    setOauthStatus(undefined);
+    setOauthAccount(null);
+    setOauthPolls(0);
+    try {
+      const started = await onOauthStart({
+        workspaceRoot,
+        remote: selectedRemote.name,
+        provider: provider.id,
+        ...(state === 'needs-client-id' ? { clientId: oauthClientId.trim() } : {}),
+      });
+      if (!oauthAlive.current || ticket !== oauthTicket.current) return;
+      setOauthFlow(started);
+      const expiresAt = Date.now() + Math.max(0, started.expiresIn) * 1000;
+      setOauthExpiresAt(expiresAt);
+      setOauthNow(Date.now());
+      const intervalMs = oauthPollDelay('pending', started.interval * 1000) ?? OAUTH_MIN_DELAY_MS;
+      oauthTimer.current = setTimeout(() => {
+        oauthTimer.current = undefined;
+        void pollOnce(started.flowId, ticket, 1, intervalMs, expiresAt);
+      }, intervalMs);
+    } catch (error) {
+      if (!oauthAlive.current || ticket !== oauthTicket.current) return;
+      setOauthOutcome('failed');
+      setOauthError(describeOauthError(error));
+    } finally {
+      if (oauthAlive.current && ticket === oauthTicket.current) setOauthStarting(false);
+    }
+  };
+
+  const cancelOauth = async (): Promise<void> => {
+    const flowId = oauthFlow?.flowId;
+    stopOauthPolling();
+    setOauthFlow(undefined);
+    setOauthOutcome('waiting');
+    setOauthStatus(undefined);
+    setOauthError('');
+    setOauthAccount(null);
+    if (!flowId || !onOauthCancel) return;
+    try {
+      await onOauthCancel(flowId);
+    } catch {
+      // 取消是尽力而为：Host 侧没清干净也不该把用户卡在面板里。
+    }
+  };
 
   const submitToken = async () => {
     if (!selectedRemote || !token) return;
@@ -896,6 +1201,110 @@ export function GitSidebar(props: GitSidebarProps) {
     </div>
   );
 
+  /**
+   * 浏览器授权（设备码）面板。
+   *
+   * 三条硬纪律：
+   *  1. 厂商能力决定可用性（`deviceFlow` / `builtinClientId`），绝不做成"点了必然失败"的按钮；
+   *  2. `client_id` 只存在本页 state，不落盘、不进 DHP 之外的任何地方；
+   *  3. 轮询由本组件的定时器驱动，卸载 / 关闭 / 取消 / 完成 / 出错都会清理。
+   */
+  const oauthProviders = auth?.providers ?? [];
+  // 默认选中：优先"可直接授权"的厂商，其次"需要 client_id"的；不可用的不默认选。
+  const defaultOauthProvider = oauthProviders.find((provider) => oauthProviderState(provider) === 'ready')
+    ?? oauthProviders.find((provider) => oauthProviderState(provider) === 'needs-client-id');
+  const oauthProvider = oauthProviders.find((provider) => provider.id === oauthProviderId) ?? defaultOauthProvider;
+  const oauthProviderStateValue = oauthProvider ? oauthProviderState(oauthProvider) : undefined;
+  const oauthCanStart = Boolean(onOauthStart && selectedRemote && oauthProvider)
+    && !busy && !oauthStarting
+    && oauthProviderStateValue !== 'unsupported'
+    && (oauthProviderStateValue !== 'needs-client-id' || oauthClientId.trim() !== '');
+  const oauthPanel = !oauthFlow
+    ? (
+      <div className="oauth-start">
+        <div className="oauth-providers" role="radiogroup" aria-label="授权厂商">
+          {oauthProviders.map((provider) => {
+            const state = oauthProviderState(provider);
+            return (
+              <label key={provider.id} className={`oauth-provider${state === 'unsupported' ? ' disabled' : ''}${oauthProvider?.id === provider.id ? ' selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="oauth-provider"
+                  value={provider.id}
+                  checked={oauthProvider?.id === provider.id}
+                  disabled={busy || state === 'unsupported'}
+                  onChange={() => { setOauthProviderId(provider.id); setOauthError(''); setOauthOutcome('waiting'); }}
+                />
+                <span>{provider.label}</span>
+                <small>{oauthProviderHint(provider)}</small>
+              </label>
+            );
+          })}
+        </div>
+        {oauthProvider && oauthProviderStateValue === 'needs-client-id' && (
+          <label className="upload-field">
+            <span>OAuth App client_id</span>
+            <input
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={oauthClientId}
+              placeholder="填入你自己的 OAuth App client_id"
+              disabled={busy || oauthStarting}
+              onChange={(event) => setOauthClientId(event.target.value)}
+            />
+          </label>
+        )}
+        {oauthProvider && oauthProviderStateValue === 'needs-client-id' && (
+          <p className="data-note">client_id 只保存在本页内存，刷新即清空；不会写入磁盘，也不会发给除授权服务器以外的任何地方。</p>
+        )}
+        <button className="btn btn-primary" disabled={!oauthCanStart} onClick={() => void startOauth()}>
+          {oauthStarting ? '正在申请设备码…' : '开始浏览器授权'}
+        </button>
+        {oauthError !== '' && <p className="upload-note-error" role="alert">{oauthError}</p>}
+      </div>
+    )
+    : (
+      <div className="oauth-flow">
+        <div className="detail-meta"><span>设备码</span><code className="oauth-code">{oauthFlow.userCode}</code></div>
+        <div className="detail-meta"><span>授权地址</span><code className="oauth-uri">{oauthFlow.verificationUri}</code></div>
+        <div className="oauth-actions">
+          <button className="btn" aria-label="复制设备码" onClick={() => { void navigator.clipboard?.writeText(oauthFlow.userCode); }}><Icon name="copy" size={13} />复制设备码</button>
+          <button
+            className="btn"
+            disabled={!onOpenExternal}
+            title={onOpenExternal ? '在系统浏览器中打开授权页' : '主进程未提供打开外部链接的通道'}
+            onClick={() => { if (onOpenExternal) void onOpenExternal(oauthFlow.verificationUri); }}
+          >在浏览器中打开</button>
+        </div>
+        <p className="data-note">授权地址与设备码需要你自己核对；本应用不会自动打开浏览器，也不会代填设备码。</p>
+        {!onOpenExternal && <p className="data-note">主进程未提供打开外部链接的通道：请手动复制上面的授权地址到浏览器打开。</p>}
+        <p className="oauth-poll" role="status">
+          {oauthOutcome === 'waiting' && oauthStatus === undefined ? '正在等待第一次轮询…' : ''}
+          {oauthOutcome === 'waiting' && oauthStatus !== undefined ? `${oauthPollLabel(oauthStatus)}（第 ${oauthPolls} 次检查）` : ''}
+          {oauthOutcome === 'ready' ? `授权成功${oauthAccount ? `（账号 ${oauthAccount}）` : ''}，已重新读取认证状态。` : ''}
+          {oauthOutcome === 'denied' ? oauthFailureText('denied') : ''}
+          {oauthOutcome === 'expired' ? oauthFailureText('expired') : ''}
+          {oauthOutcome === 'failed' ? '授权未完成，请看下面的错误信息。' : ''}
+        </p>
+        {oauthOutcome === 'waiting' && <p className="data-note">{oauthRemainingText(oauthExpiresAt, oauthNow)}（最多检查 {OAUTH_POLL_LIMIT} 次）</p>}
+        {oauthError !== '' && <p className="upload-note-error" role="alert">{oauthError}</p>}
+        <div className="oauth-actions">
+          {oauthOutcome === 'waiting'
+            ? <button className="btn" onClick={() => void cancelOauth()}>取消授权</button>
+            : <button className="btn btn-primary" onClick={() => { void cancelOauth(); }}>重新开始</button>}
+        </div>
+      </div>
+    );
+  const oauthSection = oauthProviders.length === 0 || !onOauthStart
+    ? null
+    : (
+      <div className="oauth-block">
+        <h4>浏览器授权（设备码）</h4>
+        {oauthPanel}
+      </div>
+    );
+
   const uploadTab = (
     <div className="git-tab-body">
       <section className="upload-step">
@@ -904,7 +1313,7 @@ export function GitSidebar(props: GitSidebarProps) {
           ? <p className="git-empty">仓库没有配置远端。请先在仓库中添加远端后再上传。</p>
           : <label className="upload-field">
             <span>远端</span>
-            <select value={selectedRemote?.name ?? ''} disabled={busy} onChange={(event) => { setRemoteName(event.target.value); setStep('idle'); }}>
+            <select value={selectedRemote?.name ?? ''} disabled={busy} onChange={(event) => { if (oauthFlow) void cancelOauth(); setRemoteName(event.target.value); setStep('idle'); }}>
               {remoteList.map((remote) => <option key={remote.name} value={remote.name}>{remote.name} · {remoteUrlLabel(remote)}</option>)}
             </select>
           </label>}
@@ -930,6 +1339,7 @@ export function GitSidebar(props: GitSidebarProps) {
         {remoteAuth?.configured && onClearAuth && (
           <button className="btn" disabled={busy} onClick={() => { if (selectedRemote) void onClearAuth({ workspaceRoot, remote: selectedRemote.name, url: selectedRemote.url }); }}>断开连接</button>
         )}
+        {oauthSection}
       </section>
 
       <section className="upload-step">

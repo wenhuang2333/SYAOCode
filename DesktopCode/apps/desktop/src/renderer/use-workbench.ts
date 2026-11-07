@@ -3,7 +3,7 @@ import { DhpConnection, ProjectionStore, type WebSocketLike } from '@syaocode/cl
 import {
   FeatureMethod, Method, WorkbenchMethod, isSuccessfulStatus,
   type AckResult, type AgentsListResult, type AgentsSaveParams, type ChannelConfig, type DesktopOverview, type DesktopPermissionMode,
-  type GitAuthStatusResult, type GitBranchesResult, type GitCommitMessageResult, type GitDiffResult, type GitGraphResult, type GitPreflightResult,
+  type GitAuthOauthPollResult, type GitAuthOauthStartResult, type GitAuthStatusResult, type GitBranchesResult, type GitCommitMessageResult, type GitDiffResult, type GitGraphResult, type GitPreflightResult,
   type GitRemotesResult, type GitStatusResult, type GitUploadResult, type McpAddParams, type McpServerInfo, type McpToolSummary,
   type SessionChangeDiffResult, type SessionChangesNotification, type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
   type WorkspaceTreeResult, type WorkspaceReadFileResult,
@@ -15,7 +15,7 @@ interface Bridge {
   readonly app: {
     openDirectory(): Promise<string | undefined>;
     /** 可选：打开外部 https 链接（主进程校验协议）。未提供时界面只展示链接文本。 */
-    openExternal?(url: string): Promise<void>;
+    openExternal?(url: string): Promise<{ opened: boolean } | void>;
   };
   /**
    * 可选：Git 凭据窄桥（**只写不读回**，见 `27` §10.7.4）。
@@ -482,6 +482,46 @@ export function useWorkbench() {
     }
   }, [request, envelope, gitPreflight, gitStatus, gitRefresh]);
 
+  // ── 浏览器授权（设备码流程，N-9 / `27` §10.7.6）───────────────────────
+
+  /**
+   * 开始浏览器授权（Device Flow）。
+   *
+   * **会失败的情况要如实暴露**：开源仓库不内置 `client_id`，未填 clientId 时
+   * Host 会抛 `git_oauth_unavailable`；界面必须先判断 `builtinClientId` 再决定是否让人点。
+   */
+  const gitOauthStart = useCallback(async (input: {
+    readonly workspaceRoot: string;
+    readonly remote: string;
+    readonly provider: string;
+    readonly clientId?: string;
+    readonly domain?: string;
+  }): Promise<GitAuthOauthStartResult> => request<GitAuthOauthStartResult>(FeatureMethod.GitAuthOauthStart, {
+    workspaceRoot: input.workspaceRoot,
+    remote: input.remote,
+    provider: input.provider,
+    ...(input.clientId === undefined || input.clientId === '' ? {} : { clientId: input.clientId }),
+    ...(input.domain === undefined || input.domain === '' ? {} : { domain: input.domain }),
+  }), [request]);
+
+  /** 轮询一次授权状态（由界面按 `interval` 自行调度，Host 不持有定时器）。 */
+  const gitOauthPoll = useCallback(async (flowId: string): Promise<GitAuthOauthPollResult> =>
+    request<GitAuthOauthPollResult>(FeatureMethod.GitAuthOauthPoll, { flowId }), [request]);
+
+  /** 取消授权：清掉 Host 侧半成品条目。失败不抛给界面（取消是尽力而为）。 */
+  const gitOauthCancel = useCallback(async (flowId: string): Promise<{ cancelled: true }> => {
+    const result = await request<{ cancelled: true }>(FeatureMethod.GitAuthOauthCancel, { flowId });
+    return result;
+  }, [request]);
+
+  /** 打开外部链接（主进程只放行 http(s)）：必须由用户手势触发。 */
+  const openExternal = useCallback(async (url: string): Promise<boolean> => {
+    const bridge = window.syao?.app;
+    if (!bridge?.openExternal) return false;
+    const result = await bridge.openExternal(url);
+    return result === undefined ? true : result.opened;
+  }, []);
+
   /** 凭据写入（主进程窄桥，只写不读回）。 */
   const gitSetToken = useCallback(async (root: string, remote: string, url: string, token: string): Promise<void> => {
     const bridge = window.syao?.git;
@@ -684,7 +724,7 @@ export function useWorkbench() {
     gitError, gitLoading, gitProbeUnavailable,
     gitRefresh, gitProbe, gitGraphLoad, gitDiffLoad, gitStage, gitUnstage, gitCommit,
     gitBranchCreate, gitBranchSwitch, gitPreflightRun, gitUploadRun, gitCommitMessage,
-    gitSetToken, gitClearAuth, gitUseSshAgent,
+    gitSetToken, gitClearAuth, gitUseSshAgent, gitOauthStart, gitOauthPoll, gitOauthCancel, openExternal,
     // MCP / Agent 群
     mcpServers, mcpLoading, mcpError, mcpList, mcpAdd, mcpRemove, mcpRestart, mcpTools,
     agents, agentsLoading, agentsError, agentsList, agentsSave, agentsDelete, agentsActivate,

@@ -25,6 +25,8 @@ export interface SyaoBridge {
       electron: string;
     }>;
     openDirectory(): Promise<string | undefined>;
+    /** 用系统浏览器打开 http(s) 链接（Git 设备码授权用）；其它协议会被主进程拒绝。 */
+    openExternal(url: string): Promise<{ opened: boolean }>;
   };
   /**
    * 凭据（只写不读）。
@@ -71,6 +73,7 @@ const bridge: SyaoBridge = {
       electron: string;
     }>,
     openDirectory: () => ipcRenderer.invoke('dialog:openDirectory') as Promise<string | undefined>,
+    openExternal: (url) => ipcRenderer.invoke('app:openExternal', { url }) as Promise<{ opened: boolean }>,
   },
   credentials: {
     available: () => ipcRenderer.invoke('credential:available') as Promise<boolean>,

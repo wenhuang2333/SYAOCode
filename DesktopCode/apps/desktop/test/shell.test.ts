@@ -113,3 +113,23 @@ describe('Host 打包产物', () => {
     expect(b).toContain("format: 'cjs'");
   });
 });
+
+describe('外链打开（Git 设备码授权用）', () => {
+  it('只允许 http(s)：主进程侧有白名单，其它协议被拒', () => {
+    const main = read('src/main/index.ts');
+    expect(main).toContain("ipcMain.handle('app:openExternal'");
+    expect(main).toContain("parsed.protocol !== 'https:'");
+    expect(main).toContain("parsed.protocol !== 'http:'");
+    expect(main).toContain('shell.openExternal');
+    // 不允许把渲染层给的任意字符串直接交给 shell。
+    expect(main).not.toMatch(/shell\.openExternal\(payload\)/);
+  });
+
+  it('preload 只暴露 openExternal(url)，不暴露通用 shell', () => {
+    const preload = read('src/preload/index.ts');
+    expect(preload).toContain("ipcRenderer.invoke('app:openExternal'");
+    // 渲染层拿不到 Node / shell 本体。
+    expect(preload).not.toContain('require(\'electron\').shell');
+    expect(preload).not.toMatch(/exposeInMainWorld\([^)]*shell/);
+  });
+});
