@@ -133,3 +133,24 @@ describe('外链打开（Git 设备码授权用）', () => {
     expect(preload).not.toMatch(/exposeInMainWorld\([^)]*shell/);
   });
 });
+
+describe('工作区文件在文件管理器中显示', () => {
+  it('主进程只接受相对路径，并用 realpath 复核围栏', () => {
+    const main = read('src/main/index.ts');
+    expect(main).toContain("ipcMain.handle('workspace:reveal'");
+    expect(main).toContain('shell.showItemInFolder');
+    // 绝对路径与 `..` 必须在到达 shell 之前被拒。
+    expect(main).toContain('path.isAbsolute(raw)');
+    expect(main).toContain("includes('..')");
+    // 必须做 realpath 复核，不能只信渲染层给的字符串。
+    expect(main).toContain('fs.realpath');
+    expect(main).toContain('path escapes the workspace');
+  });
+
+  it('preload 只暴露 revealPath(relPath)，不暴露 fs / shell', () => {
+    const preload = read('src/preload/index.ts');
+    expect(preload).toContain("ipcRenderer.invoke('workspace:reveal'");
+    expect(preload).not.toMatch(/exposeInMainWorld\([^)]*shell/);
+    expect(preload).not.toContain('showItemInFolder');
+  });
+});

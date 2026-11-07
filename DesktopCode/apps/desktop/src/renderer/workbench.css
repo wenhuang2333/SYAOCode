@@ -324,3 +324,20 @@ body{font-size:13px;background:#fff;line-height:1.6}button,input,select,textarea
 .oauth-code{font-family:var(--sy-mono);font-size:14px;letter-spacing:1.5px;color:#4f3d86;background:#f4f1fd;border:1px solid #e7e0f6;border-radius:7px;padding:3px 8px}
 .oauth-uri{font-family:var(--sy-mono);font-size:10px;color:#6f5aa8;overflow-wrap:anywhere;user-select:text}
 .oauth-poll{margin:0;padding:6px 8px;border-radius:7px;background:#f6f4fc;color:#6b5f86;font-size:10px;line-height:1.6}
+
+/* ════════════════════════════════════════════════════════════════════════
+   27 §8.3 / §8.4：产出（artifacts）的操作列与只读预览
+   - 三个操作：预览 / 复制路径 / 在文件管理器中显示（均有文本与 aria-label）；
+   - 预览是纯文本 <pre>，绝不渲染 HTML；二进制/图片给明确说明而不是乱码；
+   - 读取失败显示"文件已不存在"，且必须清空上一次的预览内容。
+   ════════════════════════════════════════════════════════════════════════ */
+.artifact-actions{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.artifact-action{border:1px solid #e8e5f3;border-radius:6px;background:#fff;color:#7d709c;font-size:9px;padding:2px 7px;line-height:1.6}
+.artifact-action:hover:not(:disabled){background:#f3eefc;color:#6b53c4}
+.artifact-action[aria-expanded="true"]{border-color:#d9ccf6;background:#f7f3ff;color:#6b53c4}
+.artifact-note{margin:0;font-size:9px;line-height:1.6;color:#2f7a5f}
+.artifact-note-error{color:#ac4056}
+.artifact-preview{display:flex;flex-direction:column;gap:4px;border:1px solid #eef0f6;border-radius:8px;background:#fbfbfe;overflow:hidden}
+.artifact-preview-note{margin:0;padding:6px 8px;background:#fff8ee;color:#8a6d3b;font-size:10px;line-height:1.6}
+.artifact-preview-error{background:#fff4f5;color:#ac4056}
+.artifact-preview-text{margin:0;padding:8px;max-height:220px;overflow:auto;font-family:var(--sy-mono);font-size:10px;line-height:1.7;color:#5a5d70;white-space:pre-wrap;overflow-wrap:anywhere}

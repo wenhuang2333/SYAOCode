@@ -16,6 +16,8 @@ interface Bridge {
     openDirectory(): Promise<string | undefined>;
     /** 可选：打开外部 https 链接（主进程校验协议）。未提供时界面只展示链接文本。 */
     openExternal?(url: string): Promise<{ opened: boolean } | void>;
+    /** 可选：在工作区内显示文件（只接受相对路径）。未提供时该按钮禁用。 */
+    revealPath?(relPath: string): Promise<{ revealed: boolean } | void>;
   };
   /**
    * 可选：Git 凭据窄桥（**只写不读回**，见 `27` §10.7.4）。

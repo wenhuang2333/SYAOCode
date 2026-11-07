@@ -22,6 +22,7 @@ import {
 } from 'electron';
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   KeychainStore,
@@ -376,6 +377,39 @@ function registerIpc(): void {
     arch: process.arch,
     electron: process.versions.electron,
   }));
+
+  /**
+   * 在文件管理器中显示一个**工作区内的**文件（`27` §8.3 的产出操作之一）。
+   *
+   * 为什么要在主进程做：渲染层拿不到 `shell`。安全边界有两条：
+   *  1. 只接受**相对路径**，并且在主进程里用 realpath 复核它确实落在工作区内
+   *     （渲染层传什么都不能越界；Host 的围栏在这里再确认一次）；
+   *  2. 不打开、不执行、不预览内容，只做"在文件夹里显示"。
+   */
+  ipcMain.handle('workspace:reveal', async (_event, payload: unknown) => {
+    const request = payload as { path?: string; workspaceRoot?: string };
+    const raw = typeof request?.path === 'string' ? request.path : '';
+    if (raw === '' || path.isAbsolute(raw) || raw.split(/[\\/]/).includes('..')) {
+      throw new Error('only workspace-relative paths can be revealed');
+    }
+    const root = host?.workspaceRoot;
+    if (root === undefined) throw new Error('host is not ready');
+    const absolute = path.resolve(root, raw);
+    const [realRoot, realTarget] = await Promise.all([
+      fs.realpath(root).catch(() => root),
+      fs.realpath(absolute).catch(() => absolute),
+    ]);
+    if (realTarget !== realRoot && !realTarget.startsWith(`${realRoot}${path.sep}`)) {
+      throw new Error('path escapes the workspace');
+    }
+    try {
+      await fs.access(realTarget);
+    } catch {
+      throw new Error('file no longer exists');
+    }
+    shell.showItemInFolder(realTarget);
+    return { revealed: true };
+  });
 
   /**
    * 用系统浏览器打开 http(s) 链接（只给白名单协议）。

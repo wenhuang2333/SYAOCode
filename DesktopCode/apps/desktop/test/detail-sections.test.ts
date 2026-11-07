@@ -12,8 +12,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { EMPTY_USAGE, type Artifact, type ChangesCoverage, type ContextInfo, type DiffHunk, type FileChange, type SessionChangeDiffResult, type SessionInspection, type SourceRef } from '@syaocode/dhp';
 import {
-  CHANGE_DIFF_UNAVAILABLE_TEXT, CHANGE_STATUS_LETTERS, ChangeDiffPanel, DETAIL_EMPTY_TEXT, DETAIL_SECTIONS, DetailPanel,
-  artifactLineLabel, artifactSizeText, changeDiffNote, changeDiffStatsText, changeLineLabel, changeStatText, changeStatusLetter, changeStatusLabel,
+  ArtifactPreview, CHANGE_DIFF_UNAVAILABLE_TEXT, PREVIEW_TRUNCATED_TEXT, CHANGE_STATUS_LETTERS, ChangeDiffPanel, DETAIL_EMPTY_TEXT, DETAIL_SECTIONS, DetailPanel,
+  artifactActionLabels, artifactCopyNote, artifactLineLabel, artifactSizeText, changeDiffNote, changeDiffStatsText, changeLineLabel, changeStatText, changeStatusLetter, changeStatusLabel,
+  isProbablyBinary, previewUnavailableText,
   coverageNote, describeDiffError, formatChangeSummary, sourceCountText, sourceLineLabel, sourceTrustLabel, summarizeChanges,
 } from '../src/renderer/detail-panel.tsx';
 
@@ -300,5 +301,97 @@ describe('session-scope change diff (N-11 / FR-N-011)', () => {
     const workbenchSource = read('src/renderer/workbench.tsx');
     expect(workbenchSource).toContain('onLoadDiff');
     expect(workbenchSource).toContain('w.sessionChangeDiff(');
+  });
+});
+
+describe('artifact actions and read-only preview (§8.3 / §8.4)', () => {
+  it('exposes the three action labels in the fixed order', () => {
+    const labels = artifactActionLabels();
+    expect(labels).toHaveLength(3);
+    expect(labels).toEqual(['预览', '复制路径', '在文件管理器中显示']);
+  });
+
+  it('gives four distinct unavailable reasons', () => {
+    const texts = (['binary', 'too_large', 'missing', 'empty'] as const).map((reason) => previewUnavailableText(reason));
+    expect(new Set(texts).size).toBe(4);
+    expect(previewUnavailableText('binary')).toContain('二进制');
+    expect(previewUnavailableText('too_large')).toContain('文件过大');
+    // §8.4：截断时明说"只显示前一部分"。
+    expect(PREVIEW_TRUNCATED_TEXT).toContain('只显示前一部分');
+    expect(previewUnavailableText('missing')).toContain('已不存在');
+    expect(previewUnavailableText('empty')).toContain('空的');
+  });
+
+  it('detects binary-ish content without false positives on plain text', () => {
+    expect(isProbablyBinary('')).toBe(false);
+    expect(isProbablyBinary('const a = 1;\nconsole.log(a);\n')).toBe(false);
+    expect(isProbablyBinary('中文文本，正常换行\n第二行')).toBe(false);
+    expect(isProbablyBinary('a\u0000b')).toBe(true);
+    expect(isProbablyBinary('\u0001'.repeat(200))).toBe(true);
+    expect(isProbablyBinary(`\u0002${'x'.repeat(20)}`)).toBe(false); // 比例不高
+  });
+
+  it('never claims success when copying fails', () => {
+    expect(artifactCopyNote(true)).not.toBe(artifactCopyNote(false));
+    expect(artifactCopyNote(true)).toContain('已复制');
+    expect(artifactCopyNote(false)).toContain('复制失败');
+    expect(artifactCopyNote(false)).not.toContain('成功');
+  });
+
+  it('renders preview / copy / reveal buttons with aria-labels', () => {
+    const html = render(inspection({ artifacts: [artifact()] }), {
+      onPreviewArtifact: async () => ({ path: 'report.md', text: 'hello', truncated: false }),
+    });
+    expect(html).toContain('aria-label="预览 report.md"');
+    expect(html).toContain('aria-label="复制路径 report.md"');
+    expect(html).toContain('aria-label="在文件管理器中显示 report.md"');
+    // 未提供 onRevealArtifact：按钮 disabled + title 说明（不假装支持）。
+    expect(html).toMatch(/aria-label="在文件管理器中显示 report\.md"[^>]*disabled=""/);
+    expect(html).toContain('主进程未提供显示文件的通道');
+  });
+
+  it('hides the preview button when the host provides no preview callback', () => {
+    const html = render(inspection({ artifacts: [artifact()] }));
+    expect(html).not.toContain('aria-label="预览 report.md"');
+    expect(html).toContain('aria-label="复制路径 report.md"');
+  });
+
+  it('enables reveal when the bridge is available', () => {
+    const html = render(inspection({ artifacts: [artifact()] }), {
+      onRevealArtifact: async () => {},
+    });
+    expect(html).toContain('aria-label="在文件管理器中显示 report.md"');
+    expect(html).not.toMatch(/aria-label="在文件管理器中显示 report\.md"[^>]*disabled=""/);
+  });
+
+  it('renders the preview panel honestly for every state', () => {
+    const loading = renderToStaticMarkup(createElement(ArtifactPreview, { preview: { kind: 'loading' } }));
+    expect(loading).toContain('正在读取');
+    expect(loading).not.toContain('<pre');
+    const binary = renderToStaticMarkup(createElement(ArtifactPreview, { preview: { kind: 'unavailable', reason: 'binary' } }));
+    expect(binary).toContain(previewUnavailableText('binary'));
+    expect(binary).not.toContain('<pre');
+    const missing = renderToStaticMarkup(createElement(ArtifactPreview, { preview: { kind: 'unavailable', reason: 'missing' } }));
+    expect(missing).toContain('文件已不存在');
+    expect(missing).not.toContain('<pre');
+    const truncated = renderToStaticMarkup(createElement(ArtifactPreview, { preview: { kind: 'ready', text: 'line', truncated: true } }));
+    expect(truncated).toContain('只显示前一部分');
+    expect(truncated).toContain('<pre');
+    const plain = renderToStaticMarkup(createElement(ArtifactPreview, { preview: { kind: 'ready', text: 'const a = 1;', truncated: false } }));
+    expect(plain).toContain('<pre');
+    expect(plain).toContain('const a = 1;');
+    expect(plain).not.toContain('只显示前一部分');
+  });
+
+  it('source contracts: no raw HTML rendering and reveal only via the click callback', () => {
+    const detailSource = read('src/renderer/detail-panel.tsx');
+    expect(detailSource).not.toContain('dangerouslySetInnerHTML');
+    expect(detailSource).toContain('previewUnavailableText');
+    const workbenchSource = read('src/renderer/workbench.tsx');
+    expect(workbenchSource).toContain('onRevealArtifact');
+    expect(workbenchSource).toContain('onPreviewArtifact');
+    // revealPath 只作为回调传入（不在渲染期直接调用）。
+    expect(workbenchSource.match(/revealPath/g)).toHaveLength(2);
+    expect(workbenchSource).toMatch(/onRevealArtifact=\{window\.syao\?\.app\.revealPath \? async \(path\) => \{ await window\.syao\?\.app\.revealPath\?\.\(path\); \} : undefined\}/);
   });
 });

@@ -21,6 +21,7 @@ import {
   type SessionInspection,
   type SessionSnapshot,
   type SourceRef,
+  type WorkspaceReadFileResult,
 } from '@syaocode/dhp';
 import { Icon } from './icons';
 import { formatBytes, formatClock, formatDuration, formatMoney, formatNumber } from './format';
@@ -139,6 +140,100 @@ export function artifactLineLabel(artifact: Artifact): string {
   return `${artifact.name}，${ARTIFACT_KIND_LABELS[artifact.kind]}，${artifactSizeText(artifact)}，来源工具 ${artifact.tool}`;
 }
 
+// ── 产出的操作与预览（`27` §8.3 / §8.4）────────────────────────────────
+
+/** 三个操作的固定文案与顺序：预览 / 复制路径 / 在文件管理器中显示。 */
+export function artifactActionLabels(): readonly [string, string, string] {
+  return ['预览', '复制路径', '在文件管理器中显示'];
+}
+
+/** 预览被截断时的说明（§8.4：只显示前一部分）。 */
+export const PREVIEW_TRUNCATED_TEXT = '文件过大，只显示前一部分；完整内容请用外部编辑器打开';
+
+/** 预览不可用的四种原因（文案互不相同，且都说明"为什么看不到内容"）。 */
+export function previewUnavailableText(reason: 'binary' | 'too_large' | 'missing' | 'empty'): string {
+  switch (reason) {
+    case 'binary': return '二进制/图片文件，无法预览文本';
+    case 'too_large': return '文件过大，无法在这里预览；完整内容请用外部编辑器打开';
+    case 'missing': return '文件已不存在（可能已被删除或移动）';
+    case 'empty': return '文件是空的（0 字节），没有可预览的内容';
+  }
+}
+
+/**
+ * 粗略判断文本是否像二进制。
+ *
+ * 规则：含 NUL 直接判定；否则统计前 4096 个字符里控制字符（不含 \t \n \r）的比例，
+ * 超过 10% 视为二进制。只用于"不把乱码塞进预览"，不是文件类型识别。
+ */
+export function isProbablyBinary(text: string): boolean {
+  if (text === '') return false;
+  if (text.includes('\u0000')) return true;
+  const sample = text.slice(0, 4096);
+  let control = 0;
+  for (const char of sample) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code < 32 && code !== 9 && code !== 10 && code !== 13) control += 1;
+    else if (code === 0xfffd) control += 1;
+  }
+  return control / sample.length > 0.1;
+}
+
+/** 复制路径的结果文案：成功/失败必须不同，失败不得出现"成功"。 */
+export function artifactCopyNote(ok: boolean): string {
+  return ok ? '已复制路径' : '复制失败，请手动选择路径';
+}
+
+/** 预览读取错误的人话说明（`path_rejected` = 不存在/越界/不是文件）。 */
+export function describePreviewError(error: unknown): string {
+  const candidate = error as { readonly kind?: unknown; readonly message?: unknown } | null;
+  const kind = candidate?.kind;
+  const message = typeof candidate?.message === 'string' ? candidate.message : '';
+  if (kind === 'path_rejected' || message.includes('path_rejected')) return previewUnavailableText('missing');
+  return message === '' ? '预览失败' : `预览失败：${message}`;
+}
+
+/** 在文件管理器中显示失败的人话说明。 */
+export function describeRevealError(error: unknown): string {
+  const candidate = error as { readonly kind?: unknown; readonly message?: unknown } | null;
+  const kind = candidate?.kind;
+  const message = typeof candidate?.message === 'string' ? candidate.message : '';
+  if (kind === 'path_rejected' || message.includes('path_rejected') || message.includes('ENOENT')) return '文件已不存在（可能已被删除或移动）';
+  return message === '' ? '无法在文件管理器中显示' : `无法在文件管理器中显示：${message}`;
+}
+
+/** 预览面板状态（读取中 / 成功 / 不可用 / 错误）。 */
+export type ArtifactPreviewState =
+  | { readonly kind: 'loading' }
+  | { readonly kind: 'ready'; readonly text: string; readonly truncated: boolean }
+  | { readonly kind: 'unavailable'; readonly reason: 'binary' | 'too_large' | 'missing' | 'empty' }
+  | { readonly kind: 'error'; readonly message: string };
+
+/**
+ * 产出预览面板（只读）。
+ *
+ * 纪律：`unavailable` / `error` 时**不渲染 `<pre>`**；成功时用纯文本 children，
+ * 只用 React 的纯文本 children 渲染（不注入原始 HTML）。`truncated` 必须明说"只显示前一部分"。
+ */
+export function ArtifactPreview({ preview }: { readonly preview: ArtifactPreviewState | undefined }): ReactNode {
+  if (!preview) return <p className="artifact-preview-note" role="status">正在读取…</p>;
+  switch (preview.kind) {
+    case 'loading':
+      return <p className="artifact-preview-note" role="status">正在读取…</p>;
+    case 'unavailable':
+      return <p className="artifact-preview-note">{previewUnavailableText(preview.reason)}</p>;
+    case 'error':
+      return <p className="artifact-preview-note artifact-preview-error" role="alert">{preview.message}</p>;
+    case 'ready':
+      return (
+        <div className="artifact-preview">
+          {preview.truncated && <p className="artifact-preview-note">{PREVIEW_TRUNCATED_TEXT}</p>}
+          <pre className="artifact-preview-text">{preview.text}</pre>
+        </div>
+      );
+  }
+}
+
 /** 可信度标注：`verified=false` 必须有可见标注（"未验证"）。 */
 export function sourceTrustLabel(source: SourceRef): string {
   if (source.verified && source.trust === 'verified') return '已验证';
@@ -225,6 +320,10 @@ export interface DetailPanelProps {
    * **可选**：未提供时改动行不可点击——不假装支持（`27` §6 不伪造）。
    */
   readonly onLoadDiff?: ((path: string) => Promise<SessionChangeDiffResult | undefined>) | undefined;
+  /** 读取产出文件用于只读预览（`workspace/read-file`）。未提供时预览按钮不出现。 */
+  readonly onPreviewArtifact?: ((path: string) => Promise<WorkspaceReadFileResult | undefined>) | undefined;
+  /** 在文件管理器中显示产出（主进程窄桥，只接受工作区相对路径）。未提供时按钮禁用。 */
+  readonly onRevealArtifact?: ((path: string) => Promise<void>) | undefined;
 }
 
 const permissionNames: Record<string, string> = {
@@ -282,7 +381,7 @@ export function ChangeDiffPanel({ loading = false, error = '', result }: ChangeD
   );
 }
 
-export function DetailPanel({ inspection, snapshot, turnCount, onClose, onOpenPage, onLoadDiff }: DetailPanelProps) {
+export function DetailPanel({ inspection, snapshot, turnCount, onClose, onOpenPage, onLoadDiff, onPreviewArtifact, onRevealArtifact }: DetailPanelProps) {
   const [open, setOpen] = useState<ReadonlySet<DetailSectionId>>(() => new Set<DetailSectionId>(['overview']));
   // 单文件只读 diff（N-11）：同一时刻只展开一行；再点同一行收起。
   const [expandedPath, setExpandedPath] = useState('');
@@ -326,6 +425,80 @@ export function DetailPanel({ inspection, snapshot, turnCount, onClose, onOpenPa
       if (ticket === diffTicket.current) setDiffLoading(false);
     }
   }, [expandedPath, onLoadDiff]);
+  // ── 产出操作：预览 / 复制路径 / 在文件管理器中显示 ──────────────────
+  const [previewArtifactId, setPreviewArtifactId] = useState('');
+  const [preview, setPreview] = useState<ArtifactPreviewState>();
+  const [copyNote, setCopyNote] = useState<{ readonly artifactId: string; readonly text: string }>();
+  const [revealNote, setRevealNote] = useState<{ readonly artifactId: string; readonly text: string }>();
+  const previewTicket = useRef(0);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => { if (copyTimer.current !== undefined) clearTimeout(copyTimer.current); }, []);
+  const artifactSessionKey = inspection?.sessionId ?? '';
+  useEffect(() => {
+    // 会话切换：旧产出与旧预览一律清掉（产出是会话口径，串会话会误导）。
+    previewTicket.current += 1;
+    setPreviewArtifactId('');
+    setPreview(undefined);
+    setCopyNote(undefined);
+    setRevealNote(undefined);
+  }, [artifactSessionKey]);
+
+  const closePreview = () => {
+    previewTicket.current += 1;
+    setPreviewArtifactId('');
+    // 收起时清空预览内容：下次展开必须重新读，绝不复用旧文本。
+    setPreview(undefined);
+  };
+
+  const togglePreview = async (artifact: Artifact): Promise<void> => {
+    if (!onPreviewArtifact) return;
+    if (previewArtifactId === artifact.id) { closePreview(); return; }
+    const ticket = ++previewTicket.current;
+    setPreviewArtifactId(artifact.id);
+    // **先清空再读**：读取失败时必须显示失效态，而不是保留上一次的旧内容。
+    setPreview(undefined);
+    if (artifact.kind === 'image') { setPreview({ kind: 'unavailable', reason: 'binary' }); return; }
+    setPreview({ kind: 'loading' });
+    try {
+      const result = await onPreviewArtifact(artifact.path);
+      if (ticket !== previewTicket.current) return;
+      if (!result) { setPreview({ kind: 'error', message: '运行时没有返回预览内容' }); return; }
+      if (result.text === '') { setPreview({ kind: 'unavailable', reason: 'empty' }); return; }
+      if (isProbablyBinary(result.text)) { setPreview({ kind: 'unavailable', reason: 'binary' }); return; }
+      setPreview({ kind: 'ready', text: result.text, truncated: result.truncated });
+    } catch (error) {
+      if (ticket !== previewTicket.current) return;
+      const text = describePreviewError(error);
+      if (text === previewUnavailableText('missing')) setPreview({ kind: 'unavailable', reason: 'missing' });
+      else setPreview({ kind: 'error', message: text });
+    }
+  };
+
+  const copyArtifactPath = async (artifact: Artifact): Promise<void> => {
+    if (copyTimer.current !== undefined) { clearTimeout(copyTimer.current); copyTimer.current = undefined; }
+    try {
+      await navigator.clipboard.writeText(artifact.path);
+      setCopyNote({ artifactId: artifact.id, text: artifactCopyNote(true) });
+      // 成功提示 2 秒后消失；失败提示保留到下一次操作，避免用户没看到。
+      copyTimer.current = setTimeout(() => {
+        copyTimer.current = undefined;
+        setCopyNote(undefined);
+      }, 2000);
+    } catch {
+      setCopyNote({ artifactId: artifact.id, text: artifactCopyNote(false) });
+    }
+  };
+
+  const revealArtifact = async (artifact: Artifact): Promise<void> => {
+    if (!onRevealArtifact) return;
+    try {
+      await onRevealArtifact(artifact.path);
+      setRevealNote(undefined);
+    } catch (error) {
+      setRevealNote({ artifactId: artifact.id, text: describeRevealError(error) });
+    }
+  };
+
   const totals = inspection?.totals ?? EMPTY_USAGE;
   const context = inspection?.context;
   const capacity = context?.capacity;
@@ -431,8 +604,10 @@ export function DetailPanel({ inspection, snapshot, turnCount, onClose, onOpenPa
           artifacts.length === 0
             ? <p className="detail-empty">{DETAIL_EMPTY_TEXT.artifacts}</p>
             : <ul className="artifact-list">
-              {artifacts.map((artifact) => (
-                <li className="artifact-row" key={artifact.id} aria-label={artifactLineLabel(artifact)}>
+              {artifacts.map((artifact) => {
+                const [previewLabel, copyLabel, revealLabel] = artifactActionLabels();
+                const expanded = previewArtifactId === artifact.id;
+                return <li className="artifact-row" key={artifact.id} aria-label={artifactLineLabel(artifact)}>
                   <div className="artifact-head">
                     <strong title={artifact.path}>{artifact.name}</strong>
                     <span className="artifact-kind">{ARTIFACT_KIND_LABELS[artifact.kind]}</span>
@@ -442,8 +617,36 @@ export function DetailPanel({ inspection, snapshot, turnCount, onClose, onOpenPa
                     <span>来源工具 {artifact.tool}</span>
                     <span>{formatClock(artifact.createdAt)}</span>
                   </div>
-                </li>
-              ))}
+                  <div className="artifact-actions">
+                    {onPreviewArtifact && (
+                      <button
+                        type="button"
+                        className="artifact-action"
+                        aria-label={`${expanded ? '收起预览' : previewLabel} ${artifact.name}`}
+                        aria-expanded={expanded}
+                        onClick={() => void togglePreview(artifact)}
+                      >{expanded ? '收起预览' : previewLabel}</button>
+                    )}
+                    <button
+                      type="button"
+                      className="artifact-action"
+                      aria-label={`${copyLabel} ${artifact.name}`}
+                      onClick={() => void copyArtifactPath(artifact)}
+                    >{copyLabel}</button>
+                    <button
+                      type="button"
+                      className="artifact-action"
+                      aria-label={`${revealLabel} ${artifact.name}`}
+                      title={onRevealArtifact ? '在系统文件管理器中显示该文件' : '主进程未提供显示文件的通道'}
+                      disabled={!onRevealArtifact}
+                      onClick={() => void revealArtifact(artifact)}
+                    >{revealLabel}</button>
+                  </div>
+                  {copyNote?.artifactId === artifact.id && <p className="artifact-note" role="status">{copyNote.text}</p>}
+                  {revealNote?.artifactId === artifact.id && <p className="artifact-note artifact-note-error" role="alert">{revealNote.text}</p>}
+                  {expanded && <ArtifactPreview preview={preview} />}
+                </li>;
+              })}
             </ul>
         ))}
 
