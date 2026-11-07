@@ -117,7 +117,7 @@ corepack pnpm dev:host
 | UI：Markdown 时间线、Composer、审批卡片、状态栏、i18n | 已实现，9 项共享组件测试 |
 | 三栏工作台：多项目、多会话、搜索、归档恢复、模型与权限控制、文件预览 | 已实现；启动不自动创建会话，每个会话使用真实 cwd 和独立历史 |
 | 用量与账户：请求级账本、10 项 KPI、日期/项目筛选、渠道健康、手动余额与配额 | 已实现；未知数据保持未知，余额和配额明确标注非实时 |
-| Electron 壳与页面：窗口、Host 守护、窄 preload、CSP、统计/设置/Agent/MCP 页、会话详情、Git 侧栏、`/` `@` 输入面板 | 已实现，299 项应用测试 |
+| Electron 壳与页面：窗口、Host 守护、窄 preload、CSP、统计/设置/Agent/MCP 页、会话详情、Git 侧栏、`/` `@` 输入面板 | 已实现，323 项应用测试 |
 | 应用启动 → Host ready → 按需建会话 → 流式渲染 → 重启恢复 | 27 项真实 Electron 验收通过 |
 | 内嵌终端（PTY） | 未接（`terminal/*` 方法已在协议里，Host 侧未实现） |
 | 治理面可视化（任务/预算/审计链） | 接口存在，`governance/*` 返回占位数据（ARF Fabric 未装配） |
@@ -127,7 +127,7 @@ corepack pnpm dev:host
 
 2026-11-06 实测（macOS arm64 / Node 24.18 / Electron 44.10.1）：
 
-- 类型检查、生产构建和 611 项 DesktopCode 测试通过。
+- 类型检查、生产构建和 638 项 DesktopCode 测试通过。
 - 两个隔离项目完成多会话、严格审批、真实 cwd、模型切换、统计、归档恢复和重启恢复验收。
 - 本机临时 SSE Provider 证实请求依次到达 `alpha`、`beta`；第二次请求保留第一次的完整输入与回复。
 - 900px 与 1440px 视口均完成截图检查，无页面级横向溢出；renderer page error 和 console error 均为 0。
@@ -161,7 +161,7 @@ corepack pnpm dev:host
 
 - `../code/` 是**只读的内核**。本目录通过 `link:../../../code/packages/*` 引用它。
 - 新增能力一律在 `DesktopCode/` 内实现；需要改内核的，先记入 `DesktopDoc/00-基线` §7.3 的缺口清单。
-- 本目录的 611 项测试独立运行，不能替代内核回归。
+- 本目录的 638 项测试独立运行，不能替代内核回归。
 - 2026-11-06 单独复测 `@syaocode/rpc`：21 个测试文件、325 项测试通过；本轮未修改内核。
 
 ```bash
