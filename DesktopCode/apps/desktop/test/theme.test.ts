@@ -139,9 +139,11 @@ describe('界面语言跟随配置（FR-N-037 / config 是单一真相）', () =
 
   it('语言来自 config/get，而不是本地猜测或 localStorage', () => {
     expect(useWorkbenchSrc).toContain('Method.ConfigGet');
-    expect(useWorkbenchSrc).toMatch(/setLanguage\(config\.language\)/);
+    // 只有用户显式表过态才跟随配置；否则用桌面默认值（内核默认 en 会造成中英混排）。
+    expect(useWorkbenchSrc).toMatch(/setLanguage\(explicit \? config\.language : DESKTOP_DEFAULT_LANGUAGE\)/);
     // 不该出现"用 navigator.language 猜"这类做法。
     expect(useWorkbenchSrc).not.toContain('navigator.language');
+    expect(useWorkbenchSrc).not.toMatch(/localStorage\.setItem\('syao:language/);
   });
 
   it('设置页能真的切换语言（写 Host 配置，不是本地偏好）', () => {

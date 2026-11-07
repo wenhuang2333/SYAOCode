@@ -73,6 +73,15 @@ export function initialQuery(): UsageQuery {
   return { from: start.getTime(), to: end.getTime() };
 }
 
+/**
+ * 桌面端自己的默认界面语言。
+ *
+ * 内核默认是 `en`（CLI 面向国际用户），但桌面端目前只有约一成文案进了键集，
+ * 其余仍是中文。默认跟随内核会得到"共享组件英文 + 自研界面中文"的混排，
+ * 那比全中文更糟。等文案抽取完成后，这个常量应当删掉。
+ */
+const DESKTOP_DEFAULT_LANGUAGE: 'en' | 'zh' = 'zh';
+
 export function useWorkbench() {
   const [status, setStatus] = useState<ConnectionStatus>('booting');
   const [error, setError] = useState('');
@@ -81,9 +90,13 @@ export function useWorkbench() {
    * 界面语言（`27` FR-N-037）。
    *
    * 来源是 Host 的 `config/get`——配置是单一真相，界面不自己猜语言。
-   * 未取到之前按 `zh` 渲染（桌面端主要用户群），取到后立即跟随。
+   *
+   * 但**内核默认是 `en`，桌面端的界面文案绝大多数仍是中文**。若直接跟随，
+   * 切面就变成"共享组件英文 + 自研界面中文"的混排。所以在文案抽取完成前，
+   * 桌面端把自己的默认值钉在 `zh`（只覆盖"用户从未表态"的情况）：
+   * 用户显式选过 `en` 仍然返回 `en`，不会被这里改掉。
    */
-  const [language, setLanguage] = useState<'en' | 'zh'>('zh');
+  const [language, setLanguage] = useState<'en' | 'zh'>(DESKTOP_DEFAULT_LANGUAGE);
   const [snapshot, setSnapshot] = useState<SessionSnapshot>();
   const [inspection, setInspection] = useState<SessionInspection>();
   // 通知驱动的最小状态：只做"该刷新了"的信号，真正的取数仍走既有函数。
@@ -157,7 +170,13 @@ export function useWorkbench() {
     if (revision === refreshNumber.current) setOverview(result);
     // 语言属于配置层：每次刷新顺带对齐，用户在设置里改完立即生效。
     const config = await request<ConfigGetResult>(Method.ConfigGet).catch(() => undefined);
-    if (config !== undefined && revision === refreshNumber.current) setLanguage(config.language);
+    if (config !== undefined && revision === refreshNumber.current) {
+      // 内核默认 `en`，而桌面端文案绝大多数仍是中文。只有用户**真的表过态**
+      // （sources.language !== 'default'）才跟随；否则用桌面端自己的默认值，
+      // 避免"共享组件英文 + 自研界面中文"的混排。
+      const explicit = config.sources['language'] !== 'default' && config.sources['language'] !== undefined;
+      setLanguage(explicit ? config.language : DESKTOP_DEFAULT_LANGUAGE);
+    }
     return result;
   }, [request]);
 
