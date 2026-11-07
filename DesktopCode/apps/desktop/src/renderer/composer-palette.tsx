@@ -17,6 +17,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { TreeNode } from '@syaocode/dhp';
+import { t, type Lang, type PaletteCommandId } from './i18n';
 
 // ── 命令集（顺序固定，测试直接断言）────────────────────────────────────
 
@@ -32,26 +33,44 @@ export interface Command {
   readonly keys: readonly string[];
 }
 
-export const COMMANDS: readonly Command[] = [
-  { id: 'new', title: '新建会话', hint: '在当前项目创建新会话', keys: ['/new'] },
-  { id: 'model', title: '选择模型', hint: '打开渠道与模型选择器', keys: ['/model'] },
-  { id: 'permission', title: '切换权限', hint: '聚焦会话权限下拉框', keys: ['/permission'] },
-  { id: 'stop', title: '停止运行', hint: '停止当前轮次（运行中可用）', keys: ['/stop'] },
-  { id: 'archive', title: '归档会话', hint: '归档当前会话，可在会话树恢复', keys: ['/archive'] },
-  { id: 'git', title: '打开 Git 侧栏', hint: '切换到右栏 Git 槽位', keys: ['/git'] },
-  { id: 'detail', title: '会话详情', hint: '切换到右栏会话详情', keys: ['/detail'] },
-  { id: 'usage', title: '用量统计', hint: '打开用量页', keys: ['/usage'] },
-  { id: 'help', title: '帮助', hint: '在输入区插入命令与快捷键帮助（不发送）', keys: ['/help'] },
-];
+/** 命令 id 的固定顺序（顺序是产品决定：常用命令在前，与语言无关）。 */
+const COMMAND_IDS: readonly PaletteCommandId[] = ['new', 'model', 'permission', 'stop', 'archive', 'git', 'detail', 'usage', 'help'];
+
+/**
+ * 命令清单（按语言生成）。
+ *
+ * 为什么是函数而不是常量：文案属于界面语言，常量会把某一种语言钉死在模块加载时。
+ */
+export function commands(lang: Lang = 'zh'): readonly Command[] {
+  return COMMAND_IDS.map((id) => ({
+    id,
+    title: t(lang, `palette.commands.${id}.title`),
+    hint: t(lang, `palette.commands.${id}.hint`),
+    keys: [`/${id}`],
+  }));
+}
+
+/** 中文命令清单（兼容既有调用方与测试）。 */
+export const COMMANDS: readonly Command[] = commands('zh');
 
 /** `/help` 插入到输入区的帮助文本（只插入，不发送）。 */
-export const HELP_TEXT = '可用命令：/new 新建会话 · /model 选择模型 · /permission 切换权限 · /stop 停止运行 · /archive 归档会话 · /git Git 侧栏 · /detail 会话详情 · /usage 用量统计 · /help 帮助。输入 @ 引用工作区文件；Enter 发送，Shift Enter 换行。';
+export function helpText(lang: Lang = 'zh'): string {
+  return t(lang, 'palette.helpText');
+}
+
+/** 中文帮助文本（兼容既有调用方与测试）。 */
+export const HELP_TEXT = helpText('zh');
 
 /**
  * `!` 前缀的提示：现在会**真的执行**（FR-N-036），但仍与模型的 `bash` 工具
  * 共用同一个内核权限闸门——危险命令会被直接拒绝，写类命令会先弹审批卡。
  */
-export const SHELL_HINT = '! 直接在本机会话工作区执行命令（结果不回传给模型）；仍过权限闸门：危险命令会被拒绝，写类命令会先请你批准。';
+export function shellHint(lang: Lang = 'zh'): string {
+  return t(lang, 'palette.shellHint');
+}
+
+/** 中文 `!` 提示（兼容既有调用方与测试）。 */
+export const SHELL_HINT = shellHint('zh');
 
 /** 文件引用列表上限（防止一次渲染几千项）。 */
 export const FILE_LIMIT = 50;
@@ -131,10 +150,11 @@ export function detectTrigger(text: string, caret: number): Trigger | null {
 }
 
 /** 命令面板：按 id / 标题 / 关键字做大小写不敏感的包含匹配；空查询返回全部（顺序固定）。 */
-export function matchCommands(query: string): readonly Command[] {
+export function matchCommands(query: string, lang: Lang = 'zh'): readonly Command[] {
   const needle = query.trim().toLowerCase();
-  if (needle === '') return COMMANDS;
-  return COMMANDS.filter((command) => command.id.toLowerCase().includes(needle)
+  const list = lang === 'zh' ? COMMANDS : commands(lang);
+  if (needle === '') return list;
+  return list.filter((command) => command.id.toLowerCase().includes(needle)
     || command.title.toLowerCase().includes(needle)
     || command.keys.some((key) => key.slice(1).toLowerCase().includes(needle)));
 }
@@ -149,9 +169,10 @@ export function applyCommand(
   trigger: Trigger,
   commandId: CommandId | string,
   caret: number,
+  lang: Lang = 'zh',
 ): { readonly text: string; readonly caret: number; readonly action: CommandAction } {
   const position = Math.max(0, Math.min(Math.trunc(caret), text.length));
-  const command = COMMANDS.find((entry) => entry.id === commandId);
+  const command = commands(lang).find((entry) => entry.id === commandId);
   // 触发已失效（类型不对、命令不存在、光标离开触发串）时不动文本。
   if (trigger.kind !== 'slash' || !command || position < trigger.start || position > trigger.end) {
     return { text, caret: position, action: { kind: 'none' } };
@@ -159,7 +180,8 @@ export function applyCommand(
   const before = text.slice(0, trigger.start);
   const after = text.slice(trigger.end);
   if (command.id === 'help') {
-    return { text: `${before}${HELP_TEXT}${after}`, caret: before.length + HELP_TEXT.length, action: { kind: 'insert', text: HELP_TEXT } };
+    const help = helpText(lang);
+    return { text: `${before}${help}${after}`, caret: before.length + help.length, action: { kind: 'insert', text: help } };
   }
   return { text: `${before}${after}`, caret: before.length, action: { kind: command.id } };
 }
@@ -194,8 +216,8 @@ export function collectFilePaths(nodes: readonly TreeNode[] | undefined): readon
 }
 
 /** 草稿以 `!` 开头时返回诚实提示；其他返回 `null`。 */
-export function shellHintFor(text: string): string | null {
-  return /^\s*!/.test(text) ? SHELL_HINT : null;
+export function shellHintFor(text: string, lang: Lang = 'zh'): string | null {
+  return /^\s*!/.test(text) ? shellHint(lang) : null;
 }
 
 // ── 组件 ──────────────────────────────────────────────────────────────
@@ -219,6 +241,8 @@ export interface ComposerPaletteProps {
   readonly onAction: (action: CommandAction) => void;
   /** 补全 / 插入 / 删除触发串后回写文本与光标。 */
   readonly onText: (next: { readonly text: string; readonly caret: number }) => void;
+  /** 界面语言（默认中文，与桌面端默认一致）。 */
+  readonly lang?: Lang;
 }
 
 interface PaletteItem {
@@ -244,6 +268,7 @@ export function ComposerPalette({
   anchorRef,
   onAction,
   onText,
+  lang = 'zh',
 }: ComposerPaletteProps): ReactNode {
   const baseId = useId();
   const listId = `${baseId}-list`;
@@ -256,32 +281,32 @@ export function ComposerPalette({
   // 选中的文件已经是完整路径（`@src/a.ts` 后光标在末尾）时不再弹面板，避免选完立刻又弹出来。
   const mentionComplete = trigger?.kind === 'mention' && caret >= trigger.end && files.includes(trigger.query);
   const open = trigger !== null && !mentionComplete && closedKey !== triggerKey;
-  const commands = useMemo(() => (trigger?.kind === 'slash' ? matchCommands(trigger.query) : []), [trigger?.kind, trigger?.query]);
+  const commandList = useMemo(() => (trigger?.kind === 'slash' ? matchCommands(trigger.query, lang) : []), [trigger?.kind, trigger?.query, lang]);
   const visibleFiles = useMemo(() => (trigger?.kind === 'mention' ? filterFiles(files, trigger.query) : []), [trigger?.kind, trigger?.query, files]);
   const items: readonly PaletteItem[] = trigger?.kind === 'slash'
-    ? commands.map((command) => ({
+    ? commandList.map((command) => ({
       id: command.id,
       key: command.keys[0] ?? `/${command.id}`,
       title: command.title,
       hint: command.hint,
       disabled: command.id === 'stop' && !canStop,
     }))
-    : visibleFiles.map((path) => ({ id: path, key: path, title: path, hint: '引用工作区文件', disabled: false }));
+    : visibleFiles.map((path) => ({ id: path, key: path, title: path, hint: t(lang, 'palette.fileHint'), disabled: false }));
   const selected = items.length === 0 ? -1 : Math.min(active, items.length - 1);
   // 触发串 / 过滤词变化时把高亮重置到第一项（键盘上下键仍可继续移动）。
   useEffect(() => { setActive(0); }, [triggerKey]);
   const emptyText = trigger?.kind === 'slash'
-    ? '没有匹配的命令'
+    ? t(lang, 'palette.noCommand')
     : filesLoading
-      ? '正在读取工作区文件…'
+      ? t(lang, 'palette.loadingFiles')
       : filesError !== '' || files.length === 0
-        ? '未取到工作区文件（可在会话详情查看）'
-        : '没有匹配的文件';
+        ? t(lang, 'palette.noFiles')
+        : t(lang, 'palette.noFileMatch');
 
   const execute = (item: PaletteItem | undefined): void => {
     if (!item || item.disabled || trigger === null) return;
     if (trigger.kind === 'slash') {
-      const result = applyCommand(text, trigger, item.id, caret);
+      const result = applyCommand(text, trigger, item.id, caret, lang);
       onText({ text: result.text, caret: result.caret });
       if (result.action.kind !== 'none' && result.action.kind !== 'insert') onAction(result.action);
     } else {
@@ -396,12 +421,12 @@ export function ComposerPalette({
   return (
     <div className="composer-palette" data-kind={trigger.kind} ref={paletteRef}>
       <div className="composer-palette-head">
-        <strong>{trigger.kind === 'slash' ? '命令' : '文件引用'}</strong>
-        <small>{trigger.kind === 'slash' ? '↑↓ 选择 · Enter 执行 · Tab 补全 · Esc 关闭' : '↑↓ 选择 · Enter 引用 · Esc 关闭'}</small>
+        <strong>{trigger.kind === 'slash' ? t(lang, 'palette.groupCommand') : t(lang, 'palette.groupFile')}</strong>
+        <small>{trigger.kind === 'slash' ? t(lang, 'palette.keysCommand') : t(lang, 'palette.keysFile')}</small>
       </div>
       {trigger.kind === 'slash'
-        ? <div id={listId} className="composer-palette-list" role="listbox" aria-label="命令面板">{body}</div>
-        : <div id={listId} className="composer-palette-list" role="listbox" aria-label="文件引用">{body}</div>}
+        ? <div id={listId} className="composer-palette-list" role="listbox" aria-label={t(lang, 'palette.commandListLabel')}>{body}</div>
+        : <div id={listId} className="composer-palette-list" role="listbox" aria-label={t(lang, 'palette.fileListLabel')}>{body}</div>}
     </div>
   );
 }

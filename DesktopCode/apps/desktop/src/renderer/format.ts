@@ -4,6 +4,8 @@
  * 纪律：**不把"未知"显示成 0**。缺失值一律显示 `—`，
  * 与 `27` §6 的"不伪造"原则一致（颜色与数字都不是唯一信息载体）。
  */
+import { t, type Lang } from './i18n';
+
 
 const numberFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 
@@ -54,12 +56,12 @@ export function formatClock(timestamp: number | null | undefined): string {
 }
 
 /** 相对时间（粗粒度，用于"最近更新"）。 */
-export function formatRelative(timestamp: number | null | undefined, now = Date.now()): string {
+export function formatRelative(timestamp: number | null | undefined, now = Date.now(), lang: Lang = 'zh'): string {
   if (timestamp == null || !Number.isFinite(timestamp)) return '—';
   const delta = now - timestamp;
-  if (delta < 0) return '刚刚';
-  if (delta < 60_000) return '刚刚';
-  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)} 分钟前`;
-  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)} 小时前`;
-  return `${Math.floor(delta / 86_400_000)} 天前`;
+  // 未来时间戳（时钟偏差）按"刚刚"处理，不要显示"负几分钟前"。
+  if (delta < 60_000) return t(lang, 'relative.justNow');
+  if (delta < 3_600_000) return t(lang, 'relative.minutesAgo', { n: Math.floor(delta / 60_000) });
+  if (delta < 86_400_000) return t(lang, 'relative.hoursAgo', { n: Math.floor(delta / 3_600_000) });
+  return t(lang, 'relative.daysAgo', { n: Math.floor(delta / 86_400_000) });
 }

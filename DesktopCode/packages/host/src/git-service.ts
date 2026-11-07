@@ -402,6 +402,36 @@ export class GitService {
       }
       args.push(assertRevision(opts.commit));
     }
+    // 未跟踪文件（worktree 口径）：`git diff -- <path>` 对它们**没有任何输出**，
+    // 直接把空结果交出去会让界面显示"没有文本差异"——那是假话，文件明明有内容。
+    // 用 `--no-index -- /dev/null <path>` 得到标准的 new-file diff。
+    // 该命令对已跟踪文件会失败（exit 1），所以只在确认未跟踪时才走这条路。
+    const untracked = mode === 'worktree' && (await this.isUntracked(root, relative));
+    if (untracked) {
+      const fresh = await this.git(
+        root,
+        ['diff', '--no-color', '--unified=3', '--no-index', '--', '/dev/null', relative],
+        { allowFailure: true },
+      );
+      if (fresh.code !== 0 && fresh.code !== 1) {
+        // `--no-index` 在"有差异"时返回 1，那是正常结果；其它非零码才是真失败。
+        throw new GitError('git_command_failed', `git diff --no-index exited with ${fresh.code}`, {
+          exitCode: fresh.code,
+          stderrTail: fresh.stderr,
+        });
+      }
+      const parsedFresh = parseUnifiedDiff(fresh.stdout);
+      return {
+        workspaceRoot: path.resolve(root),
+        path: relative,
+        mode,
+        hunks: parsedFresh.hunks,
+        added: parsedFresh.added,
+        removed: parsedFresh.removed,
+        truncated: fresh.truncated,
+        binary: parsedFresh.binary,
+      };
+    }
     args.push('--', relative);
 
     const out = await this.git(root, args);
@@ -640,6 +670,16 @@ export class GitService {
       // 只有进索引区的条目才有"将要提交的内容大小"；删除条目为 0（提交里是删除）。
       sizeBytes: !isStaged ? null : (stagedSizes.get(relative) ?? (status === 'deleted' ? 0 : null)),
     };
+  }
+
+  /**
+   * 该路径是否**未跟踪**（`git ls-files --error-unmatch` 失败即为未跟踪）。
+   *
+   * 用 `ls-files` 而不是 `status`：只问一个路径的状态，输出小、无解析歧义。
+   */
+  private async isUntracked(root: string, relative: string): Promise<boolean> {
+    const out = await this.git(root, ['ls-files', '--error-unmatch', '--', relative], { allowFailure: true });
+    return out.code !== 0;
   }
 
   /** 提交 sha → 指向它的 ref 短名（分支 / tag）。 */

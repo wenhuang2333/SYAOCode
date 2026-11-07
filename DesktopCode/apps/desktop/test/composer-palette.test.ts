@@ -12,6 +12,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { TreeNode } from '@syaocode/dhp';
+import { t } from '../src/renderer/i18n.ts';
 import {
   COMMANDS, ComposerPalette, FILE_LIMIT, HELP_TEXT, SHELL_HINT,
   applyCommand, applyMention, collectFilePaths, detectTrigger, filterFiles, matchCommands, shellHintFor,
@@ -232,7 +233,8 @@ describe('ComposerPalette static render', () => {
   it('renders the slash command panel with every command and a selected option', () => {
     const html = render();
     expect(html).toContain('role="listbox"');
-    expect(html).toContain('aria-label="命令面板"');
+    // 文案现在从目录取值（不再写死在组件里）。
+    expect(html).toContain(`aria-label="${t('zh', 'palette.commandListLabel')}"`);
     for (const command of COMMANDS) expect(html).toContain(command.title);
     expect(html).toContain('aria-selected="true"');
     expect(html.match(/aria-selected="true"/g)).toHaveLength(1);
@@ -279,14 +281,15 @@ describe('source contracts: palette wiring never hijacks the send path', () => {
   it('exposes listbox / option semantics and the required labels', () => {
     const source = read('src/renderer/composer-palette.tsx');
     expect(source).toContain('role="listbox"');
-    expect(source).toContain('aria-label="命令面板"');
-    expect(source).toContain('aria-label="文件引用"');
+    // 标签来自文案目录（`t(lang, ...)`），组件里不再写死中文字面量。
+    expect(source).toContain("t(lang, 'palette.commandListLabel')");
+    expect(source).toContain("t(lang, 'palette.fileListLabel')");
     expect(source).toContain('role="option"');
     expect(source).toContain('aria-selected');
     expect(source).toContain('aria-expanded');
     expect(source).toContain('aria-activedescendant');
-    expect(source).toContain('没有匹配的命令');
-    expect(source).toContain('未取到工作区文件（可在会话详情查看）');
+    expect(source).toContain("t(lang, 'palette.noCommand')");
+    expect(source).toContain("t(lang, 'palette.noFiles')");
     expect(source).not.toContain('直接执行命令尚未接入');
     // 面板打开时 Enter 只作用于面板：在 window 捕获阶段 stopPropagation，Composer 的发送处理器收不到。
     expect(source).toContain('stopPropagation');

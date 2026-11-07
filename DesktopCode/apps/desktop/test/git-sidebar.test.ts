@@ -17,7 +17,8 @@ import {
   GIT_TABS, GitDiffPanel, GitSidebar, INITIAL_SIDEBAR_STATE, LARGE_FILE_THRESHOLD_BYTES, OAUTH_MAX_DELAY_MS, OAUTH_MIN_DELAY_MS, OAUTH_POLL_LIMIT, SIGNING_FAILED_CODE,
   aheadBehindText, authMethodLabel, authStatusLabel, authStatusTone, branchLabel, commitHooksText, executableHooks,
   formatBytes, gitFileLabel, gitFileStatText, gitStatusBadge, gitStatusSummary, gitTabState, groupByStaging,
-  diffModeForFile, gitDiffEmptyText, gitDiffScopeText,
+  authStatusLabel as authStatusLabelZh,
+  diffModeForFile, gitDiffEmptyText, gitDiffScopeText, gitTabs,
   inactiveHooks, isSigningFailure, largeStagedFiles, layoutGitGraph, onlineStateLabel, onlineStateTone,
   oauthFailureText, oauthPollDelay, oauthPollLabel, oauthProviderHint, oauthProviderState, oauthRemainingText,
   preflightReady, remoteUrlLabel, signingFailureActions, summarizeGitFiles,
@@ -365,9 +366,11 @@ describe('提交信息生成（FR-N-026）', () => {
     expect(source).toContain('确定性兜底文案');
     expect(source).toContain('result.truncated');
     // 生成失败只写一行说明，不把上传流程推进到 failed 步骤。
-    expect(source).toMatch(/生成失败：\$\{\(e as Error\)\.message\}/);
-    // 已手写内容不静默覆盖。
-    expect(source).toContain('用生成的提交信息替换吗');
+    // 文案已进 i18n 目录（`git.upload.generateFailed`），这里断言接线而不是中文原文。
+    expect(source).toContain("t(lang, 'git.upload.generateFailed', { message: (e as Error).message })");
+    expect(source).not.toMatch(/catch \(e\) \{\s*setStep\('failed'\)/);
+    // 已手写内容不静默覆盖（确认文案已进目录）。
+    expect(source).toContain("window.confirm(t(lang, 'git.upload.generateReplace'))");
   });
 });
 
@@ -428,7 +431,9 @@ describe('commit preflight hints and signing-failure paths (§10.5.3)', () => {
     expect(isSigningFailure({ kind: 'git_signing_failed' })).toBe(true);
     expect(isSigningFailure({ code: SIGNING_FAILED_CODE })).toBe(true);
     expect(isSigningFailure(new Error(`提交失败（${SIGNING_FAILED_CODE}）`))).toBe(true);
+    // 中文措辞（历史/本地化文案）与英文措辞（Host 当前实际返回）都要认。
     expect(isSigningFailure(new Error('签名失败：gpg: signing failed'))).toBe(true);
+    expect(isSigningFailure(new Error('commit signing failed; choose retry, unsigned commit, or cancel'))).toBe(true);
     expect(isSigningFailure(new Error('network down'))).toBe(false);
     expect(isSigningFailure(null)).toBe(false);
     expect(isSigningFailure('git_signing_failed')).toBe(false);
@@ -662,9 +667,63 @@ describe('working-tree diff entry (FR-N-024)', () => {
     expect(html).toContain('-old');
   });
 
+  it('static rendering in English shows translated chrome instead of Chinese', () => {
+    const html = render({
+      lang: 'en',
+      status: status({ files: [file({ path: 'src/a.ts' })] }),
+      onLoadDiff: async () => {},
+    });
+    expect(html).toContain('Changes');
+    expect(html).toContain('Commit graph');
+    expect(html).toContain('Git sidebar');
+    expect(html).not.toContain('变更');
+    expect(html).not.toContain('关闭 Git 侧栏');
+  });
+
   it('source contract: the diff area states the working-tree scope', () => {
     const source = read('src/renderer/git-sidebar.tsx');
     expect(source).toContain('工作区口径');
     expect(source).toContain('gitDiffScopeText');
+  });
+});
+
+describe('i18n: Git 侧栏文案在英文下也可读（FR-N-037）', () => {
+  it('口径说明在两种语言下都点明工作区/工作树语义', () => {
+    for (const mode of ['staged', 'worktree'] as const) {
+      const zh = gitDiffScopeText(mode, 'zh');
+      const en = gitDiffScopeText(mode, 'en');
+      expect(zh).not.toBe(en);
+      expect(zh).toContain('工作区口径');
+      expect(en.toLowerCase()).toContain('working-tree');
+    }
+  });
+
+  it('标签页与状态名在英文下非空且与中文不同', () => {
+    const zh = gitTabs('zh').map((tab) => tab.label);
+    const en = gitTabs('en').map((tab) => tab.label);
+    expect(en.every((label) => label !== '')).toBe(true);
+    expect(en).not.toEqual(zh);
+    expect(en).toEqual(['Changes', 'Commit graph', 'Branches', 'Upload']);
+  });
+
+  it('上传失败的六条路径在英文下都有非空且互不相同的文案，且仍不含 force', () => {
+    const codes = [-32036, -32037, -32038, -32039, -32032, -32033];
+    const titles = codes.map((code) => uploadFailurePath(code, 'en').title);
+    expect(titles.every((title) => title !== '')).toBe(true);
+    expect(new Set(titles).size).toBe(6);
+    for (const code of [...codes, -1]) {
+      const path = uploadFailurePath(code, 'en');
+      expect(path.title).not.toMatch(/force/i);
+      for (const action of path.actions) expect(action).not.toMatch(/force/i);
+    }
+  });
+
+  it('认证状态与钩子提示的英文版非空且与中文不同', () => {
+    const ready = auth({ configured: true, ready: true, account: 'octocat' });
+    expect(authStatusLabel(ready, 'en')).not.toBe('');
+    expect(authStatusLabel(ready, 'en')).not.toBe(authStatusLabelZh(ready));
+    const withHooks = status({ hооk: [{ name: 'pre-commit', executable: true }] } as unknown as Partial<GitStatusResult>);
+    expect(commitHooksText(withHooks, 'en')).not.toBe('');
+    expect(commitHooksText(withHooks, 'en')).not.toBe(commitHooksText(withHooks));
   });
 });

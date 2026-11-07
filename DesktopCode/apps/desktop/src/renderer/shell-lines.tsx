@@ -11,6 +11,7 @@
 
 import type { ReactNode } from 'react';
 import type { SessionRunCommandResult } from '@syaocode/dhp';
+import { t, type Lang } from './i18n';
 
 // ── 纯函数（可被测试直接断言）────────────────────────────────────────────
 
@@ -51,24 +52,24 @@ export function shellResultTone(outcome: ShellOutcome): ShellResultTone {
 }
 
 /** 四种结果各自的一句话摘要（互不相同；被拒不出现“成功”）。 */
-export function shellResultSummary(outcome: ShellOutcome): string {
+export function shellResultSummary(outcome: ShellOutcome, lang: Lang = 'zh'): string {
   switch (shellResultTone(outcome)) {
     case 'ok':
-      return '本地命令执行完成（退出码 0）';
+      return t(lang, 'shell.ok');
     case 'failed': {
       const result = outcome.result;
       if (!result) {
         return outcome.error === undefined || outcome.error === ''
-          ? '本地命令执行失败'
-          : `本地命令执行失败：${outcome.error}`;
+          ? t(lang, 'shell.failed')
+          : t(lang, 'shell.failedWith', { reason: outcome.error });
       }
-      return `本地命令执行失败（退出码 ${result.exitCode}）`;
+      return t(lang, 'shell.failedExit', { code: result.exitCode });
     }
     case 'timeout':
-      return '命令超时（60 s）已被终止';
+      return t(lang, 'shell.timeout');
     case 'denied': {
       const reason = denialReason(outcome.denial);
-      return reason === '' ? '命令被权限规则拒绝' : `命令被权限规则拒绝：${reason}`;
+      return reason === '' ? t(lang, 'shell.denied') : t(lang, 'shell.deniedWith', { reason });
     }
   }
 }
@@ -86,20 +87,21 @@ export function denialReason(denial: ShellDenial | undefined): string {
  * stdout 在前；stderr 非空时用 `--- stderr ---` 分隔；两者都空时给明确占位
  * （绝不留空块，让人误以为“没有输出”就是“没执行”）。
  */
-export function shellOutputText(result: SessionRunCommandResult): string {
+export function shellOutputText(result: SessionRunCommandResult, lang: Lang = 'zh'): string {
   const stdout = result.stdout;
   const stderr = result.stderr;
   const hasStdout = stdout !== '';
   const hasStderr = stderr !== '';
-  if (!hasStdout && !hasStderr) return '（没有输出）';
+  const separator = t(lang, 'shell.stderrSeparator');
+  if (!hasStdout && !hasStderr) return t(lang, 'shell.emptyOutput');
   if (!hasStderr) return stdout;
-  if (!hasStdout) return `--- stderr ---\n${stderr}`;
-  return `${stdout}\n--- stderr ---\n${stderr}`;
+  if (!hasStdout) return `${separator}\n${stderr}`;
+  return `${stdout}\n${separator}\n${stderr}`;
 }
 
 /** 结果行的补充说明：截断必须明说（§8.4 的同一套口径）。 */
-export function shellTruncatedNote(result: SessionRunCommandResult): string {
-  return result.truncated ? '输出已截断（上限 256 KiB）' : '';
+export function shellTruncatedNote(result: SessionRunCommandResult, lang: Lang = 'zh'): string {
+  return result.truncated ? t(lang, 'shell.truncated') : '';
 }
 
 /** 失败时草稿是否应当保留（只有成功才清空，方便修改重试）。 */
@@ -116,6 +118,8 @@ export interface ShellResultBlockProps {
   readonly outcome?: ShellOutcome | undefined;
   /** 是否仍在执行（含等待审批卡）。 */
   readonly pending?: boolean | undefined;
+  /** 界面语言（默认中文，与桌面端默认一致）。 */
+  readonly lang?: Lang | undefined;
 }
 
 /**
@@ -124,29 +128,29 @@ export interface ShellResultBlockProps {
  * 与 Timeline 的会话消息刻意不同：`.shell-line` 自带“本地命令”标签、等宽正文，
  * 并明确写“未发送给模型”，避免用户误以为模型执行了它。
  */
-export function ShellResultBlock({ command, outcome, pending = false }: ShellResultBlockProps): ReactNode {
+export function ShellResultBlock({ command, outcome, pending = false, lang = 'zh' }: ShellResultBlockProps): ReactNode {
   const tone = pending || !outcome ? undefined : shellResultTone(outcome);
   return (
-    <section className={`shell-line${tone === undefined ? '' : ` shell-line-${tone}`}`} aria-label="本地命令（未发送给模型）">
+    <section className={`shell-line${tone === undefined ? '' : ` shell-line-${tone}`}`} aria-label={t(lang, 'shell.ariaLabel')}>
       <header className="shell-line-head">
-        <span className="shell-line-tag">本地命令</span>
-        <span className="shell-line-hint">未发送给模型</span>
+        <span className="shell-line-tag">{t(lang, 'shell.tag')}</span>
+        <span className="shell-line-hint">{t(lang, 'shell.hint')}</span>
       </header>
       <pre className="shell-line-command"><span aria-hidden="true">! </span>{command}</pre>
       {pending || !outcome
-        ? <p className="shell-line-status" role="status">执行中…（如需审批，请在上方审批卡中批准）</p>
+        ? <p className="shell-line-status" role="status">{t(lang, 'shell.running')}</p>
         : <>
-          <p className={`shell-line-status shell-line-status-${tone}`}>{shellResultSummary(outcome)}</p>
+          <p className={`shell-line-status shell-line-status-${tone}`}>{shellResultSummary(outcome, lang)}</p>
           {tone !== 'denied' && outcome.result && (
             <>
-              {shellTruncatedNote(outcome.result) !== '' && <p className="shell-line-note">{shellTruncatedNote(outcome.result)}</p>}
-              <pre className="shell-line-output">{shellOutputText(outcome.result)}</pre>
+              {shellTruncatedNote(outcome.result, lang) !== '' && <p className="shell-line-note">{shellTruncatedNote(outcome.result, lang)}</p>}
+              <pre className="shell-line-output">{shellOutputText(outcome.result, lang)}</pre>
               <p className="shell-line-meta">
-                退出码 {outcome.result.exitCode} · 耗时 {outcome.result.durationMs} ms
+                {t(lang, 'shell.meta', { code: outcome.result.exitCode, ms: outcome.result.durationMs })}
               </p>
             </>
           )}
-          {tone === 'denied' && <p className="shell-line-note">没有执行任何命令；如需执行，请调整命令或权限规则。</p>}
+          {tone === 'denied' && <p className="shell-line-note">{t(lang, 'shell.deniedNote')}</p>}
         </>}
     </section>
   );

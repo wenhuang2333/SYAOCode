@@ -433,3 +433,38 @@ describe('提交前提示所需的数据（27 §10.5.3）', () => {
     expect(status.hooks).toEqual([]);
   });
 });
+
+describe('未跟踪文件的 diff（文案曾与实际不符）', () => {
+  it.skipIf(!hasGit)('未跟踪文件能给出 new-file diff，而不是空结果', async () => {
+    const root = await repo();
+    // 先有一个提交，仓库才算"有历史"。
+    await commit(root, 'init', { 'README.md': '# t\n' });
+    await fs.writeFile(path.join(root, 'fresh.txt'), 'line one\nline two\n');
+
+    const diff = await service.diff(root, 'fresh.txt', { mode: 'worktree' });
+    // `git diff -- <untracked>` 是空输出；这里必须走 `--no-index` 才能拿到内容。
+    expect(diff.hunks.length).toBeGreaterThan(0);
+    expect(diff.added).toBe(2);
+    expect(diff.removed).toBe(0);
+    expect(diff.binary).toBe(false);
+  });
+
+  it.skipIf(!hasGit)('已跟踪文件的 worktree diff 行为不变', async () => {
+    const root = await repo();
+    await commit(root, 'init', { 'a.txt': 'one\n' });
+    await fs.writeFile(path.join(root, 'a.txt'), 'one\ntwo\n');
+
+    const diff = await service.diff(root, 'a.txt', { mode: 'worktree' });
+    expect(diff.added).toBe(1);
+    expect(diff.removed).toBe(0);
+  });
+
+  it.skipIf(!hasGit)('staged 口径不受影响：未跟踪文件在 staged 下没有内容差异', async () => {
+    const root = await repo();
+    await commit(root, 'init', { 'README.md': '# t\n' });
+    await fs.writeFile(path.join(root, 'fresh.txt'), 'x\n');
+    const diff = await service.diff(root, 'fresh.txt', { mode: 'staged' });
+    // 未暂存 = 索引里没有它，所以 staged diff 确实为空（这是正确语义）。
+    expect(diff.hunks).toEqual([]);
+  });
+});
