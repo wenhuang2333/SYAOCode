@@ -5,7 +5,7 @@ import {
   type AckResult, type AgentsListResult, type AgentsSaveParams, type ChannelConfig, type DesktopOverview, type DesktopPermissionMode,
   type GitAuthStatusResult, type GitBranchesResult, type GitCommitMessageResult, type GitDiffResult, type GitGraphResult, type GitPreflightResult,
   type GitRemotesResult, type GitStatusResult, type GitUploadResult, type McpAddParams, type McpServerInfo, type McpToolSummary,
-  type SessionChangesNotification, type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
+  type SessionChangeDiffResult, type SessionChangesNotification, type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
   type WorkspaceTreeResult, type WorkspaceReadFileResult,
 } from '@syaocode/dhp';
 import { isSigningFailure, type GitCommitInput } from './git-sidebar';
@@ -126,6 +126,18 @@ export function useWorkbench() {
     if (!sid) { setInspection(undefined); return; }
     const result = await request<SessionInspection>(WorkbenchMethod.SessionInspect, { sessionId: sid });
     if (active.current === sid) setInspection(result);
+  }, [request]);
+
+  /**
+   * 会话口径的单文件只读 diff（N-11 / FR-N-011）。
+   *
+   * 口径是"本会话首次触碰前 → 现在"，**不是** Git worktree diff；
+   * 路径必须来自 `SessionInspection.changes`（Host 会再校验围栏）。
+   * 错误不在这里吞：调用方（会话详情）负责显示"无法读取该文件的 diff"。
+   */
+  const sessionChangeDiff = useCallback((sessionId: string, path: string): Promise<SessionChangeDiffResult | undefined> => {
+    if (!sessionId || path === '') return Promise.resolve(undefined);
+    return request<SessionChangeDiffResult>(FeatureMethod.SessionChangeDiff, { sessionId, path });
   }, [request]);
 
   const refresh = useCallback(async (): Promise<DesktopOverview | undefined> => {
@@ -665,7 +677,7 @@ export function useWorkbench() {
     page, setPage, draft: drafts[sessionId] ?? '',
     setDraft: (text: string) => setDrafts((prev) => ({ ...prev, [sessionId]: text })),
     loadingSession, mutating, query, setQuery, report, loadingUsage,
-    selectSession, selectWorkspace, createSession, openWorkspace, send, stop,
+    selectSession, selectWorkspace, createSession, openWorkspace, send, stop, sessionChangeDiff,
     configure, rename, archive, resolve, saveChannel, readTree, readFile,
     // Git（工作区口径）
     gitStatus, gitBranches, gitGraph, gitRemotes, gitAuth, gitPreflight, gitUpload, gitDiff,

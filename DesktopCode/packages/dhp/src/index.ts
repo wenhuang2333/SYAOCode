@@ -26,4 +26,4 @@ export * from './features.ts';
  * schema 摘要：用于在 `hello-ack` 中暴露"实现自报的协议形状"，
  * 便于发现文档与实现的漂移（`09` 的 `lint:dhp` 也做同一件事的另一半）。
  */
-export const DHP_SCHEMA_HASH = 'dhp-v1-session-turn-interaction-config-workspace-terminal-governance-features-mcp-agents-git-commit-message';
+export const DHP_SCHEMA_HASH = 'dhp-v1-session-turn-interaction-config-workspace-terminal-governance-features-mcp-agents-git-commit-message-change-diff';

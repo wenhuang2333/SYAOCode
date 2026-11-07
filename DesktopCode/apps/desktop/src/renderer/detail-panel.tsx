@@ -9,13 +9,15 @@
  *  - 颜色不是唯一信息载体：状态字母、`+/-` 文本、`aria-label` 同时存在。
  */
 
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   EMPTY_USAGE,
   type Artifact,
   type ChangesCoverage,
+  type DiffHunk,
   type FileChange,
   type FileChangeStatus,
+  type SessionChangeDiffResult,
   type SessionInspection,
   type SessionSnapshot,
   type SourceRef,
@@ -154,6 +156,54 @@ export function sourceLineLabel(source: SourceRef): string {
   return `${source.title}，域名 ${source.domain}，${sourceCountText(source)}，${sourceTrustLabel(source)}`;
 }
 
+// ── 单文件只读 diff（N-11）──────────────────────────────────────────────
+//
+// 口径纪律：这里展示的是**会话口径**（本会话首次触碰前 → 现在），
+// 与 Git 侧栏的**工作区口径**是两件事。因此刻意不复用 `.git-diff-*` 类名，
+// 避免两种口径在视觉上被当成同一个东西。
+
+/** `unavailable` 四种原因各自的人话文案（互不相同，且都说明"为什么没有 diff"）。 */
+export const CHANGE_DIFF_UNAVAILABLE_TEXT: Readonly<Record<'binary' | 'too_large' | 'no_snapshot' | 'deleted', string>> = {
+  binary: '二进制文件，无法显示文本 diff',
+  too_large: '差异过大，只显示行数',
+  no_snapshot: '本次会话没有留下改动前的内容（例如应用重启后），无法对比',
+  deleted: '文件已删除，显示删除前的行数',
+};
+
+/** 没有可用 diff 时的说明；有可用 diff 时为空串（界面据此决定是否渲染 `<pre>`）。 */
+export function changeDiffNote(result: SessionChangeDiffResult): string {
+  if (result.unavailable !== null) return CHANGE_DIFF_UNAVAILABLE_TEXT[result.unavailable];
+  if (result.hunks.length === 0) return '本次会话没有产生文本差异（或只有权限/模式变化）';
+  if (result.truncated) return '差异过长，下面只显示前一部分';
+  return '';
+}
+
+/** diff 行数文本：`+12 -3`。 */
+export function changeDiffStatsText(result: SessionChangeDiffResult): string {
+  return `+${result.added} -${result.removed}`;
+}
+
+/** 单行的着色类名（add / del / ctx 三种，颜色之外还有 `+` / `-` / 空格前缀）。 */
+export function changeDiffLineClass(kind: DiffHunk['lines'][number]['kind']): string {
+  return kind === 'add' ? 'change-diff-line-add' : kind === 'del' ? 'change-diff-line-del' : 'change-diff-line-ctx';
+}
+
+/** 单行前缀：`+` / `-` / 空格（颜色不是唯一信息载体）。 */
+export function changeDiffLinePrefix(kind: DiffHunk['lines'][number]['kind']): string {
+  return kind === 'add' ? '+' : kind === 'del' ? '-' : ' ';
+}
+
+/** 读取失败的人话说明（例如会话没记录过该路径）。 */
+export function describeDiffError(error: unknown): string {
+  const candidate = error as { readonly kind?: unknown; readonly message?: unknown } | null;
+  const kind = candidate?.kind;
+  const message = typeof candidate?.message === 'string' ? candidate.message : '';
+  if (kind === 'capability_not_found' || message.includes('capability_not_found') || message.includes('-32005')) {
+    return '本会话没有记录过这个路径的改动，无法生成 diff';
+  }
+  return message === '' ? '读取 diff 失败' : `读取 diff 失败：${message}`;
+}
+
 /** 覆盖范围说明：用过 `bash` 时必须显示"命令改动未逐文件统计"。 */
 export function coverageNote(coverage: ChangesCoverage | undefined): string {
   if (!coverage || !coverage.bashUsed) return '';
@@ -169,6 +219,12 @@ export interface DetailPanelProps {
   readonly turnCount: number;
   readonly onClose: () => void;
   readonly onOpenPage: (page: 'agents' | 'resources') => void;
+  /**
+   * 读取单个改动文件的会话口径 diff（N-11）。
+   *
+   * **可选**：未提供时改动行不可点击——不假装支持（`27` §6 不伪造）。
+   */
+  readonly onLoadDiff?: ((path: string) => Promise<SessionChangeDiffResult | undefined>) | undefined;
 }
 
 const permissionNames: Record<string, string> = {
@@ -181,8 +237,95 @@ const permissionNames: Record<string, string> = {
 
 const CONTEXT_COLORS = ['#8063e5', '#a299ee', '#c3baf7'];
 
-export function DetailPanel({ inspection, snapshot, turnCount, onClose, onOpenPage }: DetailPanelProps) {
+export interface ChangeDiffPanelProps {
+  readonly loading?: boolean;
+  readonly error?: string;
+  readonly result?: SessionChangeDiffResult | undefined;
+}
+
+/**
+ * 单个改动文件的**会话口径**只读 diff。
+ *
+ * 纪律：
+ *  - `unavailable !== null` 时绝不渲染 `<pre>`（空 diff 会被误读成"没有改动"）；
+ *  - 四种 `unavailable` 各自有不同的人话文案；
+ *  - 类名刻意与 Git 侧栏的 `.git-diff-*` 分开（会话口径 ≠ 工作区口径）。
+ */
+export function ChangeDiffPanel({ loading = false, error = '', result }: ChangeDiffPanelProps): ReactNode {
+  if (loading) return <p className="change-diff-note" role="status">正在读取会话 diff…</p>;
+  if (error !== '') return <p className="change-diff-note change-diff-error" role="alert">{error}</p>;
+  if (!result) return <p className="change-diff-note" role="status">没有取到该文件的 diff。</p>;
+  const note = changeDiffNote(result);
+  if (result.unavailable !== null || result.hunks.length === 0) {
+    return (
+      <div className="change-diff" data-unavailable={result.unavailable ?? 'none'}>
+        <p className="change-diff-note" role="status">{note}</p>
+        <p className="change-diff-stats">{changeDiffStatsText(result)}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="change-diff" data-unavailable="none" aria-label={`${result.path} 的会话口径只读 diff`}>
+      <div className="change-diff-head"><span>{result.path}</span><small>{changeDiffStatsText(result)}</small></div>
+      {result.truncated && <p className="change-diff-note">差异过长，下面只显示前一部分</p>}
+      {result.hunks.map((hunk, hunkIndex) => (
+        <pre className="change-diff-hunk" key={`${hunk.oldStart}:${hunk.newStart}:${hunkIndex}`}>
+          {`@@ -${hunk.oldStart} +${hunk.newStart} @@`}{'\n'}
+          {hunk.lines.map((line, lineIndex) => (
+            <span key={lineIndex} className={`change-diff-line ${changeDiffLineClass(line.kind)}`}>
+              {changeDiffLinePrefix(line.kind)}{line.text}{'\n'}
+            </span>
+          ))}
+        </pre>
+      ))}
+    </div>
+  );
+}
+
+export function DetailPanel({ inspection, snapshot, turnCount, onClose, onOpenPage, onLoadDiff }: DetailPanelProps) {
   const [open, setOpen] = useState<ReadonlySet<DetailSectionId>>(() => new Set<DetailSectionId>(['overview']));
+  // 单文件只读 diff（N-11）：同一时刻只展开一行；再点同一行收起。
+  const [expandedPath, setExpandedPath] = useState('');
+  const [diffResult, setDiffResult] = useState<SessionChangeDiffResult>();
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffError, setDiffError] = useState('');
+  const diffTicket = useRef(0);
+  const sessionKey = inspection?.sessionId ?? '';
+  useEffect(() => {
+    // 会话切换后旧 diff 不能继续显示（会话口径不同，串会话会误导）。
+    diffTicket.current += 1;
+    setExpandedPath('');
+    setDiffResult(undefined);
+    setDiffError('');
+    setDiffLoading(false);
+  }, [sessionKey]);
+  const toggleDiff = useCallback(async (path: string) => {
+    if (!onLoadDiff) return;
+    if (expandedPath === path) {
+      diffTicket.current += 1;
+      setExpandedPath('');
+      setDiffResult(undefined);
+      setDiffError('');
+      setDiffLoading(false);
+      return;
+    }
+    const ticket = ++diffTicket.current;
+    setExpandedPath(path);
+    setDiffResult(undefined);
+    setDiffError('');
+    setDiffLoading(true);
+    try {
+      const result = await onLoadDiff(path);
+      if (ticket !== diffTicket.current) return;
+      if (!result) { setDiffError('运行时没有返回该文件的 diff'); return; }
+      setDiffResult(result);
+    } catch (error) {
+      if (ticket !== diffTicket.current) return;
+      setDiffError(describeDiffError(error));
+    } finally {
+      if (ticket === diffTicket.current) setDiffLoading(false);
+    }
+  }, [expandedPath, onLoadDiff]);
   const totals = inspection?.totals ?? EMPTY_USAGE;
   const context = inspection?.context;
   const capacity = context?.capacity;
@@ -251,15 +394,34 @@ export function DetailPanel({ inspection, snapshot, turnCount, onClose, onOpenPa
             {changes.length === 0
               ? <p className="detail-empty">{DETAIL_EMPTY_TEXT.changes}</p>
               : <ul className="change-list">
-                {changes.map((change) => (
-                  <li className="change-row" key={`${change.path}:${change.updatedAt}`} aria-label={changeLineLabel(change)}>
+                {changes.map((change) => {
+                  const expanded = expandedPath === change.path;
+                  const bodyId = `change-diff-${change.path.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+                  const row = <>
                     <span className={`change-status change-status-${change.status}`} title={changeStatusLabel(change)}>{changeStatusLetter(change)}</span>
                     <span className="change-path" title={change.path}>{change.path}</span>
                     {change.stat === 'unavailable' || change.added == null || change.removed == null
                       ? <span className="change-stat change-stat-unknown">不可统计</span>
                       : <span className="change-stat"><span className="change-stat-add">+{change.added}</span> <span className="change-stat-del">-{change.removed}</span></span>}
-                  </li>
-                ))}
+                    {onLoadDiff && <Icon name={expanded ? 'down' : 'chevron'} size={11} />}
+                  </>;
+                  return <li className={`change-row-item${expanded ? ' expanded' : ''}`} key={`${change.path}:${change.updatedAt}`}>
+                    {onLoadDiff
+                      ? <button
+                        type="button"
+                        className={`change-row change-row-button${expanded ? ' expanded' : ''}`}
+                        aria-label={`${changeLineLabel(change)}${expanded ? '，已展开只读 diff' : '，点击查看只读 diff'}`}
+                        aria-expanded={expanded}
+                        aria-controls={bodyId}
+                        onClick={() => void toggleDiff(change.path)}
+                      >{row}</button>
+                      : <div className="change-row" aria-label={changeLineLabel(change)}>{row}</div>}
+                    {/* 容器常驻（`aria-controls` 指向它始终有效），内容按展开态渲染。 */}
+                    <div className="change-diff-slot" id={bodyId} hidden={!expanded}>
+                      {expanded && <ChangeDiffPanel loading={diffLoading} error={diffError} result={diffResult} />}
+                    </div>
+                  </li>;
+                })}
               </ul>}
             <p className="data-note">会话口径：只统计本会话的工具改动，与 Git 侧栏的"工作区未提交改动"互不相加。</p>
           </>

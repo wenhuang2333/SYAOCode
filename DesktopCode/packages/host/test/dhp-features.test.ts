@@ -561,3 +561,17 @@ describe('提交签名失败在协议层是独立 kind（27 §10.5.3）', () => 
     expect(committed.status).toBe('accepted');
   });
 });
+
+describe('单文件改动 diff（FR-N-011，会话口径）', () => {
+  it('会话里改过文件 → 能取到 diff；未登记的路径报错而不是空 diff', async () => {
+    await initRepo();
+    await fs.writeFile(path.join(root, 'feature.ts'), 'export const a = 1;\n');
+    const c = await boot();
+    const sessionId = await newSession(c);
+
+    // 没有改过任何文件时：未登记路径必须报错，不能返回"空 diff"（会被误读成没有变化）。
+    await expect(c.request(F.SessionChangeDiff, { sessionId, path: 'feature.ts' })).rejects.toMatchObject({
+      kind: 'capability_not_found',
+    });
+  });
+});

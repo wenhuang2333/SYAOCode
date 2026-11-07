@@ -63,6 +63,9 @@ export const FeatureMethod = {
   // 提交信息生成（FR-N-026）
   GitCommitMessage: 'git/commit-message',
 
+  // 单文件改动 diff（FR-N-011，会话口径）
+  SessionChangeDiff: 'session/change-diff',
+
   // 会话 fork / 删除（FR-N-035）
   SessionFork: 'session/fork',
   SessionDelete: 'session/delete',
@@ -107,6 +110,36 @@ export interface FileChange {
   /** 造成该改动的工具名（`write` / `edit` / …）。 */
   readonly tool: string;
   readonly updatedAt: number;
+}
+
+/**
+ * 单文件改动的只读 diff（FR-N-011 的"点击展开 diff"）。
+ *
+ * **会话口径**：内容来自采集器记录的"本会话首次触碰前 → 现在"，
+ * 与 Git 的 worktree/staged diff 是两件事，不能互相替代。
+ */
+export interface SessionChangeDiffParams {
+  readonly sessionId: string;
+  /** 工作区相对路径（必须来自 `changes`，服务端会再校验一次围栏）。 */
+  readonly path: string;
+}
+
+export interface SessionChangeDiffResult {
+  readonly sessionId: string;
+  readonly path: string;
+  /** 会话口径的改动状态（与 `changes` 里的一致）。 */
+  readonly status: FileChangeStatus;
+  readonly hunks: readonly DiffHunk[];
+  readonly added: number;
+  readonly removed: number;
+  /** 行数超过上限时为 `true`（界面必须显示"只显示前 N 行"）。 */
+  readonly truncated: boolean;
+  /**
+   * 不可算 diff 的原因；非 `null` 时 `hunks` 为空。
+   * 取值：`binary`（二进制）/ `too_large`（超预算）/ `no_snapshot`（没有前置像，
+   * 例如会话重启后或采集器未开启）/ `deleted`（文件已删除，只能给行数）。
+   */
+  readonly unavailable: 'binary' | 'too_large' | 'no_snapshot' | 'deleted' | null;
 }
 
 export type ArtifactKind = 'file' | 'image' | 'patch' | 'report' | 'archive';

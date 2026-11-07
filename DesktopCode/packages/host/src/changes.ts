@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type {
+  DiffHunk,
   Artifact,
   ArtifactKind,
   ChangesCoverage,
@@ -34,6 +35,15 @@ export const BASH_COVERAGE_NOTE = '本会话还执行过命令，命令造成的
 
 /** 单条 URL 的长度上限：超长的一律丢弃，不进列表。 */
 const MAX_URL_LENGTH = 2048;
+
+/**
+ * 单文件 diff 的行数上限。
+ *
+ * 复用 `workspace.ts` 的 `diffLines`（LCS，O(n·m)）：超过 5000 行时它会退化成
+ * "整体替换"，那样的 diff 对用户没有意义。这里更早一点收紧到 3000 行，
+ * 直接返回 `too_large`，让界面明说"差异过大，只显示行数"。
+ */
+const MAX_DIFF_LINES = 3000;
 
 /** 查询串里这些名字视为凭据，展示前剥离（`27` §9.3「凭据泄露」）。 */
 const CREDENTIAL_QUERY_KEYS = new Set([
@@ -355,6 +365,70 @@ export class ChangesCollector {
       changed = true;
     }
     if (changed) this.notify(sessionId);
+  }
+
+  /**
+   * 单个文件改动的只读 diff（`27` §11.2 "点击文件打开只读 diff"）。
+   *
+   * 口径：**会话口径**（本会话首次触碰前 → 现在），不是 Git 的 worktree diff。
+   * 拿不到前置像时**不猜**：返回 `unavailable='no_snapshot'` 并给出 `hunks=[]`，
+   * 界面据此显示"本次会话没有留下改动前的内容"，而不是把当前内容当成 diff。
+   */
+  async diff(sessionId: string, relPath: string): Promise<{
+    path: string;
+    status: FileChangeStatus;
+    hunks: DiffHunk[];
+    added: number;
+    removed: number;
+    truncated: boolean;
+    unavailable: 'binary' | 'too_large' | 'no_snapshot' | 'deleted' | null;
+  } | null> {
+    const target = await this.resolveTarget(relPath);
+    if (target === null) return null;
+    const state = this.sessions.get(sessionId);
+    const entry = state?.changes.get(target.rel);
+    if (state === undefined || entry === undefined) return null;
+
+    const empty = {
+      path: target.rel,
+      status: entry.status,
+      hunks: [] as DiffHunk[],
+      added: entry.added ?? 0,
+      removed: entry.removed ?? 0,
+      truncated: false,
+      unavailable: null as 'binary' | 'too_large' | 'no_snapshot' | 'deleted' | null,
+    };
+
+    const record = state.files.get(target.rel);
+    // 删除：没有"现在的内容"可 diff，只能给行数（`27` §7.5）。
+    if (entry.status === 'deleted') return { ...empty, unavailable: 'deleted' };
+
+    // 先看"现在"：二进制 / 超限 / 不可读的**原因**比"没有前置像"更具体，
+    // 应当如实告诉用户（否则二进制文件会被误报成"重启后丢了前置像"）。
+    const after = await this.readImage(target.abs);
+    if (after.kind === 'unavailable') {
+      return { ...empty, unavailable: after.stat?.kind === 'binary' ? 'binary' : 'too_large' };
+    }
+    if (after.kind === 'absent') return { ...empty, unavailable: 'deleted' };
+    if (record === undefined || record.before.kind === 'unavailable') {
+      return { ...empty, unavailable: record?.before.stat?.kind === 'binary' ? 'binary' : 'no_snapshot' };
+    }
+
+    const beforeLines = record.before.kind === 'absent' ? [] : record.before.lines;
+    const afterLines = after.lines;
+    if (beforeLines.length > MAX_DIFF_LINES || afterLines.length > MAX_DIFF_LINES) {
+      return { ...empty, unavailable: 'too_large' };
+    }
+    const hunks = diffLines(beforeLines, afterLines);
+    let added = 0;
+    let removed = 0;
+    for (const hunk of hunks) {
+      for (const line of hunk.lines) {
+        if (line.kind === 'add') added += 1;
+        else if (line.kind === 'del') removed += 1;
+      }
+    }
+    return { path: target.rel, status: entry.status, hunks, added, removed, truncated: false, unavailable: null };
   }
 
   /** 取当前快照（整体替换语义的载荷）。 */

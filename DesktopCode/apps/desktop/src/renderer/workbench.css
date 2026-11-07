@@ -273,3 +273,33 @@ body{font-size:13px;background:#fff;line-height:1.6}button,input,select,textarea
 .git-signing-actions{display:flex;flex-direction:column;gap:5px}
 .git-signing-actions .btn{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;padding:6px 9px}
 .git-signing-hint{color:#b0707e;font-size:9px}
+
+/* ════════════════════════════════════════════════════════════════════════
+   N-11 / FR-N-011：会话详情「改动」分区点文件展开只读 diff
+   - **会话口径**（本会话首次触碰前 → 现在），与 Git 侧栏的工作区口径
+     是两件事，因此不复用 `.git-diff-*` 类名；
+   - 行可点开/收起（原生 button，Enter/Space 可用），展开态有可见选中样式；
+   - `unavailable` 四种原因只显示人话说明，绝不渲染空 diff。
+   ════════════════════════════════════════════════════════════════════════ */
+.change-row-item{display:flex;flex-direction:column;gap:4px}
+/* 折叠时容器留在 DOM 里（`aria-controls` 始终有目标），但必须真的不占位。 */
+.change-diff-slot[hidden]{display:none}
+.change-row-button{width:100%;border:0;text-align:left;color:inherit;font:inherit;cursor:pointer}
+.change-row-button:hover{background:#f3f1fb}
+.change-row-button:focus-visible{outline:2px solid #a28aef;outline-offset:2px}
+.change-row-button[aria-expanded="true"]{background:#efe9fc;box-shadow:inset 2px 0 0 var(--sy-accent)}
+.change-row-button>svg{margin-left:auto;flex-shrink:0;color:#a7abbb}
+.change-row-button[aria-expanded="true"]>svg{color:#6b53c4}
+.change-diff{margin-left:23px;border:1px solid #e7e3f0;border-radius:8px;background:#fbfaff;overflow:hidden}
+.change-diff-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;border-bottom:1px solid #efecf6;background:#f8f6fc;color:#7d7f91;font-size:9px}
+.change-diff-head span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.change-diff-head small{flex-shrink:0;font-variant-numeric:tabular-nums}
+.change-diff-hunk{margin:0;padding:6px 8px;overflow:auto;font-family:var(--sy-mono);font-size:9px;line-height:1.65;color:#5a5d70;max-height:240px;border-top:1px solid #f3f0f9}
+.change-diff-hunk:first-of-type{border-top:0}
+.change-diff-line{display:block;white-space:pre-wrap;overflow-wrap:anywhere}
+.change-diff-line-add{background:var(--sy-diff-add-soft);color:#1f7a5e}
+.change-diff-line-del{background:var(--sy-diff-del-soft);color:#a6404f}
+.change-diff-line-ctx{color:#7d7f91}
+.change-diff-note{margin:0;padding:7px 9px;background:#fff8ee;color:#8a6d3b;font-size:10px;line-height:1.6}
+.change-diff-error{background:#fff4f5;color:#ac4056}
+.change-diff-stats{margin:0;padding:0 9px 7px;color:#9aa0b5;font-size:9px;font-variant-numeric:tabular-nums}

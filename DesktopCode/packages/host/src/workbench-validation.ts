@@ -45,6 +45,12 @@ export const channelSchema = z.object({
 export const usageQuerySchema = z.object({ from: timestamp, to: timestamp, workspaceRoot: z.string().min(1).optional() }).strict()
   .refine((q) => q.from <= q.to && q.to - q.from <= 36600 * 86400000, 'invalid range (maximum 36600 days)');
 
+/** 单文件改动 diff（FR-N-011）：路径先过基本形状校验，围栏由采集器把关。 */
+export const sessionChangeDiffSchema = z.object({
+  sessionId: z.string().min(1).max(200),
+  path: z.string().min(1).max(4096),
+}).strict();
+
 // ── 增补能力的入参校验（27 §5.1）────────────────────────────────────────
 //
 // 原则：**凭据类参数一律不出现**。令牌与私钥走 preload → 主进程 → 钥匙串，

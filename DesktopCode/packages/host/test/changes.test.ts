@@ -440,3 +440,116 @@ describe('工具装饰器（agent-factory 接线）', () => {
     expect(events).toEqual([]);
   });
 });
+
+describe('单文件改动 diff（27 §11.2：点击文件看只读 diff）', () => {
+  it('修改文件：diff 是"首次前置像 → 现在"，行数与改动条一致', async () => {
+    const root = await directory();
+    const collector = new ChangesCollector({ workspaceRoot: root });
+    await fs.writeFile(path.join(root, 'app.ts'), 'a\nb\nc\n');
+
+    await collector.captureBefore('s1', 'edit', 'app.ts');
+    await fs.writeFile(path.join(root, 'app.ts'), 'a\nB\nc\nd\n');
+    await collector.captureAfter('s1', 'edit', 'app.ts');
+
+    const entry = collector.snapshot('s1').changes.find((c) => c.path === 'app.ts');
+    const diff = await collector.diff('s1', 'app.ts');
+    expect(diff).not.toBeNull();
+    expect(diff?.unavailable).toBeNull();
+    expect(diff?.status).toBe(entry?.status);
+    // diff 里的 +/- 必须与改动条目里的行数是同一个真相。
+    expect(diff?.added).toBe(entry?.added);
+    expect(diff?.removed).toBe(entry?.removed);
+    expect(diff?.hunks.length).toBeGreaterThan(0);
+  });
+
+  it('新建文件：前置像是"不存在"，diff 全是新增行', async () => {
+    const root = await directory();
+    const collector = new ChangesCollector({ workspaceRoot: root });
+    await collector.captureBefore('s1', 'write', 'new.ts');
+    await fs.writeFile(path.join(root, 'new.ts'), 'one\ntwo\n');
+    await collector.captureAfter('s1', 'write', 'new.ts');
+
+    const diff = await collector.diff('s1', 'new.ts');
+    expect(diff?.status).toBe('added');
+    expect(diff?.unavailable).toBeNull();
+    expect(diff?.added).toBe(2);
+    expect(diff?.removed).toBe(0);
+  });
+
+  it('删除文件：给不了内容 diff，但行数仍然有效（unavailable=deleted）', async () => {
+    const root = await directory();
+    const collector = new ChangesCollector({ workspaceRoot: root });
+    await fs.writeFile(path.join(root, 'gone.ts'), 'x\ny\n');
+    await collector.captureBefore('s1', 'edit', 'gone.ts');
+    await fs.unlink(path.join(root, 'gone.ts'));
+    await collector.captureAfter('s1', 'edit', 'gone.ts');
+
+    const diff = await collector.diff('s1', 'gone.ts');
+    expect(diff?.status).toBe('deleted');
+    expect(diff?.unavailable).toBe('deleted');
+    expect(diff?.hunks).toEqual([]);
+    // "不可统计"绝不能变成 0 以外的假数字：这里 2 是删除前的真实行数。
+    expect(diff?.removed).toBe(2);
+  });
+
+  it('二进制文件：不猜内容（unavailable=binary）', async () => {
+    const root = await directory();
+    const collector = new ChangesCollector({ workspaceRoot: root });
+    await fs.writeFile(path.join(root, 'blob.bin'), Buffer.from([0, 1, 2, 3]));
+    await collector.captureBefore('s1', 'edit', 'blob.bin');
+    await fs.writeFile(path.join(root, 'blob.bin'), Buffer.from([0, 9, 9, 9]));
+    await collector.captureAfter('s1', 'edit', 'blob.bin');
+
+    const diff = await collector.diff('s1', 'blob.bin');
+    expect(diff?.unavailable).toBe('binary');
+    expect(diff?.hunks).toEqual([]);
+  });
+
+  it('没有前置像（例如重启后恢复的快照）→ no_snapshot，绝不把当前内容当 diff', async () => {
+    const root = await directory();
+    const collector = new ChangesCollector({ workspaceRoot: root });
+    await fs.writeFile(path.join(root, 'restored.ts'), 'now\n');
+    // 直接恢复一条"结果"快照：只有 changes，没有文件像（这正是重启后的状态）。
+    collector.restore('s1', {
+      changes: [{ path: 'restored.ts', status: 'modified', added: 5, removed: 1, stat: 'exact', tool: 'edit', updatedAt: Date.now() }],
+      artifacts: [],
+      sources: [],
+      coverage: { exact: true, bashUsed: false, note: null },
+    });
+
+    const diff = await collector.diff('s1', 'restored.ts');
+    expect(diff?.unavailable).toBe('no_snapshot');
+    expect(diff?.hunks).toEqual([]);
+    // 行数沿用改动条目（那是唯一已知的真相）。
+    expect(diff?.added).toBe(5);
+    expect(diff?.removed).toBe(1);
+  });
+
+  it('没有登记的路径 → null（宿主据此报错，而不是返回空 diff）', async () => {
+    const root = await directory();
+    const collector = new ChangesCollector({ workspaceRoot: root });
+    expect(await collector.diff('s1', 'never-touched.ts')).toBeNull();
+  });
+
+  it('超过行数预算 → too_large，不返回半截 diff', async () => {
+    const root = await directory();
+    const collector = new ChangesCollector({ workspaceRoot: root });
+    const big = Array.from({ length: 3100 }, (_, i) => `line ${i}`).join('\n');
+    await fs.writeFile(path.join(root, 'big.ts'), 'seed\n');
+    await collector.captureBefore('s1', 'edit', 'big.ts');
+    // 3100 行 < 1 MiB，采集器会记成精确行数；diff 侧必须自己收口。
+    await fs.writeFile(path.join(root, 'big.ts'), big);
+    await collector.captureAfter('s1', 'edit', 'big.ts');
+
+    const diff = await collector.diff('s1', 'big.ts');
+    expect(diff?.unavailable).toBe('too_large');
+    expect(diff?.hunks).toEqual([]);
+  });
+
+  it('路径逃逸被拒（../ 与绝对路径都拿不到 diff）', async () => {
+    const root = await directory();
+    const collector = new ChangesCollector({ workspaceRoot: root });
+    expect(await collector.diff('s1', '../outside.ts')).toBeNull();
+    expect(await collector.diff('s1', '/etc/passwd')).toBeNull();
+  });
+});

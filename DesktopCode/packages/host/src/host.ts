@@ -37,6 +37,7 @@ import {
   parseInput,
   permissionSchema,
   sessionIdSchema,
+  sessionChangeDiffSchema,
   titleSchema,
   usageQuerySchema,
   workspaceRootSchema,
@@ -973,6 +974,22 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
   });
 
   register(WorkbenchMethod.Overview, async () => workbench.overview());
+  // ── 方法：单文件改动 diff（FR-N-011，会话口径）────────────────────────
+  //
+  // 只读：diff 来自采集器记下的"本会话首次触碰前 → 现在"，
+  // 与 Git 的 worktree/staged diff 是两件事，不可互相替代（`27` §7.1）。
+
+  register(FeatureMethod.SessionChangeDiff, async (params) => {
+    const p = parseInput(sessionChangeDiffSchema, params);
+    const rt = requireRuntime(p.sessionId);
+    const diff = await collectorFor(rt.state.snapshot.meta.workspaceRoot).diff(p.sessionId, p.path);
+    if (diff === null) {
+      // 没有这个路径的改动：报 404 语义，不编造空 diff（空 diff 会被误读成"没有变化"）。
+      throw new DhpProtocolError('capability_not_found', 'this session has no recorded change for that path');
+    }
+    return { sessionId: p.sessionId, ...diff };
+  });
+
   register(WorkbenchMethod.SessionInspect, async (params) => {
     const p = parseInput(sessionIdSchema.strict(), params);
     const rt = requireRuntime(p.sessionId);
