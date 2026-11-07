@@ -617,6 +617,22 @@ describe('`!` 直接执行命令（FR-N-036，仍过权限闸门）', () => {
     expect(state.commandAudit.some((r) => r.result === 'success')).toBe(false);
   });
 
+  it('归档会话拒绝执行命令（归档 = 只读，与 turn/send 同一条规则）', async () => {
+    const c = await boot();
+    const sessionId = await newSession(c);
+    const marker = path.join(root, 'archived-marker.txt');
+    await c.request(WorkbenchMethod.SessionArchive, { sessionId, archived: true });
+    await expect(
+      c.request(F.SessionRunCommand, { sessionId, command: `printf x > ${marker}` }),
+    ).rejects.toMatchObject({ kind: 'denied' });
+    // 拒绝发生在闸门之前：副作用文件绝不该出现。
+    expect(await fs.stat(marker).catch(() => null)).toBeNull();
+    // 恢复后同一个命令可以执行。
+    await c.request(WorkbenchMethod.SessionArchive, { sessionId, archived: false });
+    const result = await c.request<{ exitCode: number }>(F.SessionRunCommand, { sessionId, command: 'echo back' });
+    expect(result.exitCode).toBe(0);
+  });
+
   it('会话不存在 → capability_not_found；空命令 → invalid_request', async () => {
     const c = await boot();
     await expect(c.request(F.SessionRunCommand, { sessionId: 'nope', command: 'echo x' }))

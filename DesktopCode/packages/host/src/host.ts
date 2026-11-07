@@ -1003,6 +1003,9 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
     mutable();
     const p = parseInput(sessionRunCommandSchema, params);
     const rt = requireRuntime(p.sessionId);
+    // 归档会话是只读的：与 `turn/send` 同一条规则，否则 `!` 会成为
+    // "归档之后还能改动仓库"的后门。
+    if (rt.state.archived) throw new DhpProtocolError('denied', 'Restore archived session before running commands');
     const root = workbench.requireWorkspace(rt.state.snapshot.meta.workspaceRoot).root;
     const agent = ensureAgent(p.sessionId);
     try {

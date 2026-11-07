@@ -1,10 +1,20 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ChannelConfig, ChannelInfo, ChannelModel, ChannelProtocol, QuotaSnapshot } from '@syaocode/dhp';
 
+/** 界面语言选项。文案用各自语言书写，切换时不需要翻译。 */
+const LANGUAGE_OPTIONS: readonly { readonly value: 'en' | 'zh'; readonly label: string }[] = [
+  { value: 'zh', label: '中文' },
+  { value: 'en', label: 'English' },
+];
+
 export interface SettingsPageProps {
   readonly channels: readonly ChannelInfo[];
   readonly saving: boolean;
   readonly onSave: (channel: ChannelConfig) => Promise<void>;
+  /** 当前界面语言（来自 Host 的 `config/get`）。 */
+  readonly language?: 'en' | 'zh';
+  /** 切换界面语言；写入 Host 配置，不是本地偏好。 */
+  readonly onChangeLanguage?: (language: 'en' | 'zh') => Promise<void> | void;
 }
 
 export interface ChannelModelDraft {
@@ -166,7 +176,7 @@ function snapshotLabel(timestamp: number | undefined): string {
   return timestamp === undefined ? '尚未录入快照' : `上次手动记录：${new Date(timestamp).toLocaleString('zh-CN', { hour12: false })}`;
 }
 
-export function SettingsPage({ channels, saving, onSave }: SettingsPageProps): React.JSX.Element {
+export function SettingsPage({ channels, saving, onSave, language, onChangeLanguage }: SettingsPageProps): React.JSX.Element {
   const id = useId();
   const [selectedId, setSelectedId] = useState<string | null>(channels[0]?.id ?? null);
   const [draft, setDraft] = useState<ChannelDraft>(() => createChannelDraft(channels[0]));
@@ -229,6 +239,21 @@ export function SettingsPage({ channels, saving, onSave }: SettingsPageProps): R
 
   return <main className="settings-page dash-page" aria-labelledby={`${id}-title`}>
     <header className="dash-page-header"><div><p className="dash-eyebrow">CHANNEL SETTINGS</p><h1 id={`${id}-title`}>渠道与模型</h1><p className="dash-subtitle">你的模型，你的连接方式。</p></div><span className="dash-tag">密钥仅由 Host 环境读取</span></header>
+    {onChangeLanguage !== undefined && <section className="dash-panel settings-preference" aria-labelledby={`${id}-lang`}>
+      <div className="dash-panel-heading"><h2 id={`${id}-lang`}>界面语言</h2></div>
+      <p className="settings-preference-note">语言由 Host 配置决定，对所有会话生效。</p>
+      <div className="settings-language-options" role="radiogroup" aria-labelledby={`${id}-lang`}>
+        {LANGUAGE_OPTIONS.map((option) => <button
+          key={option.value}
+          type="button"
+          role="radio"
+          aria-checked={(language ?? 'zh') === option.value}
+          className={`dash-button dash-button-small${(language ?? 'zh') === option.value ? ' dash-button-primary' : ''}`}
+          onClick={() => { if ((language ?? 'zh') !== option.value) void onChangeLanguage(option.value); }}
+        >{option.label}</button>)}
+      </div>
+      <p className="settings-preference-note">部分界面文案目前仍只有中文（界面文案正在分模块抽取）；未翻译的地方保持中文，不会显示占位符或空白。</p>
+    </section>}
     <div className="settings-layout">
       <aside className="dash-panel settings-channel-sidebar" aria-label="渠道选择">
         <div className="dash-panel-heading"><h2>我的渠道 <span className="settings-count">{channels.length}</span></h2><button className="dash-button dash-button-small" type="button" disabled={busy} onClick={() => selectChannel()}>＋ 新增</button></div>

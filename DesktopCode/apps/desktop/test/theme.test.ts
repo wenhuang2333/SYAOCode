@@ -125,3 +125,43 @@ describe('令牌层（深色主题的基石）', () => {
     expect(tokens).toContain('color-scheme: dark');
   });
 });
+
+describe('界面语言跟随配置（FR-N-037 / config 是单一真相）', () => {
+  const useWorkbenchSrc = read('src/renderer/use-workbench.ts');
+  const workbenchSrc = read('src/renderer/workbench.tsx');
+
+  it('渲染层不再把语言写死为 zh', () => {
+    // 曾经是模块级 `const m = messages('zh')`：配置里的 language 改了也没用。
+    expect(workbenchSrc).not.toMatch(/messages\('zh'\)/);
+    expect(workbenchSrc).not.toMatch(/messages\('en'\)/);
+    expect(workbenchSrc).toContain('messages(w.language)');
+  });
+
+  it('语言来自 config/get，而不是本地猜测或 localStorage', () => {
+    expect(useWorkbenchSrc).toContain('Method.ConfigGet');
+    expect(useWorkbenchSrc).toMatch(/setLanguage\(config\.language\)/);
+    // 不该出现"用 navigator.language 猜"这类做法。
+    expect(useWorkbenchSrc).not.toContain('navigator.language');
+  });
+
+  it('设置页能真的切换语言（写 Host 配置，不是本地偏好）', () => {
+    const settings = read('src/renderer/settings-page.tsx');
+    const useHook = read('src/renderer/use-workbench.ts');
+    expect(settings).toContain('role="radiogroup"');
+    expect(settings).toContain("'en'");
+    // 切换必须走 config/set，否则改了也没落盘。
+    expect(useHook).toMatch(/Method\.ConfigSet,\s*\{\s*key:\s*'language'/);
+  });
+
+  it('未翻译的文案保持中文，不出现占位符或空白（诚实降级）', () => {
+    // 部分界面仍是中文，设置页要如实说明，而不是让用户以为切换无效。
+    const settings = read('src/renderer/settings-page.tsx');
+    expect(settings).toContain('仍只有中文');
+  });
+
+  it('能力面板与文案最终一致：ui 包的 Messages 覆盖面没有缩小', () => {
+    const i18n = read('../../packages/ui/src/i18n.ts');
+    expect(i18n).toContain("export type Lang = 'en' | 'zh'");
+    expect(i18n).toContain('⟦');
+  });
+});

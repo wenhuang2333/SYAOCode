@@ -153,6 +153,8 @@ describe('workbench shell smoke render (no browser)', () => {
   it('renders the shell with the right column collapsed and the Git trigger present', () => {
     const values: Record<string, unknown> = {
       status: 'ready', error: '', page: 'chat', draft: '', sessionId: '', workspaceRoot: '/workspace',
+      // 语言来自 Host 的 config/get；桩里给 zh，与默认行为一致。
+      language: 'zh',
       snapshot: undefined, inspection: undefined, overview: undefined, loadingSession: false, mutating: false,
       query: { from: 0, to: 0 }, report: undefined, loadingUsage: false,
       gitStatus: undefined, gitBranches: undefined, gitGraph: undefined, gitRemotes: undefined, gitAuth: undefined,

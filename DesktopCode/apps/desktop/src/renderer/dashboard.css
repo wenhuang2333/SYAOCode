@@ -261,3 +261,10 @@
 @media (prefers-reduced-motion:reduce) {
   .dash-button, .dash-segmented button { transition:none; }
 }
+
+/* 界面语言（FR-N-037）：语言属于 Host 配置，不是本地偏好。 */
+.settings-preference { margin-bottom:20px; }
+.settings-preference-note { margin:6px 14px; color:var(--dash-muted); font-size:11px; line-height:1.8; }
+.settings-language-options { display:flex; gap:8px; margin:10px 14px 4px; }
+.settings-language-options button[aria-checked='true'] { font-weight:650 !important; }
+.settings-language-options button:focus-visible { outline:2px solid var(--dash-accent); outline-offset:2px; }

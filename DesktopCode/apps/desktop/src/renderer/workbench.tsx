@@ -15,7 +15,7 @@ import { Icon } from './icons';
 
 export { Icon };
 
-const m = messages('zh');
+
 const names: Record<Page, string> = { chat: '工作台', usage: '用量统计', sessions: '会话树', files: '变更与文件', agents: 'Agent 群', resources: 'MCP 服务', settings: '渠道与设置' };
 const permissionNames: Record<string, string> = { plan: '只读规划', strict: '严格审批', default: '标准权限', acceptEdits: '自动编辑', bypass: '完全授权' };
 export const number = (value: number | null | undefined) => value == null ? '—' : new Intl.NumberFormat('en', { notation: value >= 10000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value);
@@ -94,6 +94,8 @@ function ModelPicker({ w, close }: { w: Workbench; close: () => void }) {
 }
 
 function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: 'bypass') => void; onSlot: (slot: 'git' | 'detail') => void }) {
+  // 文案随配置里的语言走；`Conversation` 是独立组件，自己取一份。
+  const m = messages(w.language);
   const [picker, setPicker] = useState(false);
   const [caret, setCaret] = useState(0);
   const [files, setFiles] = useState<readonly string[]>([]);
@@ -285,6 +287,7 @@ function SessionPage({ w, search }: { w: Workbench; search: string }) {
 }
 
 function FilePage({ w }: { w: Workbench }) {
+  const m = messages(w.language);
   const [nodes, setNodes] = useState<readonly TreeNode[]>([]);
   const [text, setText] = useState('');
   const [selected, setSelected] = useState('');
@@ -348,6 +351,8 @@ function readStoredGitTab(): GitTab {
 }
 
 export function WorkbenchView({ w }: { w: Workbench }) {
+  // 文案随配置里的语言走（`27` FR-N-037）；配置是单一真相，界面不自己猜。
+  const m = messages(w.language);
   const [search, setSearch] = useState('');
   // 右栏默认收起；会话详情与 Git 共用槽位且互斥（`27` §11.0 / §11.3.1）。
   const [sidebar, setSidebar] = useState<SidebarSlotState>(() => ({ ...INITIAL_SIDEBAR_STATE, tab: readStoredGitTab() }));
@@ -425,7 +430,7 @@ export function WorkbenchView({ w }: { w: Workbench }) {
       <div className="workspace-body"><main className={`main-content ${w.page === 'chat' ? 'chat-content' : ''}`}>
         {w.page === 'chat' && <Conversation w={w} confirm={(value) => { setDialogSession(w.sessionId); setDialog(value); }} onSlot={(slot) => setSidebar((current) => current.slot === slot ? current : gitTabState(current, slot === 'git' ? 'toggle-git' : 'toggle-detail'))} />}
         {w.page === 'usage' && <UsagePage report={w.report} channels={w.overview?.channels ?? []} workspaces={w.overview?.workspaces ?? []} query={w.query} loading={w.loadingUsage} onQuery={w.setQuery} />}
-        {w.page === 'settings' && <SettingsPage channels={w.overview?.channels ?? []} saving={saving} onSave={async (channel) => { setSaving(true); try { await w.saveChannel(channel); } finally { setSaving(false); } }} />}
+        {w.page === 'settings' && <SettingsPage channels={w.overview?.channels ?? []} saving={saving} language={w.language} onChangeLanguage={w.changeLanguage} onSave={async (channel) => { setSaving(true); try { await w.saveChannel(channel); } finally { setSaving(false); } }} />}
         {w.page === 'sessions' && <SessionPage w={w} search={search} />}
         {w.page === 'files' && <FilePage w={w} />}
         {w.page === 'agents' && <AgentsPage result={w.agents} channels={w.overview?.channels ?? []} loading={w.agentsLoading} error={w.agentsError} busy={w.mutating} onSave={w.agentsSave} onDelete={w.agentsDelete} onActivate={w.agentsActivate} />}

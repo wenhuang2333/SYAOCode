@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { DhpConnection, ProjectionStore, type WebSocketLike } from '@syaocode/client';
 import {
   FeatureMethod, Method, WorkbenchMethod, isSuccessfulStatus,
-  type AckResult, type AgentsListResult, type AgentsSaveParams, type ChannelConfig, type DesktopOverview, type DesktopPermissionMode,
+  type AckResult, type AgentsListResult, type AgentsSaveParams, type ChannelConfig, type ConfigGetResult, type DesktopOverview, type DesktopPermissionMode,
   type GitAuthOauthPollResult, type GitAuthOauthStartResult, type GitAuthStatusResult, type GitBranchesResult, type GitCommitMessageResult, type GitDiffResult, type GitGraphResult, type GitPreflightResult,
   type GitRemotesResult, type GitStatusResult, type GitUploadResult, type McpAddParams, type McpServerInfo, type McpToolSummary,
   type SessionChangeDiffResult, type SessionChangesNotification, type SessionRunCommandResult, type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
@@ -75,6 +75,13 @@ export function useWorkbench() {
   const [status, setStatus] = useState<ConnectionStatus>('booting');
   const [error, setError] = useState('');
   const [overview, setOverview] = useState<DesktopOverview>();
+  /**
+   * 界面语言（`27` FR-N-037）。
+   *
+   * 来源是 Host 的 `config/get`——配置是单一真相，界面不自己猜语言。
+   * 未取到之前按 `zh` 渲染（桌面端主要用户群），取到后立即跟随。
+   */
+  const [language, setLanguage] = useState<'en' | 'zh'>('zh');
   const [snapshot, setSnapshot] = useState<SessionSnapshot>();
   const [inspection, setInspection] = useState<SessionInspection>();
   // 通知驱动的最小状态：只做"该刷新了"的信号，真正的取数仍走既有函数。
@@ -146,6 +153,9 @@ export function useWorkbench() {
     const revision = ++refreshNumber.current;
     const result = await request<DesktopOverview>(WorkbenchMethod.Overview);
     if (revision === refreshNumber.current) setOverview(result);
+    // 语言属于配置层：每次刷新顺带对齐，用户在设置里改完立即生效。
+    const config = await request<ConfigGetResult>(Method.ConfigGet).catch(() => undefined);
+    if (config !== undefined && revision === refreshNumber.current) setLanguage(config.language);
     return result;
   }, [request]);
 
@@ -683,6 +693,16 @@ export function useWorkbench() {
     await command(Method.InteractionResolve, { interactionId, optionId });
   }), [perform, command]);
 
+  /**
+   * 切换界面语言：写 Host 配置（`config/set`），然后立刻回读一次。
+   *
+   * 不写 localStorage：语言属于配置层（单一真相），本地再存一份迟早会不一致。
+   */
+  const changeLanguage = useCallback(async (next: 'en' | 'zh'): Promise<void> => {
+    await request<{ ok: true; effective: string }>(Method.ConfigSet, { key: 'language', value: next });
+    setLanguage(next);
+  }, [request]);
+
   const saveChannel = useCallback(async (channel: ChannelConfig) => {
     await request(WorkbenchMethod.ChannelSave, channel);
     await refresh();
@@ -729,7 +749,7 @@ export function useWorkbench() {
 
   return {
     status, error, setError, overview, snapshot, inspection, sessionId, workspaceRoot,
-    page, setPage, draft: drafts[sessionId] ?? '',
+    page, setPage, language, setLanguage, changeLanguage, draft: drafts[sessionId] ?? '',
     setDraft: (text: string) => setDrafts((prev) => ({ ...prev, [sessionId]: text })),
     loadingSession, mutating, query, setQuery, report, loadingUsage,
     selectSession, selectWorkspace, createSession, openWorkspace, send, stop, runShellCommand, sessionChangeDiff,
