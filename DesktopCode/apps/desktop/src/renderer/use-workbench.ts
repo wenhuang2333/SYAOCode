@@ -5,7 +5,7 @@ import {
   type AckResult, type AgentsListResult, type AgentsSaveParams, type ChannelConfig, type DesktopOverview, type DesktopPermissionMode,
   type GitAuthStatusResult, type GitBranchesResult, type GitDiffResult, type GitGraphResult, type GitPreflightResult,
   type GitRemotesResult, type GitStatusResult, type GitUploadResult, type McpAddParams, type McpServerInfo, type McpToolSummary,
-  type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
+  type SessionChangesNotification, type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
   type WorkspaceTreeResult, type WorkspaceReadFileResult,
 } from '@syaocode/dhp';
 
@@ -74,6 +74,10 @@ export function useWorkbench() {
   const [overview, setOverview] = useState<DesktopOverview>();
   const [snapshot, setSnapshot] = useState<SessionSnapshot>();
   const [inspection, setInspection] = useState<SessionInspection>();
+  // 通知驱动的最小状态：只做"该刷新了"的信号，真正的取数仍走既有函数。
+  const [pendingChanges, setPendingChanges] = useState<SessionChangesNotification | null>(null);
+  const [gitChangedAt, setGitChangedAt] = useState(0);
+  const [mcpChangedAt, setMcpChangedAt] = useState(0);
   const [sessionId, setSessionId] = useState('');
   const [workspaceRoot, setWorkspaceRoot] = useState('');
   const [page, setPage] = useState<Page>('chat');
@@ -196,6 +200,11 @@ export function useWorkbench() {
             if (d.events.some((e) => ['turn.end', 'usage', 'error'].includes(e.type))) refreshSoon();
           },
           onSessionChanged: () => refreshSoon(),
+          // 四类新通知（`27` §5.3）：改动/产出/来源直接整体替换，省一次 inspect 往返。
+          onSessionChanges: (changes) => { if (!disposed && changes.sessionId === active.current) setPendingChanges(changes); },
+          onGitChanged: () => { if (!disposed) setGitChangedAt(Date.now()); },
+          onGitAuthChanged: () => { if (!disposed) setGitChangedAt(Date.now()); },
+          onMcpChanged: () => { if (!disposed) setMcpChangedAt(Date.now()); },
           onError: (e) => { if (!disposed) setError(e.message); },
           onReconnected: () => {
             const s = projection.current;
@@ -574,6 +583,33 @@ export function useWorkbench() {
 
   const readTree = useCallback((root: string) => request<WorkspaceTreeResult>(Method.WorkspaceTree, { workspaceRoot: root, path: '.', maxDepth: 3 }), [request]);
   const readFile = useCallback((root: string, path: string) => request<WorkspaceReadFileResult>(Method.WorkspaceReadFile, { workspaceRoot: root, path }), [request]);
+
+  // ── 通知接线（替代"只靠轮询"的降级路径）─────────────────────────────
+
+  /** `session/changes`：四块整体替换（投影铁律：只替换，不合并）。 */
+  useEffect(() => {
+    if (pendingChanges === null) return;
+    setPendingChanges(null);
+    setInspection((previous) => previous === undefined ? previous : {
+      ...previous,
+      changes: pendingChanges.changes,
+      artifacts: pendingChanges.artifacts,
+      sources: pendingChanges.sources,
+      coverage: pendingChanges.coverage,
+    });
+  }, [pendingChanges]);
+
+  /** `git/changed` 与 `git/auth/changed`：只刷新徽标与认证点，不打开侧栏。 */
+  useEffect(() => {
+    if (gitChangedAt === 0 || status !== 'ready' || workspaceRoot === '' || gitProbeUnavailable) return;
+    void gitProbe(workspaceRoot);
+  }, [gitChangedAt, status, workspaceRoot, gitProbeUnavailable, gitProbe]);
+
+  /** `mcp/changed`：停在 MCP 页时重拉一次列表。 */
+  useEffect(() => {
+    if (mcpChangedAt === 0 || page !== 'resources' || status !== 'ready') return;
+    void mcpList();
+  }, [mcpChangedAt, page, status, mcpList]);
 
   useEffect(() => {
     if (page === 'agents' && status === 'ready') void agentsList();
