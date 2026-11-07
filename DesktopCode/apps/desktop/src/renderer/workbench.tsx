@@ -3,6 +3,7 @@ import { ApprovalCard, Composer, Timeline, messages } from '@syaocode/ui';
 import { EMPTY_USAGE, type DesktopPermissionMode, type TreeNode } from '@syaocode/dhp';
 import type { Page, Workbench } from './use-workbench';
 import { ComposerPalette, collectFilePaths, detectTrigger, shellHintFor, type CommandAction } from './composer-palette';
+import { applyTheme, readStoredTheme, resolveTheme, storeTheme, systemPrefersDark, THEME_OPTIONS, type ThemePreference } from './theme';
 import { ShellResultBlock, isShellCommand, shellCommandOf, shouldKeepDraft, type ShellOutcome } from './shell-lines';
 import { UsagePage } from './usage-page';
 import { SettingsPage } from './settings-page';
@@ -350,6 +351,22 @@ export function WorkbenchView({ w }: { w: Workbench }) {
   const [search, setSearch] = useState('');
   // 右栏默认收起；会话详情与 Git 共用槽位且互斥（`27` §11.0 / §11.3.1）。
   const [sidebar, setSidebar] = useState<SidebarSlotState>(() => ({ ...INITIAL_SIDEBAR_STATE, tab: readStoredGitTab() }));
+  // 主题（FR-N-037）：偏好持久化到 localStorage；`system` 跟随操作系统。
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() =>
+    readStoredTheme(typeof window === 'undefined' ? undefined : window.localStorage));
+  useEffect(() => {
+    const media = typeof window === 'undefined' ? undefined : window.matchMedia?.('(prefers-color-scheme: dark)');
+    const sync = (): void => {
+      applyTheme(resolveTheme(themePreference, systemPrefersDark(window.matchMedia?.bind(window))), document.documentElement);
+    };
+    sync();
+    storeTheme(window.localStorage, themePreference);
+    // 只有 `system` 需要跟随变化；显式选择时不必监听。
+    if (themePreference !== 'system' || media === undefined) return;
+    const listener = (): void => sync();
+    media.addEventListener?.('change', listener);
+    return () => media.removeEventListener?.('change', listener);
+  }, [themePreference]);
   const [dialog, setDialog] = useState<'rename' | 'archive' | 'bypass' | null>(null);
   const [title, setTitle] = useState('');
   const [dialogSession, setDialogSession] = useState('');
@@ -402,7 +419,7 @@ export function WorkbenchView({ w }: { w: Workbench }) {
   return <div className="workbench-app">
     <Sidebar w={w} search={search} setSearch={setSearch} />
     <div className="main-shell">
-      <header className="workbench-topbar"><div className="breadcrumb"><Icon name={w.page === 'chat' ? 'chat' : w.page} size={16} /><strong>{w.page === 'chat' ? w.snapshot?.meta.title ?? '工作台' : names[w.page]}</strong>{w.page === 'chat' && <span className={`run-badge ${!idle && w.snapshot ? 'running' : ''}`}><i className="state-dot" />{w.loadingSession ? '载入中' : !w.snapshot || idle ? '空闲' : w.snapshot.runState === 'awaiting-approval' ? '等待审批' : '运行中'}</span>}</div><div className="topbar-actions">{w.page === 'chat' && <><span className="header-project" title={w.workspaceRoot}>{leaf(w.workspaceRoot)}</span><button aria-label="重命名会话" title="重命名会话" disabled={!w.snapshot || !idle || w.mutating} onClick={() => { setTitle(w.snapshot?.meta.title ?? ''); setDialog('rename'); }}><Icon name="edit" /></button><button aria-label="归档会话" title="归档会话" disabled={!w.snapshot || !idle || w.mutating} onClick={() => setDialog('archive')}><Icon name="archive" /></button><button ref={gitTrigger} aria-label={gitLabel} title="Git 侧栏" aria-pressed={sidebar.slot === 'git'} className={`git-trigger ${sidebar.slot === 'git' ? 'active' : ''}`} onClick={() => setSidebar((current) => gitTabState(current, 'toggle-git'))}><Icon name="git" />{gitBadge && <span className="git-badge">{gitBadge}</span>}<i className={`git-auth-dot state-dot ${authStatusTone(gitAuthInfo)}`} aria-hidden="true" /></button><button aria-label="切换会话详情" title="会话详情" aria-pressed={sidebar.slot === 'detail'} className={sidebar.slot === 'detail' ? 'active' : ''} onClick={() => setSidebar((current) => gitTabState(current, 'toggle-detail'))}><Icon name="panel" /></button></>}</div></header>
+      <header className="workbench-topbar"><div className="breadcrumb"><Icon name={w.page === 'chat' ? 'chat' : w.page} size={16} /><strong>{w.page === 'chat' ? w.snapshot?.meta.title ?? '工作台' : names[w.page]}</strong>{w.page === 'chat' && <span className={`run-badge ${!idle && w.snapshot ? 'running' : ''}`}><i className="state-dot" />{w.loadingSession ? '载入中' : !w.snapshot || idle ? '空闲' : w.snapshot.runState === 'awaiting-approval' ? '等待审批' : '运行中'}</span>}</div><div className="topbar-actions"><button aria-label={`外观：${THEME_OPTIONS.find((o) => o.value === themePreference)?.label ?? '跟随系统'}`} title={`外观：${THEME_OPTIONS.find((o) => o.value === themePreference)?.label ?? '跟随系统'}（点击切换）`} onClick={() => { const order: ThemePreference[] = ['system', 'light', 'dark']; const i = order.indexOf(themePreference); setThemePreference(order[(i + 1) % order.length] ?? 'system'); }}><Icon name={themePreference === 'dark' ? 'archive' : themePreference === 'light' ? 'edit' : 'sessions'} size={14} /></button>{w.page === 'chat' && <><span className="header-project" title={w.workspaceRoot}>{leaf(w.workspaceRoot)}</span><button aria-label="重命名会话" title="重命名会话" disabled={!w.snapshot || !idle || w.mutating} onClick={() => { setTitle(w.snapshot?.meta.title ?? ''); setDialog('rename'); }}><Icon name="edit" /></button><button aria-label="归档会话" title="归档会话" disabled={!w.snapshot || !idle || w.mutating} onClick={() => setDialog('archive')}><Icon name="archive" /></button><button ref={gitTrigger} aria-label={gitLabel} title="Git 侧栏" aria-pressed={sidebar.slot === 'git'} className={`git-trigger ${sidebar.slot === 'git' ? 'active' : ''}`} onClick={() => setSidebar((current) => gitTabState(current, 'toggle-git'))}><Icon name="git" />{gitBadge && <span className="git-badge">{gitBadge}</span>}<i className={`git-auth-dot state-dot ${authStatusTone(gitAuthInfo)}`} aria-hidden="true" /></button><button aria-label="切换会话详情" title="会话详情" aria-pressed={sidebar.slot === 'detail'} className={sidebar.slot === 'detail' ? 'active' : ''} onClick={() => setSidebar((current) => gitTabState(current, 'toggle-detail'))}><Icon name="panel" /></button></>}</div></header>
       {w.error && <div className="error-banner" role="alert"><Icon name="shield" size={16} /><span>{w.error}</span><button aria-label="关闭错误提示" onClick={() => w.setError('')}><Icon name="close" size={15} /></button></div>}
       {w.status !== 'ready' && <div className="connection-banner" role="status">{w.status === 'booting' ? '正在启动安全的本地运行时…' : w.status === 'reconnecting' ? '连接已断开，正在重新连接。不会自动重发操作。' : '本地运行时未连接，暂不可执行操作。'}</div>}
       <div className="workspace-body"><main className={`main-content ${w.page === 'chat' ? 'chat-content' : ''}`}>

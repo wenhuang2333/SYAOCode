@@ -140,7 +140,7 @@ body {
   color: var(--sy-text); cursor: pointer;
 }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn-primary { background: var(--sy-accent); border-color: var(--sy-accent); color: #fff; }
+.btn-primary { background: var(--sy-accent); border-color: var(--sy-accent); color: var(--sy-on-accent, #fff); }
 .btn-danger { background: transparent; border-color: var(--sy-danger); color: var(--sy-danger); }
 .btn-ghost { background: transparent; }
 
