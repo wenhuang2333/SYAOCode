@@ -226,3 +226,27 @@ body{font-size:13px;background:#fff;line-height:1.6}button,input,select,textarea
 @media (prefers-reduced-motion:reduce){
   .detail-section>summary::before{transition:none}
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   27 §4.4 / FR-N-036：输入区 `/` 命令面板与 `@` 文件引用
+   - 面板浮在输入区上方，不挤压会话流；
+   - 颜色不是唯一信息载体：每项都有标题 / 提示文本与 aria-*；
+   - `!` 前缀只显示诚实提示，不假装执行。
+   ════════════════════════════════════════════════════════════════════════ */
+.composer-palette{position:absolute;left:0;right:0;bottom:calc(100% + 8px);z-index:25;display:flex;flex-direction:column;max-height:300px;border:1px solid #e8e4f3;border-radius:12px;background:#fff;box-shadow:0 9px 30px #35285525;overflow:hidden}
+.composer-palette-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border-bottom:1px solid #f1eef8;background:#fbfafe;color:#8a8fa5;font-size:9px}
+.composer-palette-head strong{color:#6b53c4;font-size:10px;font-weight:600}
+.composer-palette-list{display:flex;flex-direction:column;padding:4px;overflow:auto;min-height:0}
+.palette-item{display:flex;align-items:baseline;gap:7px;width:100%;border:0;background:transparent;border-radius:7px;padding:6px 8px;text-align:left;color:#5a5d70;font-size:11px}
+.palette-item:hover{background:#f5f1fd}
+.palette-item.selected{background:#efe9fc;color:#5c46a8}
+.palette-item.disabled{opacity:.5;cursor:not-allowed}
+.palette-key{flex-shrink:0;color:#8063e5;font-family:var(--sy-mono);font-size:10px;font-weight:600}
+.palette-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette-hint{margin-left:auto;flex-shrink:0;color:#a7abbb;font-size:9px}
+.palette-empty{margin:0;padding:14px 10px;color:#9aa0b5;font-size:11px;text-align:center}
+.composer-shell-hint,.composer-notice{margin:0 13px 6px;padding:5px 8px;border-radius:7px;font-size:10px;line-height:1.6}
+.composer-shell-hint{border:1px solid #f1d8bd;background:#fff8ee;color:#8a6d3b}
+.composer-notice{border:1px solid #e8e5f3;background:#f7f3ff;color:#6b53c4}
+@media (max-width:900px){.palette-hint{display:none}}
+@media (prefers-reduced-motion:reduce){.composer-palette{box-shadow:none}}

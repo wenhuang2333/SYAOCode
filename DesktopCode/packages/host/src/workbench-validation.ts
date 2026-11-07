@@ -126,6 +126,13 @@ export const gitPreflightSchema = workspaceRootSchema.extend({
   scope: z.enum(['all', 'session']).optional(),
 }).strict();
 
+/** 提交信息生成（FR-N-026）：只读，不产生副作用。 */
+export const gitCommitMessageSchema = workspaceRootSchema.extend({
+  sessionId: z.string().min(1).max(200).optional(),
+  scope: z.enum(['staged', 'session']).optional(),
+  hint: z.string().max(500).optional(),
+}).strict();
+
 export const gitUploadSchema = workspaceRootSchema.extend({
   remote: z.string().min(1).max(100),
   branch: z.string().min(1).max(255),

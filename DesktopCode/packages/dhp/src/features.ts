@@ -60,6 +60,9 @@ export const FeatureMethod = {
   GitPreflight: 'git/preflight',
   GitUpload: 'git/upload',
 
+  // 提交信息生成（FR-N-026）
+  GitCommitMessage: 'git/commit-message',
+
   // 会话 fork / 删除（FR-N-035）
   SessionFork: 'session/fork',
   SessionDelete: 'session/delete',
@@ -570,6 +573,32 @@ export interface GitPreflightResult {
   readonly requiresCommit: boolean;
   readonly revision: number;
   readonly blockers: readonly GitPreflightBlocker[];
+}
+
+/**
+ * 提交信息生成（FR-N-026）。
+ *
+ * 只读：不执行任何 git 写操作，也不落盘。生成失败时 `source='fallback'`，
+ * 界面用 `message` 预填并允许用户改写（模型不可用不等于功能不可用）。
+ */
+export interface GitCommitMessageParams {
+  readonly workspaceRoot: string;
+  /** 可选：取该会话的模型与会话改动作为上下文。 */
+  readonly sessionId?: string;
+  /** `staged`（默认）只取已暂存改动；`session` 取本会话改动涉及的文件。 */
+  readonly scope?: 'staged' | 'session';
+  /** 用户补充说明（可编辑，不落盘）。 */
+  readonly hint?: string;
+}
+
+export interface GitCommitMessageResult {
+  /** 最终提交信息（已清洗、保证非空）。 */
+  readonly message: string;
+  readonly source: 'model' | 'fallback';
+  /** diff 是否被截断（截断时提示用户可能只看到部分改动）。 */
+  readonly truncated: boolean;
+  /** `source='fallback'` 的原因（简短、无敏感信息）。 */
+  readonly reason: string | null;
 }
 
 export interface GitUploadParams extends GitCommandEnvelope {

@@ -180,7 +180,12 @@ describe('workbench DHP integration', () => {
     await command(c, Method.InteractionResolve, id, { interactionId: interaction.id, optionId: 'once' }); await idle(c, id);
     expect(c.notifications.filter((x) => x.method === Notification.SessionEvent)).toHaveLength(n);
     const inspection = await c.request<SessionInspection>(W.SessionInspect, { sessionId: id });
-    expect(inspection.totals.requests).toBe(3); expect(inspection.resources.every((r) => !r.supported)).toBe(true);
+    expect(inspection.totals.requests).toBe(3);
+    // 能力面板按"构建是否接入"如实报告：MCP 与 Agent 群已接入，
+    // 技能与检查点仍未接入（不许把没做的能力标成已支持）。
+    expect(inspection.resources.find((r) => r.id === 'mcp')?.supported).toBe(true);
+    expect(inspection.resources.find((r) => r.id === 'agents')?.supported).toBe(true);
+    expect(inspection.resources.filter((r) => r.id === 'skills' || r.id === 'checkpoints').every((r) => !r.supported)).toBe(true);
   });
 
   it('connection close releases every registry listener, resubscribe replaces rather than leaks', async () => {

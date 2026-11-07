@@ -122,10 +122,18 @@ describe('会话详情三块（FR-N-011/012/013）', () => {
     expect(Array.isArray(result.artifacts)).toBe(true);
     expect(Array.isArray(result.sources)).toBe(true);
     expect(result.coverage).toMatchObject({ exact: true, bashUsed: false });
-    // 能力面板必须反映真实接入情况，不能写死。
+    // 能力面板必须反映真实接入情况，不能写死：
+    // `supported` 是"构建是否接入"（MCP 与 Agent 群已接入 → true），
+    // "已配置多少"由 detail 说清楚，两者不能混用。
     const mcp = result.resources.find((r) => r.id === 'mcp');
-    expect(mcp?.supported).toBe(false);
-    expect(result.resources.find((r) => r.id === 'agents')?.supported).toBe(false);
+    expect(mcp?.supported).toBe(true);
+    expect(mcp?.detail).toContain('尚未添加');
+    const agents = result.resources.find((r) => r.id === 'agents');
+    expect(agents?.supported).toBe(true);
+    expect(agents?.detail).toContain('尚未配置');
+    // 未接入的能力必须如实说 false，不许假装。
+    expect(result.resources.find((r) => r.id === 'skills')?.supported).toBe(false);
+    expect(result.resources.find((r) => r.id === 'checkpoints')?.supported).toBe(false);
   });
 });
 
@@ -448,5 +456,63 @@ describe('Git 凭据私有通道（FR-N-027 / 030）', () => {
     const state = await fs.readFile(path.join(home, 'desktop', 'state-v2.json'), 'utf8');
     expect(state).not.toContain('PRIVATE KEY');
     expect(state).toContain('syaocode.git.github.com.ssh-key');
+  });
+});
+
+describe('提交信息生成（FR-N-026，只读）', () => {
+  it('已暂存改动 → 返回非空提交信息；生成不会产生任何提交', async () => {
+    await initRepo();
+    await fs.writeFile(path.join(root, 'app.ts'), 'export const a = 1;\n');
+    const c = await boot();
+    const status = await c.request<GitStatusResult>(F.GitStatus, { workspaceRoot: root });
+    const staged = await c.request<{ status: string }>(F.GitStage, {
+      workspaceRoot: root,
+      paths: ['app.ts'],
+      commandId: randomUUID(),
+      baseRevision: status.revision,
+    });
+    expect(staged.status).toBe('accepted');
+
+    const before = await c.request<GitStatusResult>(F.GitStatus, { workspaceRoot: root });
+    const generated = await c.request<{
+      message: string;
+      source: 'model' | 'fallback';
+      truncated: boolean;
+      reason: string | null;
+    }>(F.GitCommitMessage, { workspaceRoot: root });
+
+    // 契约：**保证非空**，且 source/reason 自洽（fallback 必须有原因）。
+    expect(typeof generated.message).toBe('string');
+    expect(generated.message.trim().length).toBeGreaterThan(0);
+    expect(['model', 'fallback']).toContain(generated.source);
+    if (generated.source === 'fallback') expect(generated.reason).not.toBeNull();
+    expect(generated.truncated).toBe(false);
+
+    // 只读：没有新提交，HEAD 不变，工作区仍是"有暂存改动"。
+    const after = await c.request<GitStatusResult>(F.GitStatus, { workspaceRoot: root });
+    expect(after.head).toBe(before.head);
+    expect(after.files.some((f) => f.staged)).toBe(true);
+  });
+
+  it('会话范围：按本会话改动取文件；非仓库目录 → git_not_repo', async () => {
+    await initRepo();
+    const c = await boot();
+    const sessionId = await newSession(c);
+    const generated = await c.request<{ message: string; source: string }>(F.GitCommitMessage, {
+      workspaceRoot: root,
+      sessionId,
+      scope: 'session',
+      hint: '只提交 Git 相关',
+    });
+    expect(generated.message.trim().length).toBeGreaterThan(0);
+
+    const bare = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'no-repo-')));
+    try {
+      const opened = await c.request<{ workspaceRoot: string }>(Method.WorkspaceOpen, { path: bare });
+      expect(opened.workspaceRoot).toBe(bare);
+      await expect(c.request(F.GitCommitMessage, { workspaceRoot: bare })).rejects.toMatchObject({ kind: 'git_not_repo' });
+    } finally {
+      await fs.rm(bare, { recursive: true, force: true });
+    }
   });
 });

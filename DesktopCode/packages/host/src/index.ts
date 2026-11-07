@@ -119,6 +119,21 @@ export { GitUploadService, dhpCodeForGitError, dhpKindForGitError } from './git-
 export { McpService, McpServiceError, type McpServiceOptions } from './mcp-service.ts';
 export { AgentsService, AgentsServiceError, type AgentsServiceOptions } from './agents-service.ts';
 export {
+  CommitMessageService,
+  buildCommitPrompt,
+  sanitizeCommitMessage,
+  fallbackCommitMessage,
+  COMMIT_TYPES,
+  DEFAULT_COMMIT_TIMEOUT_MS,
+  DEFAULT_COMMIT_MAX_DIFF_BYTES,
+  type CommitMessageInput,
+  type CommitMessageResult,
+  type CommitMessageServiceOptions,
+  type CommitType,
+  type CompletionFn,
+  type CompletionRequest,
+} from './commit-message.ts';
+export {
   ChangesCollector,
   createChangeToolHooks,
   pathFromToolInput,

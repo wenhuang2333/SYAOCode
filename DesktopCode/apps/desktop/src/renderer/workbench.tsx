@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type SyntheticEvent } from 'react';
 import { ApprovalCard, Composer, Timeline, messages } from '@syaocode/ui';
 import { EMPTY_USAGE, type DesktopPermissionMode, type TreeNode } from '@syaocode/dhp';
 import type { Page, Workbench } from './use-workbench';
+import { ComposerPalette, collectFilePaths, detectTrigger, shellHintFor, type CommandAction } from './composer-palette';
 import { UsagePage } from './usage-page';
 import { SettingsPage } from './settings-page';
 import { DetailPanel } from './detail-panel';
@@ -90,17 +91,102 @@ function ModelPicker({ w, close }: { w: Workbench; close: () => void }) {
   </div>;
 }
 
-function Conversation({ w, confirm }: { w: Workbench; confirm: (value: 'bypass') => void }) {
+function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: 'bypass') => void; onSlot: (slot: 'git' | 'detail') => void }) {
   const [picker, setPicker] = useState(false);
+  const [caret, setCaret] = useState(0);
+  const [files, setFiles] = useState<readonly string[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+  const [filesError, setFilesError] = useState('');
+  const [notice, setNotice] = useState('');
   const bottom = useRef<HTMLDivElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLDivElement>(null);
+  const filesRoot = useRef('');
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const follow = useRef(true);
   const idle = w.snapshot?.runState === 'idle';
   const pending = w.snapshot?.pendingInteractions ?? [];
   const disabled = w.status !== 'ready' || !w.sessionId || w.loadingSession;
+  const trigger = detectTrigger(w.draft, caret);
+  const shellHint = shellHintFor(w.draft);
+  const canStop = Boolean(w.sessionId) && w.snapshot !== undefined && !idle && !w.mutating;
   useEffect(() => { follow.current = true; }, [w.sessionId]);
   useEffect(() => { if (follow.current) bottom.current?.scrollIntoView({ block: 'end' }); }, [w.snapshot?.seq, w.sessionId]);
   useEffect(() => { setPicker(false); }, [w.sessionId]);
+  // 切会话时草稿可能来自另一个会话：光标与提示一并重置，避免用旧光标误判触发串。
+  useEffect(() => { setCaret(0); setNotice(''); }, [w.sessionId]);
+  useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
+  // `@` 文件引用只读工作区树（`workspace/tree`，maxDepth 3）；失败时诚实降级，不弹错误窗。
+  useEffect(() => {
+    if (trigger?.kind !== 'mention' || !w.workspaceRoot || w.status !== 'ready' || filesRoot.current === w.workspaceRoot) return;
+    const root = w.workspaceRoot;
+    let cancelled = false;
+    let settled = false;
+    setFilesLoading(true);
+    setFilesError('');
+    setFiles([]);
+    void w.readTree(root)
+      .then((result) => {
+        if (cancelled) return;
+        settled = true;
+        filesRoot.current = root;
+        setFiles(collectFilePaths(result.nodes));
+      })
+      .catch((error: Error) => {
+        if (cancelled) return;
+        // 失败不缓存，下次重新打开文件面板时重试；界面只给诚实空态，不弹错误窗。
+        setFiles([]);
+        setFilesError(error.message);
+      })
+      .finally(() => { if (!cancelled) setFilesLoading(false); });
+    return () => { cancelled = true; if (!settled) filesRoot.current = ''; };
+  }, [trigger?.kind, w.workspaceRoot, w.status, w.readTree]);
+  const showNotice = (message: string) => {
+    setNotice(message);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(''), 5000);
+  };
+  const syncCaret = (event: SyntheticEvent<HTMLDivElement>) => {
+    if (event.target instanceof HTMLTextAreaElement) setCaret(event.target.selectionStart);
+  };
+  // 补全 / 插入后回写文本并恢复光标位置（`Composer` 不暴露 ref，只能从容器里取）。
+  // 这里**不抢焦点**：键盘路径焦点本就在输入区，鼠标路径靠面板的 mousedown preventDefault 保持；
+  // 而 `/permission` 需要把焦点交给权限下拉，抢焦点会让它立刻被抢回输入区。
+  const applyComposerText = (next: { readonly text: string; readonly caret: number }) => {
+    w.setDraft(next.text);
+    setCaret(next.caret);
+    requestAnimationFrame(() => {
+      const textarea = composer.current?.querySelector('textarea');
+      if (textarea) textarea.setSelectionRange(next.caret, next.caret);
+    });
+  };
+  const paletteAction = (action: CommandAction) => {
+    switch (action.kind) {
+      case 'new': void w.createSession(); break;
+      case 'model': setPicker(true); break;
+      case 'permission': {
+        // 权限下拉在同一个输入区工具栏里，用 id 聚焦；运行中 / 未连接时是 disabled，诚实提示。
+        const select = document.getElementById('composer-permission');
+        if (select instanceof HTMLSelectElement && !select.disabled) select.focus();
+        else showNotice('当前无法聚焦权限选择（会话运行中或未连接）。');
+        break;
+      }
+      case 'stop':
+        if (canStop) void w.stop();
+        else showNotice('当前没有正在运行的轮次。');
+        break;
+      case 'archive':
+        if (w.sessionId) void w.archive(w.sessionId, true);
+        else showNotice('还没有可归档的会话。');
+        break;
+      case 'git': onSlot('git'); break;
+      case 'detail': onSlot('detail'); break;
+      case 'usage': w.setPage('usage'); break;
+      case 'insert':
+      case 'help':
+      case 'none': break;
+    }
+  };
   return <div className="conversation">
     <div className="conversation-scroll" ref={scroll} onScroll={() => { const el = scroll.current; if (el) follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 160; }}>
       {w.loadingSession ? <div className="welcome"><span className="loading-spinner" /><h2>正在打开会话</h2></div> : !w.snapshot?.rows.length ? <div className="welcome"><span className="welcome-mark"><Icon name="code" size={37} /></span><span className="eyebrow">YOUR LOCAL CODING WORKSPACE</span><h1>从一个想法，开始构建。</h1><p>理解代码、规划方案、执行任务。<br />每个项目的上下文与会话，都在这里井然有序。</p><div className="welcome-workspace"><Icon name="folder" size={16} /><span title={w.workspaceRoot}>{leaf(w.workspaceRoot) || '先选择一个项目'}</span><button onClick={() => void w.openWorkspace()} disabled={w.status !== 'ready'}>切换目录</button></div>
@@ -110,10 +196,28 @@ function Conversation({ w, confirm }: { w: Workbench; confirm: (value: 'bypass')
       {pending.map((p) => <ApprovalCard key={p.id} interaction={p} m={m} onResolve={(id, opt) => void w.resolve(id, opt)} />)}
       <div ref={bottom} />
     </div>
-    <div className="composer-shell">
+    <div
+      className="composer-shell"
+      ref={composer}
+      onInputCapture={syncCaret}
+      onKeyUpCapture={syncCaret}
+      onClickCapture={syncCaret}
+      onSelectCapture={syncCaret}
+    >
       {picker && <ModelPicker w={w} close={() => setPicker(false)} />}
       <Composer value={w.draft} onChange={w.setDraft} onSubmit={(text) => { follow.current = true; void w.send(text); }} m={m} disabled={disabled} busy={w.mutating || (Boolean(w.sessionId) && !idle)} awaitingApproval={pending.length > 0} />
-      <div className="composer-toolbar"><div className="composer-options"><Icon name="shield" size={14} /><select aria-label="会话权限" value={w.snapshot?.meta.permissionMode ?? 'default'} disabled={disabled || !idle || w.mutating} onChange={(e) => { if (e.target.value === 'bypass') confirm('bypass'); else void w.configure({ permissionMode: e.target.value as DesktopPermissionMode }); }}>{Object.entries(permissionNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><span className="toolbar-divider" /><button className="model-trigger" disabled={disabled || !idle || w.mutating} onClick={() => setPicker(!picker)} aria-expanded={picker}><i className="state-dot green" /><span>{w.snapshot?.meta.model ?? '选择渠道与模型'}</span><Icon name="down" size={12} /></button></div>{w.snapshot && !idle && <button className="stop-button" onClick={() => void w.stop()} disabled={w.mutating || w.status !== 'ready'}><span />停止运行</button>}</div>
+      <ComposerPalette text={w.draft} caret={caret} files={files} filesLoading={filesLoading} filesError={filesError} canStop={canStop} disabled={disabled} anchorRef={composer} onAction={paletteAction} onText={applyComposerText} />
+      {shellHint && <div className="composer-shell-hint" role="status">{shellHint}</div>}
+      {notice && <div className="composer-notice" role="status">{notice}</div>}
+      <div className="composer-toolbar">
+        <div className="composer-options">
+          <Icon name="shield" size={14} />
+          <select id="composer-permission" aria-label="会话权限" value={w.snapshot?.meta.permissionMode ?? 'default'} disabled={disabled || !idle || w.mutating} onChange={(e) => { if (e.target.value === 'bypass') confirm('bypass'); else void w.configure({ permissionMode: e.target.value as DesktopPermissionMode }); }}>{Object.entries(permissionNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+          <span className="toolbar-divider" />
+          <button className="model-trigger" disabled={disabled || !idle || w.mutating} onClick={() => setPicker(!picker)} aria-expanded={picker}><i className="state-dot green" /><span>{w.snapshot?.meta.model ?? '选择渠道与模型'}</span><Icon name="down" size={12} /></button>
+        </div>
+        {w.snapshot && !idle && <button className="stop-button" onClick={() => void w.stop()} disabled={w.mutating || w.status !== 'ready'}><span />停止运行</button>}
+      </div>
     </div>
     <div className="composer-footnote"><span>{w.snapshot?.meta.model.startsWith('mock:') ? '离线演示模型 · 不会调用真实厂商 API' : '模型输出仅供参考，工具执行由权限引擎控制'}</span><span>Enter 发送 · Shift Enter 换行</span></div>
   </div>;
@@ -251,7 +355,7 @@ export function WorkbenchView({ w }: { w: Workbench }) {
       {w.error && <div className="error-banner" role="alert"><Icon name="shield" size={16} /><span>{w.error}</span><button aria-label="关闭错误提示" onClick={() => w.setError('')}><Icon name="close" size={15} /></button></div>}
       {w.status !== 'ready' && <div className="connection-banner" role="status">{w.status === 'booting' ? '正在启动安全的本地运行时…' : w.status === 'reconnecting' ? '连接已断开，正在重新连接。不会自动重发操作。' : '本地运行时未连接，暂不可执行操作。'}</div>}
       <div className="workspace-body"><main className={`main-content ${w.page === 'chat' ? 'chat-content' : ''}`}>
-        {w.page === 'chat' && <Conversation w={w} confirm={(value) => { setDialogSession(w.sessionId); setDialog(value); }} />}
+        {w.page === 'chat' && <Conversation w={w} confirm={(value) => { setDialogSession(w.sessionId); setDialog(value); }} onSlot={(slot) => setSidebar((current) => current.slot === slot ? current : gitTabState(current, slot === 'git' ? 'toggle-git' : 'toggle-detail'))} />}
         {w.page === 'usage' && <UsagePage report={w.report} channels={w.overview?.channels ?? []} workspaces={w.overview?.workspaces ?? []} query={w.query} loading={w.loadingUsage} onQuery={w.setQuery} />}
         {w.page === 'settings' && <SettingsPage channels={w.overview?.channels ?? []} saving={saving} onSave={async (channel) => { setSaving(true); try { await w.saveChannel(channel); } finally { setSaving(false); } }} />}
         {w.page === 'sessions' && <SessionPage w={w} search={search} />}

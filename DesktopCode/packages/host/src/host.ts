@@ -18,6 +18,7 @@ import {
   channelSchema,
   commandSchema,
   gitBranchSchema,
+  gitCommitMessageSchema,
   gitCommitSchema,
   gitDiffSchema,
   gitGraphSchema,
@@ -68,8 +69,9 @@ import {
   type WorkspaceTreeResult,
 } from '@syaocode/dhp';
 import type { Agent } from '@syaocode/core';
-import { createDesktopAgent } from './agent-factory.ts';
+import { buildProvider, createDesktopAgent, parseModelSpec } from './agent-factory.ts';
 import { AgentsService, AgentsServiceError } from './agents-service.ts';
+import { CommitMessageService } from './commit-message.ts';
 import { ChangesCollector, createChangeToolHooks } from './changes.ts';
 import { IpcCredentialBridge, UnavailableCredentialProvider, processCredentialChannel, type CredentialIpcChannel } from './credential-bridge.ts';
 import { redactSecret, keychainEntryFor, type CredentialProvider } from './credentials.ts';
@@ -80,6 +82,7 @@ import { GitWriteService } from './git-write.ts';
 import { GitError, assertSafeRemoteUrl, runGit, sanitizeRemoteUrl } from './git-run.ts';
 import { McpService, McpServiceError } from './mcp-service.ts';
 import { ConfigService } from './config-service.ts';
+import { nodeRuntime } from '@syaocode/node';
 import { DhpProtocolError, startDhpServer, type DhpServerHandle } from './dhp-server.ts';
 import { InteractionBroker } from './interaction-broker.ts';
 import { syaoPaths, type SyaoPaths } from './paths.ts';
@@ -378,6 +381,33 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
       })();
     });
   }
+
+  /**
+   * 一次性补全：给提交信息生成用（FR-N-026）。
+   *
+   * 只发一次请求、不带工具、不写任何文件；失败一律抛错，
+   * 由 `CommitMessageService` 降级成 fallback（界面仍可手填）。
+   */
+  const completeOnce = async (
+    modelSpec: string,
+    req: { system: string; prompt: string; signal: AbortSignal },
+  ): Promise<string> => {
+    const built = buildProvider(parseModelSpec(modelSpec), nodeRuntime(), env);
+    if (!built.ok) throw new Error(built.reason);
+    const messages: Message[] = [{
+      id: `commit_${Date.now().toString(36)}`,
+      role: 'user',
+      content: [{ type: 'text', text: req.prompt }],
+    }];
+    let text = '';
+    for await (const event of built.provider.stream(
+      { model: built.model, system: req.system, messages, maxOutputTokens: 512, temperature: 0.2 },
+      { signal: req.signal },
+    )) {
+      if (event.type === 'block_delta') text += event.delta;
+    }
+    return text;
+  };
 
   const mcp = new McpService({
     env,
@@ -961,7 +991,9 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
         {
           id: 'mcp' as const,
           name: 'MCP',
-          supported: servers.length > 0,
+          // `supported` 表示"这个能力已接入"（构建级事实），不是"已配置"。
+          // 已配置多少、有几个可用，由 detail 说清楚——两者混用会让人误判。
+          supported: true,
           detail: servers.length > 0
             ? `${servers.length} 个受信任服务 · ${servers.filter((s) => s.status === 'ready').length} 个可用 · ${servers.reduce((n, s) => n + s.toolCount, 0)} 个工具`
             : '尚未添加受信任的 MCP 服务；添加后其工具会进入模型的工具列表。',
@@ -969,7 +1001,7 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
         {
           id: 'agents' as const,
           name: 'Agent 群',
-          supported: groups.groups.length > 0,
+          supported: true,
           detail: groups.groups.length > 0
             ? `${groups.groups.length} 个群${groups.active !== null ? ` · 激活：${groups.active}（执行模型取 common 角色）` : ''}`
             : '尚未配置三角色群（hyaki / sota / common）。',
@@ -1376,6 +1408,47 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
     gitService.bumpRevision(root);
     await workbench.save();
     return result;
+  });
+
+  // ── 方法：提交信息生成（FR-N-026，只读）──────────────────────────────
+  //
+  // 只读：不执行任何 git 写操作、不落盘。模型不可用时返回 fallback，
+  // 界面预填并允许用户改写——生成失败不等于功能不可用。
+
+  register(FeatureMethod.GitCommitMessage, async (params) => {
+    const p = parseInput(gitCommitMessageSchema, params);
+    const root = requireRoot(p.workspaceRoot);
+    const scope = p.scope ?? 'staged';
+
+    const status = await gitService.status(root).catch(serviceError);
+    const sessionSnapshot = p.sessionId !== undefined ? collectorFor(root).snapshot(p.sessionId) : undefined;
+    const files = scope === 'session'
+      ? (sessionSnapshot?.changes ?? []).map((c) => c.path)
+      : status.files.filter((f) => f.staged).map((f) => f.path);
+
+    // 整树 diff 一次取齐（不逐文件调用，避免 N 次 git 子进程）。
+    const diff = await runGit({
+      root,
+      args: scope === 'session' ? ['diff'] : ['diff', '--cached'],
+      maxOutputBytes: 512 * 1024,
+    }).catch(serviceError);
+
+    const modelSpec = p.sessionId !== undefined
+      ? (runtimes.get(p.sessionId)?.state.snapshot.meta.model ?? (await effective()).model)
+      : (await effective()).model;
+
+    const sessionChanges = sessionSnapshot === undefined
+      ? undefined
+      : sessionSnapshot.changes.map((c) => ({ path: c.path, status: c.status, added: c.added, removed: c.removed }));
+
+    const service = new CommitMessageService({ complete: (req) => completeOnce(modelSpec, req) });
+    return await service.generate({
+      workspaceRoot: root,
+      files,
+      diff: diff.stdout,
+      ...(sessionChanges !== undefined ? { sessionChanges } : {}),
+      ...(p.hint !== undefined ? { hint: p.hint } : {}),
+    });
   });
 
   // ── 方法：配置 / 模型 ────────────────────────────────────────────────
