@@ -192,6 +192,47 @@ export function gitStatusBadge(status: GitStatusResult | undefined): string {
   return `+${totals.added} -${totals.removed}`;
 }
 
+// ── 工作区口径的只读 diff（FR-N-024）────────────────────────────────────
+//
+// 纪律：Git 侧栏的 diff 是**工作区口径**（索引区 / 工作区），
+// 与会话详情里的**会话口径**是两件事，展开时必须写明口径。
+
+/** 文件行该用哪个口径看 diff：已暂存看索引区，其余看工作区。 */
+export function diffModeForFile(file: GitFileEntry): 'worktree' | 'staged' {
+  return file.staged ? 'staged' : 'worktree';
+}
+
+/** 口径说明：两句都点明"工作区口径"，避免与会话口径混为一谈。 */
+export function gitDiffScopeText(mode: 'worktree' | 'staged'): string {
+  if (mode === 'staged') return '工作区口径：索引区里将要提交的内容（已暂存差异）。';
+  return '工作区口径：与索引区相比的未暂存差异（未跟踪文件按工作区内容计算）。';
+}
+
+/**
+ * diff 的诚实说明：三种原因互不相同，且都不是空白。
+ *
+ *  - `binary`   → 二进制文件无法显示文本 diff（**不渲染 hunk**）
+ *  - `truncated`→ 差异过长，只显示前一部分
+ *  - 无 hunk    → 该文件在当前口径下没有文本差异
+ * 其它情况返回空串（表示"有内容可显示"）。
+ */
+export function gitDiffEmptyText(result: GitDiffResult): string {
+  if (result.binary) return '二进制文件，无法显示文本 diff';
+  if (result.truncated) return '差异过长，只显示前一部分';
+  if (result.hunks.length === 0) return '该文件在当前口径下没有文本差异';
+  return '';
+}
+
+/** diff 行的着色类名（颜色之外的第二信息载体是 +/-/空格 前缀）。 */
+export function gitDiffLineClass(kind: 'add' | 'del' | 'ctx'): string {
+  return kind === 'add' ? 'git-diff-line-add' : kind === 'del' ? 'git-diff-line-del' : 'git-diff-line-ctx';
+}
+
+/** diff 行前缀：`+` / `-` / 空格。 */
+export function gitDiffLinePrefix(kind: 'add' | 'del' | 'ctx'): string {
+  return kind === 'add' ? '+' : kind === 'del' ? '-' : ' ';
+}
+
 // ── 提交前提示与签名失败（`27` §10.5.3）─────────────────────────────────
 
 /** 大文件提示阈值：5 MiB。只提示，不阻止提交。 */
@@ -623,9 +664,45 @@ export interface GitSidebarProps {
   readonly onOauthCancel?: ((flowId: string) => Promise<{ readonly cancelled: true }>) | undefined;
   /** 打开浏览器（主进程只放行 http(s)）；**只能由用户点击触发**，不得自动打开。 */
   readonly onOpenExternal?: ((url: string) => Promise<boolean>) | undefined;
+  /**
+   * 载入某个文件的**工作区口径**只读 diff（FR-N-024）。
+   *
+   * 未提供时文件行不可点击——不假装支持。
+   */
+  readonly onLoadDiff?: ((input: { readonly path: string; readonly mode: 'worktree' | 'staged' }) => Promise<void>) | undefined;
 }
 
 type UploadStep = 'idle' | 'preflight' | 'confirm' | 'uploading' | 'success' | 'failed';
+
+export interface GitDiffPanelProps {
+  readonly diff: GitDiffResult;
+  /** 口径：已暂存看索引区，其余看工作区。 */
+  readonly mode: 'worktree' | 'staged';
+}
+
+/**
+ * 工作区口径的只读 diff 面板（FR-N-024）。
+ *
+ * 诚实要求：
+ *  - 必须有一行写明**工作区口径**（与会话详情的会话口径不是一回事）；
+ *  - binary 不渲染 hunk；truncated / 无 hunk 都给明确说明，不留空白；
+ *  - 行内容保留 `+` / `-` / 空格前缀（颜色不是唯一信息载体）。
+ */
+export function GitDiffPanel({ diff, mode }: GitDiffPanelProps): ReactNode {
+  const empty = gitDiffEmptyText(diff);
+  return (
+    <section className="git-diff" aria-label={`${diff.path} 的只读 diff`}>
+      <header>{diff.path}<small>{diff.binary ? '二进制文件' : `+${diff.added} -${diff.removed}`}</small></header>
+      <p className="git-diff-scope">{gitDiffScopeText(mode)}</p>
+      {empty !== '' && <p className="git-diff-empty">{empty}</p>}
+      {!diff.binary && diff.hunks.map((hunk, index) => (
+        <pre key={`${hunk.oldStart}:${hunk.newStart}:${index}`} className="git-diff-hunk">{`@@ -${hunk.oldStart} +${hunk.newStart} @@`}{'\n'}{hunk.lines.map((line, lineIndex) => (
+          <span key={lineIndex} className={`git-diff-line ${gitDiffLineClass(line.kind)}`}>{gitDiffLinePrefix(line.kind)}{line.text}{'\n'}</span>
+        ))}</pre>
+      ))}
+    </section>
+  );
+}
 
 export function GitSidebar(props: GitSidebarProps) {
   const {
@@ -633,9 +710,35 @@ export function GitSidebar(props: GitSidebarProps) {
     loading, busy, error, tab, onTab, onClose, onRefresh, onLoadGraph,
     onStage, onUnstage, onCommit, onBranchSwitch, onBranchCreate,
     onPreflight, onUpload, onOpenDetail, onGenerateMessage, onSetToken, onUseSshAgent, onClearAuth,
-    onOauthStart, onOauthPoll, onOauthCancel, onOpenExternal,
+    onOauthStart, onOauthPoll, onOauthCancel, onOpenExternal, onLoadDiff,
   } = props;
 
+  // ── 工作区口径的只读 diff（FR-N-024）──────────────────────────────
+  // 同一时刻只展开一个文件；再点同一行收起；换文件时旧 diff 不残留。
+  const [diffSelection, setDiffSelection] = useState<{ readonly path: string; readonly mode: 'worktree' | 'staged' }>();
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffFailed, setDiffFailed] = useState('');
+  const toggleDiff = async (file: GitFileEntry) => {
+    if (!onLoadDiff) return;
+    const mode = diffModeForFile(file);
+    if (diffSelection?.path === file.path && diffSelection.mode === mode) {
+      // 再点同一行：收起，并清掉旧的 diff（避免残留上一次的内容）。
+      setDiffSelection(undefined);
+      setDiffLoading(false);
+      setDiffFailed('');
+      return;
+    }
+    setDiffSelection({ path: file.path, mode });
+    setDiffLoading(true);
+    setDiffFailed('');
+    try {
+      await onLoadDiff({ path: file.path, mode });
+    } catch (error) {
+      setDiffFailed(`读取 diff 失败：${(error as Error).message}`);
+    } finally {
+      setDiffLoading(false);
+    }
+  };
   const groups = useMemo(() => groupByStaging(status?.files ?? []), [status]);
   const layout = useMemo(() => layoutGitGraph(graph?.commits ?? []), [graph]);
   const hookText = commitHooksText(status);
@@ -1055,18 +1158,31 @@ export function GitSidebar(props: GitSidebarProps) {
               {files.length === 0
                 ? <p className="git-empty-small">无</p>
                 : <ul className="git-file-list">
-                  {files.map((file) => (
-                    <li className="git-file-row" key={`${file.staged ? 's' : 'u'}:${file.path}`} aria-label={gitFileLabel(file)}>
+                  {files.map((file) => {
+                    const mode = diffModeForFile(file);
+                    const expanded = diffSelection?.path === file.path && diffSelection.mode === mode;
+                    const body = <>
                       <span className={`change-status change-status-${file.status}`} title={GIT_STATUS_LABELS[file.status]}>{GIT_STATUS_LETTERS[file.status]}</span>
                       <span className="change-path" title={file.path}>{file.path}</span>
                       {file.stat === 'unavailable' || file.added == null || file.removed == null
                         ? <span className="change-stat change-stat-unknown">不可统计</span>
                         : <span className="change-stat"><span className="change-stat-add">+{file.added}</span> <span className="change-stat-del">-{file.removed}</span></span>}
+                    </>;
+                    return <li className="git-file-row" key={`${file.staged ? 's' : 'u'}:${file.path}`} aria-label={gitFileLabel(file)}>
+                      {onLoadDiff
+                        ? <button
+                          type="button"
+                          className={`git-file-open${expanded ? ' expanded' : ''}`}
+                          aria-expanded={expanded}
+                          aria-label={`${expanded ? '收起' : '查看'} ${file.path} 的只读 diff`}
+                          onClick={() => void toggleDiff(file)}
+                        >{body}<Icon name={expanded ? 'down' : 'chevron'} size={12} /></button>
+                        : body}
                       <button className="git-file-action" aria-label={`${file.staged ? '取消暂存' : '暂存'} ${file.path}`} disabled={busy} onClick={() => (file.staged ? onUnstage([file.path]) : onStage([file.path]))}>
                         {file.staged ? '取消暂存' : '暂存'}
                       </button>
-                    </li>
-                  ))}
+                    </li>;
+                  })}
                 </ul>}
             </section>
           ))}
@@ -1456,12 +1572,20 @@ export function GitSidebar(props: GitSidebarProps) {
         {tab === 'graph' && graphTab}
         {tab === 'branches' && branchesTab}
         {tab === 'upload' && uploadTab}
-        {diff && tab === 'changes' && (
-          <section className="git-diff">
-            <header>{diff.path}<small>{diff.binary ? '二进制文件' : `+${diff.added} -${diff.removed}`}</small></header>
-            {diff.hunks.map((hunk, index) => (
-              <pre key={`${hunk.oldStart}:${hunk.newStart}:${index}`} className="git-diff-hunk">{`@@ -${hunk.oldStart} +${hunk.newStart} @@`}{'\n'}{hunk.lines.map((line) => line.text).join('\n')}</pre>
-            ))}
+        {tab === 'changes' && diffSelection && diff && diff.path === diffSelection.path && (
+          <GitDiffPanel diff={diff} mode={diffSelection.mode} />
+        )}
+        {tab === 'changes' && diffSelection && (!diff || diff.path !== diffSelection.path) && (
+          <section className="git-diff" aria-label="正在读取只读 diff">
+            <header>{diffSelection.path}<small>{diffLoading ? '读取中' : '不可用'}</small></header>
+            <p className="git-diff-scope">{gitDiffScopeText(diffSelection.mode)}</p>
+            <p className="git-diff-empty">
+              {diffFailed !== ''
+                ? diffFailed
+                : diffLoading
+                  ? '正在读取该文件的工作区口径 diff…'
+                  : '未能读取该文件的工作区口径 diff（文件可能已被删除或移动）'}
+            </p>
           </section>
         )}
       </div>

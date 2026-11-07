@@ -11,12 +11,13 @@ import * as path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type {
-  GitAuthInfo, GitAuthStatusResult, GitBranchesResult, GitCommitNode, GitFileEntry, GitOauthProvider, GitPreflightResult, GitRemoteInfo, GitRemotesResult, GitStatusResult,
+  GitAuthInfo, GitAuthStatusResult, GitBranchesResult, GitCommitNode, GitDiffResult, GitFileEntry, GitOauthProvider, GitPreflightResult, GitRemoteInfo, GitRemotesResult, GitStatusResult,
 } from '@syaocode/dhp';
 import {
-  GIT_TABS, GitSidebar, INITIAL_SIDEBAR_STATE, LARGE_FILE_THRESHOLD_BYTES, OAUTH_MAX_DELAY_MS, OAUTH_MIN_DELAY_MS, OAUTH_POLL_LIMIT, SIGNING_FAILED_CODE,
+  GIT_TABS, GitDiffPanel, GitSidebar, INITIAL_SIDEBAR_STATE, LARGE_FILE_THRESHOLD_BYTES, OAUTH_MAX_DELAY_MS, OAUTH_MIN_DELAY_MS, OAUTH_POLL_LIMIT, SIGNING_FAILED_CODE,
   aheadBehindText, authMethodLabel, authStatusLabel, authStatusTone, branchLabel, commitHooksText, executableHooks,
   formatBytes, gitFileLabel, gitFileStatText, gitStatusBadge, gitStatusSummary, gitTabState, groupByStaging,
+  diffModeForFile, gitDiffEmptyText, gitDiffScopeText,
   inactiveHooks, isSigningFailure, largeStagedFiles, layoutGitGraph, onlineStateLabel, onlineStateTone,
   oauthFailureText, oauthPollDelay, oauthPollLabel, oauthProviderHint, oauthProviderState, oauthRemainingText,
   preflightReady, remoteUrlLabel, signingFailureActions, summarizeGitFiles,
@@ -585,5 +586,85 @@ describe('Git browser authorization (device flow, N-9)', () => {
     // 打开浏览器必须发生在 onClick 回调里（不得在 effect / 渲染期自动调用）。
     expect(source).toMatch(/onClick=\{[^}]*onOpenExternal\(/);
     expect(source).not.toMatch(/useEffect\([^)]*onOpenExternal/);
+  });
+});
+
+describe('working-tree diff entry (FR-N-024)', () => {
+  const diffResult = (overrides: Partial<GitDiffResult> = {}): GitDiffResult => ({
+    workspaceRoot: '/workspace', path: 'src/a.ts', mode: 'worktree',
+    hunks: [], added: 12, removed: 3, truncated: false, binary: false, ...overrides,
+  });
+
+  it('picks the diff mode by staging group', () => {
+    expect(diffModeForFile(file({ staged: true }))).toBe('staged');
+    expect(diffModeForFile(file({ staged: false }))).toBe('worktree');
+    expect(diffModeForFile(file({ staged: false, status: 'untracked' }))).toBe('worktree');
+  });
+
+  it('gives three distinct honest explanations', () => {
+    const binary = gitDiffEmptyText(diffResult({ binary: true }));
+    const truncated = gitDiffEmptyText(diffResult({ truncated: true }));
+    const empty = gitDiffEmptyText(diffResult());
+    expect(new Set([binary, truncated, empty]).size).toBe(3);
+    expect(binary).toContain('二进制');
+    expect(truncated).toContain('只显示前一部分');
+    expect(empty).toContain('没有文本差异');
+    // 二进制说明不得出现行数（那是 0 行，不是"不可统计"）。
+    expect(binary).not.toContain('+');
+    expect(binary).not.toMatch(/\d/);
+    // 有内容可显示时返回空串。
+    expect(gitDiffEmptyText(diffResult({ hunks: [{ oldStart: 1, newStart: 1, lines: [{ kind: 'ctx', text: 'x' }] }] }))).toBe('');
+  });
+
+  it('names the scope in both modes', () => {
+    const staged = gitDiffScopeText('staged');
+    const worktree = gitDiffScopeText('worktree');
+    expect(staged).not.toBe(worktree);
+    expect(staged).toContain('工作区口径');
+    expect(worktree).toContain('工作区口径');
+  });
+
+  it('makes file rows clickable only when onLoadDiff is provided', () => {
+    const clickable = render({ onLoadDiff: async () => {} });
+    expect(clickable).toContain('aria-expanded="false"');
+    expect(clickable).toContain('查看 src/a.ts 的只读 diff');
+    expect(clickable).toContain('git-file-open');
+    const plain = render();
+    expect(plain).not.toContain('aria-expanded');
+    expect(plain).not.toContain('git-file-open');
+    expect(plain).not.toContain('的只读 diff');
+  });
+
+  it('never renders hunks for a binary file', () => {
+    const html = renderToStaticMarkup(createElement(GitDiffPanel, { diff: diffResult({ binary: true, added: 0, removed: 0 }), mode: 'worktree' }));
+    expect(html).not.toContain('<pre class="git-diff-hunk">');
+    expect(html).toContain('二进制文件，无法显示文本 diff');
+    expect(html).toContain('工作区口径');
+  });
+
+  it('explains an empty diff instead of leaving a blank panel', () => {
+    const html = renderToStaticMarkup(createElement(GitDiffPanel, { diff: diffResult(), mode: 'staged' }));
+    expect(html).toContain('该文件在当前口径下没有文本差异');
+    expect(html).not.toContain('<pre class="git-diff-hunk">');
+    expect(html).toContain('工作区口径');
+  });
+
+  it('keeps +/- prefixes and per-kind classes for the diff lines', () => {
+    const html = renderToStaticMarkup(createElement(GitDiffPanel, {
+      diff: diffResult({ hunks: [{ oldStart: 3, newStart: 3, lines: [{ kind: 'ctx', text: 'keep' }, { kind: 'del', text: 'old' }, { kind: 'add', text: 'new' }] }] }),
+      mode: 'worktree',
+    }));
+    expect(html).toContain('@@ -3 +3 @@');
+    expect(html).toContain('git-diff-line-add');
+    expect(html).toContain('git-diff-line-del');
+    expect(html).toContain('git-diff-line-ctx');
+    expect(html).toContain('+new');
+    expect(html).toContain('-old');
+  });
+
+  it('source contract: the diff area states the working-tree scope', () => {
+    const source = read('src/renderer/git-sidebar.tsx');
+    expect(source).toContain('工作区口径');
+    expect(source).toContain('gitDiffScopeText');
   });
 });
