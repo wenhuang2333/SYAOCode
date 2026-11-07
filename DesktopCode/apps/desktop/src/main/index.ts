@@ -54,6 +54,8 @@ let mainWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let host: HostHandle | undefined;
 let hostProcess: ReturnType<typeof spawn> | undefined;
+/** 冒烟模式下渲染层是否已回报 ready（只用于避免重复打印）。 */
+let smokeReady = false;
 /** 主进程侧的凭据存储（钥匙串 / safeStorage）。**只有主进程能碰**。 */
 const keychain = new KeychainStore();
 /** 已物化的 SSH 临时密钥文件（Host 用完会请求删除；退出时兜底清理）。 */
@@ -300,6 +302,23 @@ async function createWindow(): Promise<void> {
       sandbox: true,
     },
   });
+
+  /**
+   * 冒烟标记（仅当 `--headless-smoke` 传入时）。
+   *
+   * 用途：让 `scripts/smoke-electron.mjs` 能判定"窗口真的渲染完、渲染层真的连上了
+   * Host"，而不是靠 sleep 猜。渲染层 ready 后经 preload 回报一次，主进程打标记。
+   * 正常启动时完全不触发。
+   */
+  if (process.argv.includes('--headless-smoke')) {
+    ipcMain.handle('smoke:renderer-ready', () => {
+      if (!smokeReady) {
+        smokeReady = true;
+        console.log('SMOKE:READY');
+      }
+      return { ok: true };
+    });
+  }
 
   mainWindow.once('ready-to-show', () => {
     console.log('[main] window ready-to-show');

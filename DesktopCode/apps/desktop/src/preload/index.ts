@@ -57,6 +57,15 @@ export interface SyaoBridge {
     importSshKey(payload: { workspaceRoot: string; remote: string; url: string; privateKey: string; passphrase?: string }): Promise<{ fingerprint: string }>;
     useSshAgent(payload: { workspaceRoot: string; remote: string; url: string }): Promise<{ publicKey: string; fingerprint: string }>;
   };
+  /**
+   * 冒烟探测（**仅** `--headless-smoke` 启动时由主进程注册）。
+   *
+   * 渲染层在连上 Host 之后回报一次，供启动冒烟脚本判定"窗口 + 连接都好了"。
+   * 正常运行时调用会失败，调用方必须忽略错误。
+   */
+  readonly smoke: {
+    rendererReady(): Promise<{ ok: boolean }>;
+  };
   readonly events: {
     onHostCrashed(cb: (payload: { code: number | null; signal: string | null; stderrTail: string }) => void): () => void;
     onDeepLink(cb: (url: string) => void): () => void;
@@ -94,6 +103,9 @@ const bridge: SyaoBridge = {
     clear: (payload) => ipcRenderer.invoke('git:credential:clear', payload) as Promise<{ cleared: boolean }>,
     importSshKey: (payload) => ipcRenderer.invoke('git:credential:import-ssh', payload) as Promise<{ fingerprint: string }>,
     useSshAgent: (payload) => ipcRenderer.invoke('git:credential:use-ssh-agent', payload) as Promise<{ publicKey: string; fingerprint: string }>,
+  },
+  smoke: {
+    rendererReady: () => ipcRenderer.invoke('smoke:renderer-ready') as Promise<{ ok: boolean }>,
   },
   events: {
     onHostCrashed(cb) {

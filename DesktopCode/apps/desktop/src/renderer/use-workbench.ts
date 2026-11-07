@@ -29,6 +29,8 @@ interface Bridge {
     clear(input: { readonly workspaceRoot: string; readonly remote: string; readonly url: string }): Promise<void>;
     useSshAgent?(input: { readonly workspaceRoot: string; readonly remote: string; readonly url: string }): Promise<void>;
   };
+  /** 冒烟探测（仅 `--headless-smoke` 启动时由主进程提供）。 */
+  readonly smoke?: { rendererReady(): Promise<{ ok: boolean }> };
   readonly events: { onHostCrashed(cb: (p: { stderrTail: string }) => void): () => void };
 }
 
@@ -217,7 +219,10 @@ export function useWorkbench() {
           url: `ws://127.0.0.1:${info.port}`, token: '',
           socketFactory: (url): WebSocketLike => new WebSocket(url) as unknown as WebSocketLike,
           onStateChange: (s) => {
-            if (!disposed) setStatus(s === 'ready' ? 'ready' : s === 'closed' ? 'error' : s === 'reconnecting' ? 'reconnecting' : 'booting');
+            if (disposed) return;
+            setStatus(s === 'ready' ? 'ready' : s === 'closed' ? 'error' : s === 'reconnecting' ? 'reconnecting' : 'booting');
+            // 冒烟探测：只有真正连上 Host 才算 ready。正常运行时该通道不存在，忽略即可。
+            if (s === 'ready') void window.syao?.smoke?.rendererReady().catch(() => undefined);
           },
           onSnapshot: (sid, s) => { if (!disposed && sid === active.current) projection.replacement(s); },
           onDelta: (sid, d) => {
