@@ -57,6 +57,29 @@ describe('交互验证脚本', () => {
   });
 });
 
+describe('流式对话的真实窗口验证（N-18）', () => {
+  it('用 mock 渠道跑完整闭环：不需要密钥、不联网', () => {
+    // 这条检查覆盖"输入 → 发送 → Host 跑一轮 → 事件回流 → 渲染"，
+    // 静态渲染测试完全覆盖不到。
+    expect(script).toContain('流式对话：用户消息进入时间线');
+    expect(script).toContain('流式对话：助手回复渲染到时间线');
+    expect(script).toContain('流式对话：结束后不再显示流式指示');
+    // 必须是 mock 渠道（离线剧本），否则会依赖真实厂商密钥。
+    expect(script).toContain('mock');
+  });
+
+  it('断言真实 DOM：用户行 / 助手行 / 流式指示消失', () => {
+    expect(script).toContain('.msg-user');
+    expect(script).toContain('.msg-assistant .content');
+    expect(script).toContain('.streaming-dot');
+  });
+
+  it('保留成功路径截图，便于人眼复核真实界面', () => {
+    expect(script).toContain('syao-interaction.png');
+    expect(script).toContain('截图');
+  });
+});
+
 describe('桌面端默认语言的取舍（避免中英混排）', () => {
   it('只有用户显式选过语言才跟随 config，否则用桌面默认值', () => {
     // 内核默认 en，而桌面文案绝大多数仍是中文：直接跟随会得到混排界面。

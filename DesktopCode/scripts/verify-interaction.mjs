@@ -168,7 +168,52 @@ try {
     await page.waitForTimeout(300);
   }
 
-  // 6) 无未捕获异常 / 无控制台错误（真实运行期错误只有跑起来才看得到）。
+  // 6) 真实流式对话（N-18）：发一条消息，等模型回包落到时间线上。
+  //
+  //    用 `mock` 渠道（离线剧本），所以不需要任何密钥、也不联网。
+  //    这条检查覆盖的是"输入 → 发送 → Host 跑一轮 → 事件回流 → 渲染"的完整闭环，
+  //    静态渲染测试完全覆盖不到它。
+  await page.locator('.nav-item', { hasText: '工作台' }).first().click().catch(() => undefined);
+  await page.waitForTimeout(300);
+  const chatBox = page.locator('textarea').first();
+  const boxVisible = await chatBox.isVisible().catch(() => false);
+  if (!boxVisible) {
+    check('流式对话：发送一条消息并收到回复', false, '找不到输入区（可能不在会话页）');
+  } else {
+    await page.evaluate(() => {
+      const el = document.querySelector('textarea');
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+      setter.call(el, '你好');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForTimeout(150);
+    const sendButton = page.locator('.composer-actions .btn-primary, button:has-text("发送"), button:has-text("Send")').first();
+    await sendButton.click({ timeout: 10_000 }).catch(() => undefined);
+
+    // 用户消息必须立刻出现在时间线（乐观渲染或服务端回流都算）。
+    const userRow = await page.waitForSelector('.msg-user', { timeout: 15_000 }).then(() => true).catch(() => false);
+    check('流式对话：用户消息进入时间线', userRow);
+
+    // 助手回复：mock 剧本第一轮是纯文本，等它渲染出来。
+    const assistantRow = await page
+      .waitForSelector('.msg-assistant .content', { timeout: 30_000 })
+      .then(() => true)
+      .catch(() => false);
+    const assistantText = assistantRow
+      ? await page.locator('.msg-assistant .content').last().innerText().catch(() => '')
+      : '';
+    check('流式对话：助手回复渲染到时间线', assistantRow && assistantText.trim() !== '', assistantText.slice(0, 60).replace(/\n/g, ' '));
+
+    // 一轮结束后流式指示必须消失（不能永远转圈）。
+    await page.waitForTimeout(1_500);
+    const stillStreaming = await page.locator('.streaming-dot').count();
+    check('流式对话：结束后不再显示流式指示', stillStreaming === 0, `剩余 ${stillStreaming} 个`);
+  }
+
+  // 取证截图：成功路径也留一张，方便人眼复核"真实界面长什么样"。
+  await page.screenshot({ path: path.join(os.tmpdir(), 'syao-interaction.png') }).catch(() => undefined);
+
+  // 7) 无未捕获异常 / 无控制台错误（真实运行期错误只有跑起来才看得到）。
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
@@ -194,6 +239,7 @@ try {
   await rm(home, { recursive: true, force: true }).catch(() => undefined);
 }
 
+console.log(`\n截图: ${path.join(os.tmpdir(), 'syao-interaction.png')}`);
 const failed = results.filter((r) => !r.ok).length;
 console.log(failed === 0 ? `\nINTERACTION: OK (${results.length} 项)` : `\nINTERACTION: ${failed} 项失败`);
 process.exit(failed === 0 ? 0 : 1);
