@@ -52,7 +52,7 @@ interface Client {
 async function boot(opts: { credentialChannel?: CredentialIpcChannel } = {}): Promise<Client> {
   host = await createHost({
     workspaceRoot: root,
-    env: { SYAOCODE_HOME: home },
+    env: { SYAOCODE_HOME: home, PROBE_API_KEY: 'probe-key' },
     logger: () => {},
     ...(opts.credentialChannel !== undefined ? { credentialChannel: opts.credentialChannel } : {}),
   });
@@ -639,5 +639,30 @@ describe('`!` 直接执行命令（FR-N-036，仍过权限闸门）', () => {
       .rejects.toMatchObject({ kind: 'capability_not_found' });
     const sessionId = await newSession(c);
     await expect(c.request(F.SessionRunCommand, { sessionId, command: '' })).rejects.toBeTruthy();
+  });
+});
+
+describe('Agent 群激活后的执行模型（FR-N-003）', () => {
+  it('激活后**新建**的会话也用 common 角色的模型，而不是配置默认模型', async () => {
+    const c = await boot();
+    // 关键：common 必须与配置默认模型（mock:default）**不同**，
+    // 否则"取 common"与"取默认"无法区分——既有测试正是用相同的值，掩盖了差别。
+    // mock 渠道默认只有 default 一个模型，先把 common 用的模型注册进去。
+    // mock 渠道被 schema 限定为只有 default 一个模型，所以这里注册一个远程渠道
+    // 来提供一个与配置默认值**不同**的模型（不联网：只做配置，不发起请求）。
+    await c.request(WorkbenchMethod.ChannelSave, {
+      id: 'probe', name: 'Probe', protocol: 'openai-compatible', baseUrl: 'https://example.invalid/v1',
+      apiKeyEnv: 'PROBE_API_KEY',
+      models: [{ id: 'common-x', name: 'common-x' }],
+    });
+    await c.request(F.AgentsSave, {
+      name: '差异群',
+      roles: { hyaki: 'mock:default', sota: 'mock:default', common: 'probe:common-x' },
+    });
+    await c.request(F.AgentsActivate, { name: '差异群' });
+
+    const sessionId = await newSession(c);
+    const snap = await c.request<SessionSnapshot>(Method.SessionSnapshot, { sessionId });
+    expect(snap.meta.model).toBe('probe:common-x');
   });
 });

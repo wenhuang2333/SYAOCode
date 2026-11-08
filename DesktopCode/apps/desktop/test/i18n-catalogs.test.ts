@@ -18,6 +18,8 @@
 import { describe, expect, it } from 'vitest';
 import { desktopMessages, t } from '../src/renderer/i18n.ts';
 import { tv, viewsMessages } from '../src/renderer/i18n-views.ts';
+import { agentsMessages, ta } from '../src/renderer/i18n-agents.ts';
+import { mcpMessages, tm } from '../src/renderer/i18n-mcp.ts';
 
 const flatten = (value: unknown, prefix = ''): string[] => {
   if (typeof value === 'string') return [prefix];
@@ -27,8 +29,11 @@ const flatten = (value: unknown, prefix = ''): string[] => {
 };
 
 const CATALOGS = [
-  { name: 'i18n.ts', read: desktopMessages, lookup: t },
-  { name: 'i18n-views.ts', read: viewsMessages, lookup: tv },
+  { name: 'i18n.ts', read: desktopMessages, lookup: t, root: '' },
+  { name: 'i18n-views.ts', read: viewsMessages, lookup: tv, root: '' },
+  { name: 'i18n-agents.ts', read: agentsMessages, lookup: ta, root: '' },
+  // MCP 目录用 `mcp.` 前缀寻址（`tm(lang, 'mcp.status.ready')`）。
+  { name: 'i18n-mcp.ts', read: mcpMessages, lookup: tm, root: 'mcp.' },
 ] as const;
 
 describe('两套目录的中英键集各自对等', () => {
@@ -39,8 +44,8 @@ describe('两套目录的中英键集各自对等', () => {
       expect(zh.length).toBeGreaterThan(20);
       expect(en).toEqual(zh);
       for (const path of zh) {
-        expect(catalog.lookup('zh', path)).not.toBe('');
-        expect(catalog.lookup('en', path)).not.toBe('');
+        expect(catalog.lookup('zh', `${catalog.root}${path}`)).not.toBe('');
+        expect(catalog.lookup('en', `${catalog.root}${path}`)).not.toBe('');
       }
     });
   }
@@ -57,9 +62,9 @@ describe('两套目录的运行时语义完全一致', () => {
   it('插值缺参数时都保留 {name}，都不出现 undefined', () => {
     // 取各自目录里第一个带占位符的键来验证，避免依赖具体键名。
     for (const catalog of CATALOGS) {
-      const withVar = flatten(catalog.read('zh')).find((path) => catalog.lookup('zh', path).includes('{'));
+      const withVar = flatten(catalog.read('zh')).find((path) => catalog.lookup('zh', `${catalog.root}${path}`).includes('{'));
       if (withVar === undefined) continue;
-      const text = catalog.lookup('zh', withVar);
+      const text = catalog.lookup('zh', `${catalog.root}${withVar}`);
       expect(text).not.toContain('undefined');
       expect(text).toMatch(/\{\w+\}/);
     }
@@ -67,10 +72,29 @@ describe('两套目录的运行时语义完全一致', () => {
 });
 
 describe('没有跨目录的重复键', () => {
-  it('同一个键不会在两套目录里各定义一次', () => {
-    const first = new Set(flatten(desktopMessages('zh')));
-    const overlap = flatten(viewsMessages('zh')).filter((path) => first.has(path));
-    // 允许的例外：两边都叫 `relative.*` 这类通用名时才算冲突；这里要求完全没有。
+  it('同一个键不会在多套目录里各定义一次', () => {
+    // 四套目录两两之间都不能有同名键：否则"改了其中一个"会变成难查的 bug，
+    // 而且读者无法判断该键到底归谁管。
+    const seen = new Map<string, string>();
+    const conflicts: string[] = [];
+    for (const catalog of CATALOGS) {
+      for (const path of flatten(catalog.read('zh'))) {
+        const owner = seen.get(path);
+        if (owner === undefined) seen.set(path, catalog.name);
+        else conflicts.push(`${path}: ${owner} vs ${catalog.name}`);
+      }
+    }
+    expect(conflicts).toEqual([]);
+  });
+
+  it('MCP 目录的 `mcp.` 前缀是它自己的命名空间，不与别的目录冲突', () => {
+    // `mcp.*` 键在 `i18n-mcp.ts` 里叫 `status.ready`（不带前缀），
+    // 寻址时才加前缀——所以这里按**带前缀**的完整路径比对。
+    const others = new Set(
+      [...flatten(desktopMessages('zh')), ...flatten(viewsMessages('zh')), ...flatten(agentsMessages('zh'))]
+        .map((path) => `mcp.${path}`),
+    );
+    const overlap = flatten(mcpMessages('zh')).map((path) => `mcp.${path}`).filter((path) => others.has(path));
     expect(overlap).toEqual([]);
   });
 });

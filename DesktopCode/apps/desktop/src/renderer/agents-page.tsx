@@ -8,20 +8,34 @@
 
 import { useState } from 'react';
 import { AGENT_ROLES, type AgentGroup, type AgentRole, type AgentsListResult, type AgentsSaveParams, type ChannelInfo } from '@syaocode/dhp';
+import type { Lang } from './i18n';
+import { ta } from './i18n-agents';
 
 // ── 纯函数（可被测试直接断言）────────────────────────────────────────────
 
-export const AGENT_ROLE_LABELS: Readonly<Record<AgentRole, string>> = {
-  hyaki: 'hyaki · 提取摘要',
-  sota: 'sota · 规划评审',
-  common: 'common · 执行验证',
-};
+/** 三个角色的显示标签（按语言生成）。 */
+export function agentRoleLabels(lang: Lang = 'zh'): Readonly<Record<AgentRole, string>> {
+  return {
+    hyaki: ta(lang, 'roles.hyaki'),
+    sota: ta(lang, 'roles.sota'),
+    common: ta(lang, 'roles.common'),
+  };
+}
 
-export const AGENT_ROLE_HINTS: Readonly<Record<AgentRole, string>> = {
-  hyaki: '从上下文里提取要点与摘要。',
-  sota: '制定与评审分步计划。',
-  common: '真正执行工具与验证结果（**执行模型**）。',
-};
+/** 中文角色标签（兼容既有调用方与测试）。 */
+export const AGENT_ROLE_LABELS: Readonly<Record<AgentRole, string>> = agentRoleLabels('zh');
+
+/** 三个角色的职责说明（按语言生成）。 */
+export function agentRoleHints(lang: Lang = 'zh'): Readonly<Record<AgentRole, string>> {
+  return {
+    hyaki: ta(lang, 'roleHints.hyaki'),
+    sota: ta(lang, 'roleHints.sota'),
+    common: ta(lang, 'roleHints.common'),
+  };
+}
+
+/** 中文职责说明（兼容既有调用方与测试）。 */
+export const AGENT_ROLE_HINTS: Readonly<Record<AgentRole, string>> = agentRoleHints('zh');
 
 export const AGENT_EXECUTION_ROLE: AgentRole = 'common';
 
@@ -38,22 +52,22 @@ export type AgentValidation =
   | { readonly ok: false; readonly errors: AgentFormErrors };
 
 /** 角色名 → 中文标签。 */
-export function agentRoleLabel(role: AgentRole): string {
-  return AGENT_ROLE_LABELS[role] ?? role;
+export function agentRoleLabel(role: AgentRole, lang: Lang = 'zh'): string {
+  return agentRoleLabels(lang)[role] ?? role;
 }
 
 /** `渠道:模型` 绑定文案；未绑定显式说明。 */
-export function modelBindingLabel(binding: string | undefined): string {
+export function modelBindingLabel(binding: string | undefined, lang: Lang = 'zh'): string {
   const value = binding?.trim() ?? '';
-  return value === '' ? '未绑定' : value;
+  return value === '' ? ta(lang, 'unbound') : value;
 }
 
 /** 当前激活群与执行模型的一句话摘要（TC-N-022：执行模型取 common）。 */
-export function agentsSummary(result: AgentsListResult | undefined): string {
-  if (!result || result.active === null) return '尚未激活任何 Agent 群，当前按单 Agent 运行。';
+export function agentsSummary(result: AgentsListResult | undefined, lang: Lang = 'zh'): string {
+  if (!result || result.active === null) return ta(lang, 'summaryNone');
   const active = result.groups.find((group) => group.name === result.active);
-  if (!active) return `已激活「${result.active}」，但找不到该群配置。`;
-  return `当前激活群：${active.name} · 执行模型（common）：${modelBindingLabel(active.roles.common)}`;
+  if (!active) return ta(lang, 'summaryMissing', { active: result.active });
+  return ta(lang, 'summaryActive', { name: active.name, model: modelBindingLabel(active.roles.common, lang) });
 }
 
 /** 新建 / 编辑草稿。 */
@@ -69,16 +83,20 @@ export function createAgentDraft(group?: AgentGroup): AgentDraft {
 const BINDING_PATTERN = /^[^:\s]+:[^:\s]+$/;
 
 /** 表单校验：群名唯一性由 Host 兜底，这里只做 UI 级校验。 */
-export function validateAgentDraft(draft: AgentDraft, options: { readonly existing?: readonly string[] } = {}): AgentValidation {
+export function validateAgentDraft(
+  draft: AgentDraft,
+  options: { readonly existing?: readonly string[]; readonly lang?: Lang } = {},
+): AgentValidation {
+  const lang = options.lang ?? 'zh';
   const errors: Record<string, string> = {};
   const name = draft.name.trim();
-  if (name === '') errors['name'] = '请输入群名称。';
-  else if (name.length > 64) errors['name'] = '群名称不超过 64 个字符。';
-  else if (options.existing?.includes(name)) errors['name'] = '此群名称已存在，请直接编辑现有群。';
+  if (name === '') errors['name'] = ta(lang, 'errorNameRequired');
+  else if (name.length > 64) errors['name'] = ta(lang, 'errorNameTooLong');
+  else if (options.existing?.includes(name)) errors['name'] = ta(lang, 'errorNameDuplicate');
   for (const role of AGENT_ROLES) {
     const binding = draft[role].trim();
-    if (binding === '') errors[role] = `${role} 需要绑定「渠道:模型」。`;
-    else if (!BINDING_PATTERN.test(binding)) errors[role] = `格式应为「渠道:模型」，例如 provider:model-a（不能含空白）。`;
+    if (binding === '') errors[role] = ta(lang, 'errorBindingRequired', { role });
+    else if (!BINDING_PATTERN.test(binding)) errors[role] = ta(lang, 'errorBindingFormat');
   }
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   return {
@@ -101,13 +119,18 @@ export interface AgentsPageProps {
   readonly onSave: (params: AgentsSaveParams) => Promise<void>;
   readonly onDelete: (name: string) => Promise<void>;
   readonly onActivate: (name: string) => Promise<void>;
+  /** 界面语言（默认中文，与桌面端默认一致）。 */
+  readonly lang?: Lang;
 }
 
-export function AgentsPage({ result, channels, loading, error, busy, onSave, onDelete, onActivate }: AgentsPageProps) {
+export function AgentsPage({ result, channels, loading, error, busy, onSave, onDelete, onActivate, lang = 'zh' }: AgentsPageProps) {
   const [draft, setDraft] = useState<AgentDraft>(() => createAgentDraft());
   const [editing, setEditing] = useState(false);
   const [errors, setErrors] = useState<AgentFormErrors>({});
   const [notice, setNotice] = useState('');
+  // 删除是破坏性且**无法撤销**的操作（Host 侧直接删掉该群），
+  // 必须先确认。归档会话、bypass 切换都有确认，这里以前点一下就直接删。
+  const [pendingDelete, setPendingDelete] = useState('');
 
   const groups = result?.groups ?? [];
   const options = channels.flatMap((channel) => channel.models.map((model) => `${channel.id}:${model.id}`));
@@ -116,16 +139,16 @@ export function AgentsPage({ result, channels, loading, error, busy, onSave, onD
   const setField = (role: AgentRole, value: string) => setDraft((previous) => ({ ...previous, [role]: value }));
 
   const submit = async () => {
-    const validation = validateAgentDraft(draft, { existing: editing ? [] : groups.map((group) => group.name) });
+    const validation = validateAgentDraft(draft, { existing: editing ? [] : groups.map((group) => group.name), lang });
     if (!validation.ok) { setErrors(validation.errors); setNotice(''); return; }
     setErrors({});
     try {
       await onSave(validation.params);
-      setNotice('已保存 Agent 群配置。');
+      setNotice(ta(lang, 'saved'));
       setEditing(false);
       setDraft(createAgentDraft());
     } catch (e) {
-      setNotice(`保存失败：${(e as Error).message}`);
+      setNotice(ta(lang, 'saveFailed', { message: (e as Error).message }));
     }
   };
 
@@ -134,77 +157,91 @@ export function AgentsPage({ result, channels, loading, error, busy, onSave, onD
       <div className="page-heading">
         <div>
           <span className="eyebrow">AGENT TEAM</span>
-          <h1>Agent 群</h1>
-          <p>三角色各自绑定「渠道:模型」；执行模型永远取 <code>common</code>。</p>
+          <h1>{ta(lang, 'pageTitle')}</h1>
+          <p>{ta(lang, 'pageSubtitle')} <code>common</code></p>
         </div>
-        <span className="subtle-badge">本机 Host</span>
+        <span className="subtle-badge">{ta(lang, 'hostBadge')}</span>
       </div>
 
-      <p className="agents-summary" role="status">{agentsSummary(result)}</p>
+      <p className="agents-summary" role="status">{agentsSummary(result, lang)}</p>
       {error && <div className="inline-error" role="alert">{error}</div>}
       {notice && <p className="data-note">{notice}</p>}
 
       <div className="agents-layout">
         <section className="agents-groups">
-          <h2>已配置的群 <small>{groups.length}</small></h2>
-          {loading && <p className="data-note">正在读取 Agent 群…</p>}
-          {!loading && groups.length === 0 && <p className="detail-empty">尚未配置任何 Agent 群。</p>}
+          <h2>{ta(lang, 'configuredTitle')} <small>{groups.length}</small></h2>
+          {loading && <p className="data-note">{ta(lang, 'loading')}</p>}
+          {!loading && groups.length === 0 && <p className="detail-empty">{ta(lang, 'emptyGroups')}</p>}
           <ul>
             {groups.map((group) => (
               <li className="agent-group-card" key={group.name}>
                 <div className="agent-group-head">
                   <strong>{group.name}</strong>
-                  {result?.active === group.name && <span className="subtle-badge">当前激活</span>}
+                  {result?.active === group.name && <span className="subtle-badge">{ta(lang, 'activeBadge')}</span>}
                 </div>
                 <dl className="agent-role-list">
                   {AGENT_ROLES.map((role) => (
                     <div key={role}>
-                      <dt>{agentRoleLabel(role)}{role === AGENT_EXECUTION_ROLE && <b className="agent-exec-tag">执行模型</b>}</dt>
-                      <dd>{modelBindingLabel(group.roles[role])}</dd>
+                      <dt>{agentRoleLabel(role, lang)}{role === AGENT_EXECUTION_ROLE && <b className="agent-exec-tag">{ta(lang, 'execBadge')}</b>}</dt>
+                      <dd>{modelBindingLabel(group.roles[role], lang)}</dd>
                     </div>
                   ))}
                 </dl>
                 <div className="agent-group-actions">
-                  <button className="btn" disabled={busy} onClick={() => { setDraft(createAgentDraft(group)); setEditing(true); setErrors({}); }}>编辑</button>
-                  <button className="btn" disabled={busy || result?.active === group.name} onClick={() => { void onActivate(group.name); }}>激活</button>
-                  <button className="btn" disabled={busy} onClick={() => { void onDelete(group.name); }}>删除</button>
+                  <button className="btn" disabled={busy} onClick={() => { setDraft(createAgentDraft(group)); setEditing(true); setErrors({}); }}>{ta(lang, 'edit')}</button>
+                  <button className="btn" disabled={busy || result?.active === group.name} onClick={() => { void onActivate(group.name); }}>{ta(lang, 'activate')}</button>
+                  <button className="btn" disabled={busy} onClick={() => setPendingDelete(group.name)}>{ta(lang, 'remove')}</button>
                 </div>
+                {pendingDelete === group.name && (
+                  <div className="inline-confirm" role="alertdialog" aria-label={ta(lang, 'removeConfirmTitle')}>
+                    <p><strong>{ta(lang, 'removeConfirmTitle')}</strong></p>
+                    <p className="data-note">{ta(lang, 'removeConfirmBody', { name: group.name })}</p>
+                    <div className="agent-group-actions">
+                      <button className="btn" disabled={busy} onClick={() => setPendingDelete('')}>{ta(lang, 'removeConfirmCancel')}</button>
+                      <button
+                        className="btn btn-danger"
+                        disabled={busy}
+                        onClick={() => { const name = group.name; setPendingDelete(''); void onDelete(name); }}
+                      >{ta(lang, 'removeConfirmOk')}</button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
         </section>
 
         <section className="agents-editor">
-          <h2>{editing ? '编辑 Agent 群' : '新建 Agent 群'}</h2>
+          <h2>{editing ? ta(lang, 'editTitle') : ta(lang, 'newTitle')}</h2>
           <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
             <label className="agents-field">
-              <span>群名称</span>
+              <span>{ta(lang, 'nameLabel')}</span>
               <input value={draft.name} maxLength={64} disabled={busy || editing} onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))} />
               {errors['name'] && <small className="field-error">{errors['name']}</small>}
             </label>
             {AGENT_ROLES.map((role) => (
               <label className="agents-field" key={role}>
-                <span>{agentRoleLabel(role)}</span>
+                <span>{agentRoleLabel(role, lang)}</span>
                 <input
                   value={field(role)}
                   list="agent-model-options"
-                  placeholder="渠道:模型"
+                  placeholder={ta(lang, 'bindingPlaceholder')}
                   disabled={busy}
                   onChange={(event) => setField(role, event.target.value)}
                 />
                 {errors[role] && <small className="field-error">{errors[role]}</small>}
-                <small className="data-note">{AGENT_ROLE_HINTS[role]}</small>
+                <small className="data-note">{agentRoleHints(lang)[role]}</small>
               </label>
             ))}
             <datalist id="agent-model-options">
               {options.map((option) => <option key={option} value={option} />)}
             </datalist>
             <div className="agents-form-actions">
-              {editing && <button type="button" className="btn" disabled={busy} onClick={() => { setEditing(false); setDraft(createAgentDraft()); setErrors({}); }}>取消编辑</button>}
-              <button type="submit" className="btn btn-primary" disabled={busy}>{editing ? '保存修改' : '创建群'}</button>
+              {editing && <button type="button" className="btn" disabled={busy} onClick={() => { setEditing(false); setDraft(createAgentDraft()); setErrors({}); }}>{ta(lang, 'cancelEdit')}</button>}
+              <button type="submit" className="btn btn-primary" disabled={busy}>{editing ? ta(lang, 'saveChanges') : ta(lang, 'createGroup')}</button>
             </div>
           </form>
-          <p className="data-note">保存后需要显式"激活"才会生效；重启应用后保留激活状态。</p>
+          <p className="data-note">{ta(lang, 'activationNote')}</p>
         </section>
       </div>
     </div>

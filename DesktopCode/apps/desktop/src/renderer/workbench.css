@@ -387,3 +387,11 @@ body{font-size:13px;background:var(--sy-surface-gray-100);line-height:1.6}button
 .shell-line-note{margin:0;font-size:9px;line-height:1.6;color:var(--sy-text-orange-040)}
 .shell-line-output{margin:0;max-height:260px;overflow:auto;border:1px solid var(--sy-border-violet-095-6);border-radius:6px;background:var(--sy-surface-gray-100);padding:6px 8px;font-family:var(--sy-mono);font-size:10px;line-height:1.65;color:var(--sy-text-blue-040);white-space:pre-wrap;overflow-wrap:anywhere}
 .shell-line-meta{margin:0;color:var(--sy-border-blue-065);font-size:9px;font-variant-numeric:tabular-nums}
+
+/* 就地确认（删除 Agent 群等不可撤销操作）。用 danger 边框与正文区分，
+   避免和普通卡片混在一起被误点。 */
+.inline-confirm{margin-top:8px;padding:10px 11px;border:1px solid var(--sy-danger);border-radius:8px;background:var(--sy-surface-red-100);display:flex;flex-direction:column;gap:6px}
+.inline-confirm p{margin:0;font-size:11px;line-height:1.7;color:var(--sy-text)}
+.inline-confirm .data-note{color:var(--sy-text-muted)}
+.inline-confirm .agent-group-actions{margin-top:2px}
+.inline-confirm button:focus-visible{outline:2px solid var(--sy-danger);outline-offset:2px}

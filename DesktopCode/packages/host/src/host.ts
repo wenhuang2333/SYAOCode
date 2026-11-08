@@ -597,13 +597,20 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
     const root = workbench.requireWorkspace(p.workspaceRoot ?? workspaceRoot).root;
     const cfg = await effective(root);
     mutable();
+    // 执行模型优先级：显式指定 > 激活 Agent 群的 `common` 角色 > 配置默认。
+    //
+    // 中间这一档是 `27` FR-N-003 的验收要点（"激活后当前会话的执行模型取 common"）。
+    // 以前只在**激活那一刻**给已存在的空闲会话换模型，激活之后新建的会话仍拿配置默认值——
+    // 界面却写着"执行模型永远取 common"。这里补上，语义才与文案一致。
+    const activeCommon = agents.executionModel();
+    const chosenModel = p.model ?? activeCommon ?? cfg.model;
     workbench.importConfiguredModel(cfg.model);
-    workbench.model(p.model ?? cfg.model);
+    workbench.model(chosenModel);
     const sessionId = `ses_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
     const state = registry.create({
       sessionId,
       title: p.title ?? '新会话',
-      model: p.model ?? cfg.model,
+      model: chosenModel,
       permissionMode: parseInput(permissionSchema, p.permissionMode ?? cfg.permissionMode),
       workspaceRoot: root,
     });
