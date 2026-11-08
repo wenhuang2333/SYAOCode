@@ -125,3 +125,33 @@ describe('真实模型：工具调用闭环', () => {
     expect(tool).toContain('REAL TOOL USE: OK');
   });
 });
+
+describe('真实模型：审批流（N-24 / N-25）', () => {
+  const approval = read('../../scripts/verify-real-approval.mjs');
+
+  it('核心断言是安全性质：写审批通过前文件不能被改动', () => {
+    expect(approval).toContain('写操作在审批通过之前没有生效');
+    expect(approval).toContain('original content');
+  });
+
+  it('只在 risk=write 的审批上采样（后面的审批发生在写入之后，采样会误报）', () => {
+    // 第一版在每个审批上都断言"文件未改动"，第 3 次审批（写完之后）必然失败——
+    // 那是脚本的错，不是产品的错。
+    expect(approval).toContain("interaction.risk === 'write' && !writeChecked");
+  });
+
+  it('真实任务会有多次审批，脚本必须逐次批准', () => {
+    // 只批准一次会停在第二张审批卡上，看起来像"卡住"，其实是脚本限制。
+    expect(approval).toContain('const approved = new Set()');
+    expect(approval).toContain('pending = (snap?.pendingInteractions ?? []).filter((i) => i.kind === \'permission\' && !approved.has(i.id))');
+  });
+
+  it('区分"命令执行失败"与"权限被拒伪装成工具错误"', () => {
+    expect(approval).toContain('没有把"权限拒绝"伪装成普通工具错误');
+    expect(approval).toContain('/denied|not permitted|approval|permission/i');
+  });
+
+  it('覆盖多步工具调用（同一轮内多次调用并收敛）', () => {
+    expect(approval).toContain('同一轮内发生多次工具调用并收敛');
+  });
+});

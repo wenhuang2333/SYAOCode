@@ -21,6 +21,7 @@
     "verify:real-commit-message": "node --import tsx scripts/verify-real-commit-message.mjs",
     "verify:real-usage": "node --import tsx scripts/verify-real-usage.mjs",
     "verify:real-tool-use": "node --import tsx scripts/verify-real-tool-use.mjs",
+    "verify:real-approval": "node --import tsx scripts/verify-real-approval.mjs",
     "dev:host": "pnpm run build:host && node scripts/dev-host.mjs",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "package:dir": "pnpm run build && pnpm --filter syaocode-desktop run package:dir",
