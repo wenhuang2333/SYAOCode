@@ -39,7 +39,7 @@ export interface Messages {
 }
 
 const zh: Messages = {
-  appName: 'SYAOCode',
+  appName: 'LIWENCode',
   newSession: '新会话',
   composerPlaceholder: '输入消息…（Enter 发送 / Shift+Enter 换行）',
   send: '发送',
@@ -49,7 +49,7 @@ const zh: Messages = {
   emptyHint: '在下方输入一句话开始。',
   thinking: '思考过程',
   you: '你',
-  assistant: 'SYAOCode',
+  assistant: 'LIWENCode',
   approvalTitle: '需要你的确认',
   approvalPending: '待处理审批',
   approvalExplain: '为什么问我',
@@ -67,7 +67,7 @@ const zh: Messages = {
 };
 
 const en: Messages = {
-  appName: 'SYAOCode',
+  appName: 'LIWENCode',
   newSession: 'New session',
   composerPlaceholder: 'Type a message… (Enter to send / Shift+Enter for newline)',
   send: 'Send',
@@ -77,7 +77,7 @@ const en: Messages = {
   emptyHint: 'Type below to get started.',
   thinking: 'Thinking',
   you: 'You',
-  assistant: 'SYAOCode',
+  assistant: 'LIWENCode',
   approvalTitle: 'Needs your approval',
   approvalPending: 'Pending approvals',
   approvalExplain: 'Why am I being asked',

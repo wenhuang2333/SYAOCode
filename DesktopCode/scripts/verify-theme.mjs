@@ -35,7 +35,7 @@ const page = (dark) => `<!doctype html><html lang="zh-CN"${dark ? ' data-theme="
 <head><meta charset="utf-8"><style>${css}</style></head>
 <body><div class="workbench-app">
   <aside class="sidebar">
-    <div class="brand-block"><span class="brand-symbol"></span><div><strong>SYAOCode</strong><small>DESKTOP</small></div></div>
+    <div class="brand-block"><span class="brand-symbol"></span><div><strong>LIWENCode</strong><small>DESKTOP</small></div></div>
     <button class="new-session">新会话</button>
     <div class="session-search"><input placeholder="搜索会话" /></div>
     <nav><button class="nav-item active">会话</button><button class="nav-item">用量</button></nav>
@@ -48,7 +48,7 @@ const page = (dark) => `<!doctype html><html lang="zh-CN"${dark ? ' data-theme="
       <div class="topbar-actions"><button aria-label="外观">theme</button></div></header>
     <div class="workspace-body">
       <main class="main-content chat-content"><div class="conversation"><div class="conversation-scroll">
-        <div class="msg msg-assistant"><div class="role">SYAOCode</div><div class="content">助手正文，用于检查正文对比度。</div></div>
+        <div class="msg msg-assistant"><div class="role">LIWENCode</div><div class="content">助手正文，用于检查正文对比度。</div></div>
         <div class="tool"><span>bash</span><pre class="tool-input">echo hi</pre></div>
       </div>
       <div class="composer-shell">

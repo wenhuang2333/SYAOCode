@@ -80,7 +80,7 @@ function Sidebar({ w, search, setSearch }: { w: Workbench; search: string; setSe
   const channels = w.overview?.channels ?? [];
   const disabled = w.status !== 'ready' || w.mutating;
   return <aside className="sidebar" aria-label={tv(w.language, 'workbench.sidebar.mainNav')}>
-    <div className="brand-block"><span className="brand-symbol"><Icon name="code" size={22} /></span><div><strong>SYAOCode</strong><small>{tv(w.language, 'workbench.brand.subtitle')}</small></div><span className="version-badge">0.1</span></div>
+    <div className="brand-block"><span className="brand-symbol"><Icon name="code" size={22} /></span><div><strong>LIWENCode</strong><small>{tv(w.language, 'workbench.brand.subtitle')}</small></div><span className="version-badge">0.1</span></div>
     <button className="new-session" onClick={() => void w.createSession()} disabled={disabled}><Icon name="plus" />{tv(w.language, 'workbench.sidebar.newSession')}<kbd>⌘ N</kbd></button>
     <label className="session-search"><Icon name="search" size={15} /><input id="session-search" aria-label={tv(w.language, 'workbench.sidebar.searchAria')} placeholder={tv(w.language, 'workbench.sidebar.searchPlaceholder')} value={search} onChange={(e) => setSearch(e.target.value)} />{search && <button aria-label={tv(w.language, 'workbench.sidebar.clearSearch')} onClick={() => setSearch('')}><Icon name="close" size={13} /></button>}</label>
     <nav>

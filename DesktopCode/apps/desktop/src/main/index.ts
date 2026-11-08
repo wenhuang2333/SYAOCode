@@ -292,7 +292,7 @@ async function createWindow(): Promise<void> {
     minWidth: 900,
     minHeight: 600,
     show: false,
-    title: 'SYAOCode',
+    title: 'LIWENCode',
     backgroundColor: '#f7f8fc',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.cjs'),
@@ -358,7 +358,7 @@ function createTray(): void {
   // 没有图标资源时用空图标（macOS 上会显示为占位）。
   const image = nativeImage.createEmpty();
   tray = new Tray(image);
-  tray.setToolTip('SYAOCode');
+  tray.setToolTip('LIWENCode');
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {

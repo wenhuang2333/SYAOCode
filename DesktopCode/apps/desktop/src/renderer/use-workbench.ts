@@ -217,7 +217,7 @@ export function useWorkbench() {
 
   useEffect(() => {
     const bridge = window.syao;
-    if (!bridge) { setStatus('error'); setError('请通过 SYAOCode 桌面应用启动工作台，本页面需要安全的本机连接。'); return; }
+    if (!bridge) { setStatus('error'); setError('请通过 LIWENCode 桌面应用启动工作台，本页面需要安全的本机连接。'); return; }
     let disposed = false;
     let connection: DhpConnection | undefined;
     const boot = async () => {

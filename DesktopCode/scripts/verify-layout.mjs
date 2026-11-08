@@ -33,7 +33,7 @@ const css = [
 
 const shell = (rightRail) => `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>${css}</style></head>
 <body><div class="workbench-app">
-  <aside class="sidebar"><div class="brand-block"><span class="brand-symbol"></span><div><strong>SYAOCode</strong><small>DESKTOP</small></div></div>
+  <aside class="sidebar"><div class="brand-block"><span class="brand-symbol"></span><div><strong>LIWENCode</strong><small>DESKTOP</small></div></div>
     <button class="new-session">新会话</button><div class="session-search"><input placeholder="搜索会话" /></div>
     <nav><button class="nav-item active">会话</button><button class="nav-item">用量</button><button class="nav-item">设置</button></nav>
     <div class="project-tree"><div class="project"><div class="project-line selected"><button class="project-name"><span>项目</span></button></div></div></div>
