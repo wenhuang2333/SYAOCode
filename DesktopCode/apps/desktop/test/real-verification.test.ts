@@ -195,3 +195,30 @@ describe('没有凭据时必须跳过，而不是"通过"或失败', () => {
     }, 60_000);
   }
 });
+
+describe('文档核对脚本（verify:docs）', () => {
+  const docs = read('../../scripts/verify-docs.mjs');
+
+  it('核对的是数字与代码，不是"看起来像文档"', () => {
+    // 曾发生过两次漂移：测试数 671→727、错误码 47→48。
+    expect(docs).toContain('错误码数');
+    expect(docs).toContain('语义令牌数');
+    expect(docs).toContain('事件类型数');
+    expect(docs).toContain('两份文档的测试数一致');
+  });
+
+  it('会把差异**打印出来**（只报 FAIL 不报数字等于没说）', () => {
+    expect(docs).toContain('`文档 ${claimed} / 代码 ${actual}`');
+  });
+
+  it('文档是本地文件：缺失时跳过，不在干净克隆里失败', () => {
+    // `doc/` 被 .gitignore 拦截，公开仓库里没有；脚本必须能安静跳过。
+    expect(docs).toContain('SKIP: doc/DesktopDoc not present');
+    expect(docs).toContain('process.exit(0)');
+  });
+
+  it('错误码是负数，比的是绝对值最大（曾经把上下限搞反）', () => {
+    expect(docs).toContain('错误码是负的');
+    expect(docs).toContain('Math.abs');
+  });
+});
