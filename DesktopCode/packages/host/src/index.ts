@@ -1,8 +1,8 @@
 /**
- * `@syaocode/host` —— SYAOCode 桌面宿主进程。
+ * `@liwencode/host` —— LIWENCode 桌面宿主进程。
  *
  * 这个包**只在 Node 里运行**，且**不得** import `electron`：
- * Host 必须能脱离 shell 独立启动（`syao host` / 测试 / 未来的 `syao web`）。
+ * Host 必须能脱离 shell 独立启动（`liwen host` / 测试 / 未来的 `liwen web`）。
  *
  * 职责：
  *   host.ts              装配：DHP 方法实现与事件桥接
@@ -13,9 +13,10 @@
  *   config-service.ts    分层配置 + 原子写回
  *   workspace.ts         文件树 / 读取 / 差异 + 路径围栏
  *   paths.ts             数据目录唯一入口（OI-D-07）
+ *   home-migration.ts    旧数据目录（`~/.syaocode`）→ 新目录的安全迁移
  */
 
-export { createHost, type HostOptions, type RunningHost } from './host.ts';
+export { createHost, type HomeMigrationOverride, type HostOptions, type RunningHost } from './host.ts';
 export {
   startDhpServer,
   DhpServerError,
@@ -64,14 +65,33 @@ export {
   type WorkspaceServiceOptions,
 } from './workspace.ts';
 export {
-  SYAOCODE_HOME_ENV,
-  SyaoHomeError,
+  LEGACY_HOME_DIR_NAME,
+  LEGACY_HOME_ENV,
+  LIWENCODE_HOME_DIR_NAME,
+  LIWENCODE_HOME_ENV,
+  LIWENHomeError,
+  MIGRATION_MARKER_FILE,
   redactHomeInPath,
-  resolveSyaoHome,
+  resolveHomePlan,
+  resolveLIWENHome,
   sessionLogPath,
-  syaoPaths,
-  type SyaoPaths,
+  liwenPaths,
+  type HomePlan,
+  type LegacyHomeSource,
+  type LegacyHomeSourceKind,
+  type LIWENPaths,
 } from './paths.ts';
+export {
+  migrateLegacyHome,
+  nodeMigrationFs,
+  type HomeMigrationOptions,
+  type HomeMigrationResult,
+  type HomeMigrationWarning,
+  type HomeMigrationWarningCode,
+  type MigrationFs,
+  type MigrationMarker,
+  type MigrationStat,
+} from './home-migration.ts';
 export {
   MemoryCredentialProvider,
   keychainEntryFor,

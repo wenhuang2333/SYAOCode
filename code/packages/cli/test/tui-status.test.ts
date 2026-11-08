@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { AgentEventBody, Usage } from '@syaocode/core';
+import type { AgentEventBody, Usage } from '@liwencode/core';
 import { StatusTracker, estimateTokensOfText, formatStatusLine, formatTokens } from '../src/tui/status';
 import { setLanguage } from '../src/i18n/index';
 import { displayWidth } from '../src/tui/width';

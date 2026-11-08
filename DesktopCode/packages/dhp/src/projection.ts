@@ -562,9 +562,9 @@ export function emptySnapshot(meta: SessionMeta, epoch = 1): SessionSnapshot {
 /**
  * 最小内容块形状。
  *
- * **有意不从 `@syaocode/core` 导入**：DHP 是传输协议，不应依赖内核。
+ * **有意不从 `@liwencode/core` 导入**：DHP 是传输协议，不应依赖内核。
  * 内核的 `ContentBlock` 结构上兼容这个类型，因此调用方可直接传入。
- * 这样 `@syaocode/dhp` 保持"零 node、零内核"依赖，可在浏览器中原样打包。
+ * 这样 `@liwencode/dhp` 保持"零 node、零内核"依赖，可在浏览器中原样打包。
  */
 export interface TextBlockLike {
   readonly type: string;

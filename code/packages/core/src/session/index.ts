@@ -1,5 +1,5 @@
 import type { Runtime } from '../runtime/index.js';
-import { SessionError } from '../errors/syao-error.js';
+import { SessionError } from '../errors/liwen-error.js';
 
 /**
  * Append-only event log as the source of truth (ADR-05, DD-7, BR-016).
@@ -84,7 +84,7 @@ export class MemorySessionStore implements SessionStore {
   }
 }
 
-/** JSONL file store: ~/.syaocode/sessions/<projectHash>/<sessionId>.jsonl */
+/** JSONL file store: ~/.liwencode/sessions/<projectHash>/<sessionId>.jsonl */
 export class FileSessionStore implements SessionStore {
   constructor(
     private readonly runtime: Runtime,

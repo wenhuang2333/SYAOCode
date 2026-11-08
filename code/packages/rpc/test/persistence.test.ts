@@ -14,7 +14,7 @@ import { FakeRuntime, TEST_TENANT, hasher } from './kernel-helpers.js';
 import type { Receipt } from '../src/ir/types.js';
 
 function dirFor(name: string): string {
-  return `/tmp/syao-persist-${name}`;
+  return `/tmp/liwen-persist-${name}`;
 }
 
 describe('file-backed stores (C-4)', () => {

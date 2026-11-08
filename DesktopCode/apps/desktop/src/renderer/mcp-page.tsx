@@ -9,7 +9,7 @@
  */
 
 import { useState } from 'react';
-import type { McpAddParams, McpServerInfo, McpServerStatus, McpToolSummary, McpTransport } from '@syaocode/dhp';
+import type { McpAddParams, McpServerInfo, McpServerStatus, McpToolSummary, McpTransport } from '@liwencode/dhp';
 import { tm } from './i18n-mcp';
 import type { Lang } from './i18n';
 

@@ -7,7 +7,7 @@
  * runtime — the two are reported side by side so a stale entry is visible
  * instead of silently missing.
  *
- * The store lives in the user config file (`~/.syaocode/config.json`), so it
+ * The store lives in the user config file (`~/.liwencode/config.json`), so it
  * survives restarts and is edited by the same tooling as the model profiles.
  */
 

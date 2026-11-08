@@ -1,5 +1,5 @@
 /**
- * The `syao rpc` / `syao call` / `syao mcp` / `syao serve` command surface,
+ * The `liwen rpc` / `liwen call` / `liwen mcp` / `liwen serve` command surface,
  * plus the shared handlers behind the `/rpc` `/peer` `/call` `/serve`
  * `/approve` slash commands.
  *
@@ -19,8 +19,8 @@ import type {
   FabricStatus,
   Receipt,
   Task,
-} from '@syaocode/rpc';
-import { CanonicalError, EXIT } from '@syaocode/rpc';
+} from '@liwencode/rpc';
+import { CanonicalError, EXIT } from '@liwencode/rpc';
 import { UsageError, type CliArgs } from './args.js';
 import { buildCliContext } from './context.js';
 import { errorText, exitCodeForError, type CliFabric } from './arf.js';
@@ -76,7 +76,7 @@ export type RpcView =
 export type RpcCommand =
   | { kind: 'view'; view: RpcView; id?: string; capabilityId?: string; json: boolean; details?: boolean }
   | { kind: 'decide'; approvalId: string; optionId: string; json: boolean }
-  /** `syao rpc store unlock` — operator recovery for a dead holder. */
+  /** `liwen rpc store unlock` — operator recovery for a dead holder. */
   | { kind: 'unlock'; json: boolean };
 
 export interface CallCommand {
@@ -163,7 +163,7 @@ function takeBool(argv: readonly string[], flag: string): { found: boolean; rest
   return { found: argv.includes(flag), rest: argv.filter((a) => a !== flag) };
 }
 
-/** Parse `syao rpc <sub> [...] [--json]` (throws UsageError on bad input). */
+/** Parse `liwen rpc <sub> [...] [--json]` (throws UsageError on bad input). */
 export function parseRpcCommand(argv: readonly string[]): RpcCommand {
   // Strip every boolean flag up front so a view's own flag (`--details`) never
   // looks like a positional argument.
@@ -184,7 +184,7 @@ export function parseRpcCommand(argv: readonly string[]): RpcCommand {
     };
   }
 
-  // `syao rpc store` shows the write lease; `syao rpc store unlock` recovers a
+  // `liwen rpc store` shows the write lease; `liwen rpc store unlock` recovers a
   // lease whose holder is known to be gone.
   if (sub === 'store') {
     if (rest[1] === 'unlock') {
@@ -225,7 +225,7 @@ export function parseRpcCommand(argv: readonly string[]): RpcCommand {
   throw new UsageError(t('rpc.unknownSub', { sub }));
 }
 
-/** Parse `syao call <capabilityId> [--input <json|@file>] [--json]`. */
+/** Parse `liwen call <capabilityId> [--input <json|@file>] [--json]`. */
 export function parseCallCommand(argv: readonly string[]): CallCommand {
   const json = takeBool(argv, '--json');
   const input = takeFlag(json.rest, '--input');
@@ -241,7 +241,7 @@ export function parseCallCommand(argv: readonly string[]): CallCommand {
   };
 }
 
-/** Parse `syao mcp <list|add <name> <command...>|remove <name>|tools <name>>`. */
+/** Parse `liwen mcp <list|add <name> <command...>|remove <name>|tools <name>>`. */
 export function parseMcpCommand(argv: readonly string[]): McpCommand {
   const sub = argv[0] ?? 'list';
   if (sub === 'list') {
@@ -268,7 +268,7 @@ export function parseMcpCommand(argv: readonly string[]): McpCommand {
   throw new UsageError(t('rpc.mcpUsage'));
 }
 
-/** Parse `syao serve [--mcp|--acp|--a2a] [--stdio|--http] [--port N] [--host H]`. */
+/** Parse `liwen serve [--mcp|--acp|--a2a] [--stdio|--http] [--port N] [--host H]`. */
 export function parseServeArgv(argv: readonly string[]): ServeCommand {
   const json = takeBool(argv, '--json');
   const portFlag = takeFlag(json.rest, '--port');
@@ -697,7 +697,7 @@ export function createArgvApprovalPresenter(
   };
 }
 
-/** `syao rpc ...` */
+/** `liwen rpc ...` */
 export async function runRpcArgv(args: CliArgs, cli: CliFabric, io: CliIo): Promise<number> {
   let cmd: RpcCommand;
   try {
@@ -756,7 +756,7 @@ async function readStoreStatus(cli: CliFabric): Promise<import('./rpc-views.js')
   };
 }
 
-/** `syao rpc store unlock` — force-release a lease whose holder is gone. */
+/** `liwen rpc store unlock` — force-release a lease whose holder is gone. */
 async function rpcUnlock(cli: CliFabric): Promise<PanelResult> {
   const stores = cli.fabric.stores as unknown as { leaseStatus?: () => Promise<unknown> };
   const dir = cli.storeDir;
@@ -767,7 +767,7 @@ async function rpcUnlock(cli: CliFabric): Promise<PanelResult> {
       message: t('rpc.store.notPersisted'),
     });
   }
-  const { forceUnlock } = await import('@syaocode/rpc');
+  const { forceUnlock } = await import('@liwencode/rpc');
   const before = await readStoreStatus(cli);
   const epoch = await forceUnlock(cli.runtime, dir);
   const after = await readStoreStatus(cli);
@@ -781,7 +781,7 @@ async function rpcUnlock(cli: CliFabric): Promise<PanelResult> {
   };
 }
 
-/** `syao call <capabilityId> [--input ...] [--json]` */
+/** `liwen call <capabilityId> [--input ...] [--json]` */
 export async function runCallArgv(args: CliArgs, cli: CliFabric, io: CliIo): Promise<number> {
   let cmd: CallCommand;
   let input: unknown;
@@ -795,8 +795,8 @@ export async function runCallArgv(args: CliArgs, cli: CliFabric, io: CliIo): Pro
     }
     throw e;
   }
-  // Registered peers are mounted on demand, so `syao call mcp://<peer>/...`
-  // works right after `syao mcp add` without restarting the CLI.
+  // Registered peers are mounted on demand, so `liwen call mcp://<peer>/...`
+  // works right after `liwen mcp add` without restarting the CLI.
   await cli.mountRegisteredPeers();
   const outcome = await callOnce(cli, cmd.capabilityId, input, (text) => text);
   if (cmd.json) {
@@ -807,7 +807,7 @@ export async function runCallArgv(args: CliArgs, cli: CliFabric, io: CliIo): Pro
   return exitCodeForOutcome(outcome);
 }
 
-/** `syao mcp <list|add|remove|tools>` */
+/** `liwen mcp <list|add|remove|tools>` */
 export async function runMcpArgv(args: CliArgs, cli: CliFabric, io: CliIo, home?: string): Promise<number> {
   let cmd: McpCommand;
   try {
@@ -864,7 +864,7 @@ export async function runMcpArgv(args: CliArgs, cli: CliFabric, io: CliIo, home?
 const C_OK = '\x1b[32m✔\x1b[39m';
 const C_WARN = '\x1b[33m!\x1b[39m';
 
-/** `syao serve ...` — the only entry point that binds a socket. */
+/** `liwen serve ...` — the only entry point that binds a socket. */
 export async function runServeArgv(args: CliArgs, cli: CliFabric, io: CliIo): Promise<number> {
   let cmd: ServeCommand;
   try {
@@ -917,7 +917,7 @@ export async function runServeArgv(args: CliArgs, cli: CliFabric, io: CliIo): Pr
  *
  * The ACP edge previously had no `runTurn`, so `session/prompt` always failed.
  * A turn now runs the governed agent path — the same tools, policy, budget and
- * receipts as `syao -p` — with the editor as the approval authority.
+ * receipts as `liwen -p` — with the editor as the approval authority.
  */
 async function buildAcpTurnRunner(
   args: CliArgs,
@@ -925,10 +925,10 @@ async function buildAcpTurnRunner(
 ): Promise<NonNullable<import('./serve.js').ServeFabricContext['runTurn']>> {
   const [{ createAcpTurnRunner }, { createAgent }, config, select, { MockProvider }] = await Promise.all([
     import('./acp-turn.js'),
-    import('@syaocode/core'),
+    import('@liwencode/core'),
     import('./effective-config.js'),
     import('./provider-select.js'),
-    import('@syaocode/testing'),
+    import('@liwencode/testing'),
   ]);
   const runtime = cli.runtime;
   const loaded = await config.loadCliConfig(args, runtime);

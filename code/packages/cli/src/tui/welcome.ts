@@ -8,7 +8,7 @@ import { t } from '../i18n/index.js';
  * MiMo 的欢迎框，但布局自定）。
  *
  * 布局：一个圆角矩形，左半部分 = "蝴蝶向右飞"的城市天际线场景（蝴蝶原地
- * 扇翅、天际线循环后退）+ 下方黑白阴影画风的 SYAOCode 艺术字；右半部分 =
+ * 扇翅、天际线循环后退）+ 下方黑白阴影画风的 LIWENCode 艺术字；右半部分 =
  * 当前语言的欢迎语与指令提示。
  *
  * 纯函数渲染：renderPanel(cols, panelH, tMs, info) → string[]（每行等宽），
@@ -25,7 +25,7 @@ export function welcomeSupported(cols: number, rows: number): boolean {
   return cols >= 64 && rows >= 20;
 }
 
-// ---------- 迷你像素字体（"SYAOCode" 专用，变宽 5 行） ----------
+// ---------- 迷你像素字体（"LIWENCode" 专用，变宽 5 行） ----------
 
 const MINI: Record<string, { w: number; rows: string[] }> = {
   S: { w: 4, rows: ['0111', '1000', '0110', '0001', '1110'] },
@@ -77,7 +77,7 @@ export { FLAP_CYCLE_MS, flightScenePixels } from './flight.js';
 /** 黑白阴影艺术字像素：主字/阴影色随主题（深色终端白+深灰，浅色终端深灰+浅灰）。
  * 字形纵向 ×2（半块像素为正方形）；横向按目标宽度自动整数倍缩放 +
  * 均匀字距，铺满整个底部宽度。像素高 = 5×2+2 = 12 = 6 终端行 */
-export function artPixels(w: number, text = 'SYAOCode', colors: { main: number; shadow: number } = artColors()): Map<number, number> {
+export function artPixels(w: number, text = 'LIWENCode', colors: { main: number; shadow: number } = artColors()): Map<number, number> {
   const glyphs = [...text].map((ch) => MINI[ch]).filter((g): g is { w: number; rows: string[] } => g !== undefined);
   if (glyphs.length === 0) return new Map();
   const baseW = glyphs.reduce((acc, g) => acc + g.w, 0);
@@ -236,7 +236,7 @@ export function renderPanel(
   };
 
   const lines: string[] = [];
-  const title = ' SYAOCode ';
+  const title = ' LIWENCode ';
   const fill = panelW - 2 - title.length;
   const l = Math.floor(fill / 2);
   lines.push(`╭${'─'.repeat(l)}${title}${'─'.repeat(fill - l)}╮`);

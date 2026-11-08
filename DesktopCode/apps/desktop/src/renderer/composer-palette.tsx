@@ -16,7 +16,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
-import type { TreeNode } from '@syaocode/dhp';
+import type { TreeNode } from '@liwencode/dhp';
 import { t, type Lang, type PaletteCommandId } from './i18n';
 
 // ── 命令集（顺序固定，测试直接断言）────────────────────────────────────

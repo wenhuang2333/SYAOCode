@@ -13,8 +13,8 @@ import {
   EXIT_VERIFICATION_FAILED,
 } from '../src/run';
 import { loadCliConfig } from '../src/effective-config';
-import { nodeRuntime } from '@syaocode/node';
-import type { RunSummary } from '@syaocode/core';
+import { nodeRuntime } from '@liwencode/node';
+import type { RunSummary } from '@liwencode/core';
 
 function summary(over: Partial<RunSummary>): RunSummary {
   return {
@@ -43,19 +43,19 @@ describe('exitCodeFor (BR-042)', () => {
 
 describe('effective config (report E2/E3/E4)', () => {
   it('layers CLI default < project < env < flags', async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-config-'));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-config-'));
     const project = path.join(tmp, 'project');
-    fs.mkdirSync(path.join(project, '.syaocode'), { recursive: true });
-    fs.writeFileSync(path.join(project, '.syaocode', 'config.json'), JSON.stringify({ permissionMode: 'acceptEdits' }));
+    fs.mkdirSync(path.join(project, '.liwencode'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.liwencode', 'config.json'), JSON.stringify({ permissionMode: 'acceptEdits' }));
     const oldHome = process.env.HOME;
-    const oldMode = process.env.SYAO_PERMISSION_MODE;
+    const oldMode = process.env.LIWEN_PERMISSION_MODE;
     process.env.HOME = tmp;
-    delete process.env.SYAO_PERMISSION_MODE;
+    delete process.env.LIWEN_PERMISSION_MODE;
     try {
       const base = await loadCliConfig({ cwd: project, allowedTools: [], disallowedTools: [] }, nodeRuntime());
       expect(base.permissionMode).toBe('acceptEdits'); // project beats CLI default
 
-      process.env.SYAO_PERMISSION_MODE = 'plan';
+      process.env.LIWEN_PERMISSION_MODE = 'plan';
       const env = await loadCliConfig({ cwd: project, allowedTools: [], disallowedTools: [] }, nodeRuntime());
       expect(env.permissionMode).toBe('plan'); // env beats project
 
@@ -68,8 +68,8 @@ describe('effective config (report E2/E3/E4)', () => {
     } finally {
       if (oldHome === undefined) delete process.env.HOME;
       else process.env.HOME = oldHome;
-      if (oldMode === undefined) delete process.env.SYAO_PERMISSION_MODE;
-      else process.env.SYAO_PERMISSION_MODE = oldMode;
+      if (oldMode === undefined) delete process.env.LIWEN_PERMISSION_MODE;
+      else process.env.LIWEN_PERMISSION_MODE = oldMode;
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
@@ -77,7 +77,7 @@ describe('effective config (report E2/E3/E4)', () => {
 
 describe('policy file (report v0.2.5)', () => {
   it('applies declared mode/rules/limits; explicit flags still win', async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-policy-'));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-policy-'));
     const policy = path.join(tmp, 'policy.json');
     fs.writeFileSync(
       policy,
@@ -112,7 +112,7 @@ describe('policy file (report v0.2.5)', () => {
   });
 
   it('rejects malformed policy with SY-CFG-001', async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-policy-'));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-policy-'));
     const policy = path.join(tmp, 'policy.json');
     fs.writeFileSync(policy, JSON.stringify({ rules: [{ effect: 'maybe', tool: 'read' }] }));
     const oldHome = process.env.HOME;

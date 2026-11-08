@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ToolRegistry } from '@syaocode/core';
+import { ToolRegistry } from '@liwencode/core';
 import { createFabric } from '../src/runtime/fabric.js';
 import type { AdapterCapabilities, ProtocolAdapter } from '../src/governance/contracts.js';
 import type { AuthorizedInvocation, AdapterContext, InvokeResultPayload } from '../src/governance/contracts.js';

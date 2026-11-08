@@ -36,8 +36,8 @@
  *   <dir>/events.jsonl       canonical events
  */
 
-import { SyaoError } from '@syaocode/core';
-import type { Runtime } from '@syaocode/core';
+import { LIWENError } from '@liwencode/core';
+import type { Runtime } from '@liwencode/core';
 import type {
   ApprovalRecord,
   AuditDetailSidecar,
@@ -191,7 +191,7 @@ async function readRecords<T>(
     const line = lines[i]!;
     if (line.trim() === '') continue;
     if (line.length > maxRecordBytes) {
-      throw new SyaoError({
+      throw new LIWENError({
         code: 'SY-SRV-006',
         message: `${label} record at line ${i + 1} exceeds ${maxRecordBytes} bytes`,
       });
@@ -205,7 +205,7 @@ async function readRecords<T>(
         // line, so nothing is lost beyond the record that never completed.
         break;
       }
-      throw new SyaoError({
+      throw new LIWENError({
         code: 'SY-SRV-006',
         message: `${label} file is corrupt at line ${i + 1}: ${e instanceof Error ? e.message : String(e)}`,
       });
@@ -246,7 +246,7 @@ async function appendRecord(ctx: Ctx, path: string, value: unknown, lease: Write
   await lease.assertHeld();
   const line = `${JSON.stringify(value)}\n`;
   if (line.length > ctx.maxRecordBytes) {
-    throw new SyaoError({
+    throw new LIWENError({
       code: 'SY-SRV-006',
       message: `${path}: record of ${line.length} bytes exceeds ${ctx.maxRecordBytes}`,
     });
@@ -564,7 +564,7 @@ export function createFileStores(opts: FileStoreOptions): FileStoreBundle {
       try {
         parsed = JSON.parse(await runtime.fs.readFile(budgetPath)) as typeof parsed;
       } catch (e) {
-        throw new SyaoError({
+        throw new LIWENError({
           code: 'SY-SRV-006',
           message: `budget file is corrupt: ${e instanceof Error ? e.message : String(e)}`,
         });

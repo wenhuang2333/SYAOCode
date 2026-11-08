@@ -1,7 +1,7 @@
 /**
  * 会话宿主：把一个内核 `Agent` 包装成 DHP 的会话。
  *
- * 关键设计：**Host 自己的投影也走 `@syaocode/dhp` 的同一套 fold 函数**。
+ * 关键设计：**Host 自己的投影也走 `@liwencode/dhp` 的同一套 fold 函数**。
  * 这样"服务端认为的状态"与"客户端算出的状态"不可能漂移——因为它们是同一份代码。
  * 这是三条铁律能被信任的实现基础。
  */
@@ -12,7 +12,7 @@ import {
   type Message,
   type PermissionMode,
   type Usage,
-} from '@syaocode/core';
+} from '@liwencode/core';
 import {
   applyDelta,
   emptySnapshot,
@@ -23,7 +23,7 @@ import {
   type SessionEvent,
   type SessionSnapshot,
   type DesktopSessionSummary,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 
 /** 事件环大小：足够覆盖"客户端断线 30 秒"期间的补洞需求。 */
 export const EVENT_RING_SIZE = 4096;

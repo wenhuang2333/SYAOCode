@@ -1,4 +1,4 @@
-import { SyaoError, type Env, type Runtime } from '@syaocode/core';
+import { LIWENError, type Env, type Runtime } from '@liwencode/core';
 
 /**
  * SecretRef resolution (03 §3.5, BR-023, report C9).
@@ -6,9 +6,9 @@ import { SyaoError, type Env, type Runtime } from '@syaocode/core';
  * `server.token` and MCP credentials are stored as *references*, never as
  * literals:
  *
- *   env:SYAO_SERVER_TOKEN     environment variable
- *   ${SYAO_SERVER_TOKEN}      shell-style reference
- *   file:~/.syaocode/token    file whose first line is the secret
+ *   env:LIWEN_SERVER_TOKEN     environment variable
+ *   ${LIWEN_SERVER_TOKEN}      shell-style reference
+ *   file:~/.liwencode/token    file whose first line is the secret
  *
  * Resolution is keychain-free on purpose: a headless CI host has no keychain,
  * and a missing secret must fail with SY-CFG-002 rather than silently running
@@ -70,7 +70,7 @@ export function createSecretResolver(opts: SecretResolverOptions): SecretResolve
       if (parsed === undefined) {
         // A literal is refused: the config file must never hold a plaintext
         // token, and guessing would silently ship one to a log (BR-023).
-        throw new SyaoError({
+        throw new LIWENError({
           code: 'SY-CFG-002',
           message: `Secret reference '${redactRef(ref)}' is not a valid reference (use env:NAME or file:PATH).`,
           details: { ref: redactRef(ref) },
@@ -79,7 +79,7 @@ export function createSecretResolver(opts: SecretResolverOptions): SecretResolve
       if (parsed.kind === 'env') {
         const value = env.get(parsed.name);
         if (value === undefined || value === '') {
-          throw new SyaoError({
+          throw new LIWENError({
             code: 'SY-CFG-002',
             message: `Environment variable '${parsed.name}' referenced by a secret is not set.`,
             details: { ref: `env:${parsed.name}` },
@@ -92,7 +92,7 @@ export function createSecretResolver(opts: SecretResolverOptions): SecretResolve
       try {
         raw = await opts.runtime.fs.readFile(path);
       } catch (e) {
-        throw new SyaoError({
+        throw new LIWENError({
           code: 'SY-CFG-002',
           message: `Secret file '${path}' could not be read.`,
           details: { ref: `file:${parsed.path}` },
@@ -101,7 +101,7 @@ export function createSecretResolver(opts: SecretResolverOptions): SecretResolve
       }
       const value = raw.split('\n')[0]?.trim() ?? '';
       if (value === '') {
-        throw new SyaoError({
+        throw new LIWENError({
           code: 'SY-CFG-002',
           message: `Secret file '${path}' is empty.`,
           details: { ref: `file:${parsed.path}` },
@@ -123,14 +123,14 @@ function redactRef(ref: string): string {
  * PermissionRuleStore backed by a JSON file (report C5).
  *
  * `remember:'project'` approvals must survive the process, and they belong to
- * the repository: `.syaocode/permissions.json` next to the project config.
+ * the repository: `.liwencode/permissions.json` next to the project config.
  * A malformed file degrades to "no remembered rules" rather than bricking the
  * permission engine.
  */
 export function createFilePermissionStore(
   runtime: Runtime,
   path: string,
-): { load(): Promise<import('@syaocode/core').PermissionRule[]>; save(rules: import('@syaocode/core').PermissionRule[]): Promise<void> } {
+): { load(): Promise<import('@liwencode/core').PermissionRule[]>; save(rules: import('@liwencode/core').PermissionRule[]): Promise<void> } {
   return {
     async load() {
       if (!(await runtime.fs.exists(path))) return [];
@@ -155,7 +155,7 @@ export function createFilePermissionStore(
   };
 }
 
-function isRule(value: unknown): value is import('@syaocode/core').PermissionRule {
+function isRule(value: unknown): value is import('@liwencode/core').PermissionRule {
   if (value === null || typeof value !== 'object') return false;
   const rule = value as Record<string, unknown>;
   return (

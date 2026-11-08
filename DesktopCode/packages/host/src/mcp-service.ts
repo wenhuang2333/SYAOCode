@@ -23,17 +23,17 @@
  */
 
 import { z } from 'zod';
-import type { Runtime, Tool, ToolContext, ToolOutput, ToolResultContent } from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
+import type { Runtime, Tool, ToolContext, ToolOutput, ToolResultContent } from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
 import {
   MCP_PROTOCOL_VERSION,
   McpClient,
   createHttpChannel,
   createStdioChannel,
-} from '@syaocode/protocols';
-import type { DuplexChannel, McpToolDescriptor, McpToolResult } from '@syaocode/protocols';
-import { buildMcpHttpHeaders } from '@syaocode/protocols/mcp';
-import type { McpContentBlock } from '@syaocode/protocols/mcp';
+} from '@liwencode/protocols';
+import type { DuplexChannel, McpToolDescriptor, McpToolResult } from '@liwencode/protocols';
+import { buildMcpHttpHeaders } from '@liwencode/protocols/mcp';
+import type { McpContentBlock } from '@liwencode/protocols/mcp';
 import type {
   McpAddParams,
   McpAddResult,
@@ -41,7 +41,7 @@ import type {
   McpServerStatus,
   McpToolSummary,
   McpToolsResult,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 
 /** MCP 服务的失败语义：与 `27` §5.2 的 `-32026…-32029` 一一对应。 */
 export type McpFailureKind = 'mcp_unavailable' | 'mcp_spawn_failed' | 'mcp_tool_failed' | 'mcp_not_trusted';
@@ -58,7 +58,7 @@ export class McpServiceError extends Error {
 }
 
 export interface McpServiceOptions {
-  /** 注入的内核运行时；缺省用 `@syaocode/node` 的 `nodeRuntime()`。 */
+  /** 注入的内核运行时；缺省用 `@liwencode/node` 的 `nodeRuntime()`。 */
   runtime?: Runtime;
   /** Host 启动环境：`envNames` 的值**只**从这里取（缺省 `process.env`）。 */
   env?: Record<string, string | undefined>;

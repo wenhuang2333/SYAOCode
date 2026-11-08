@@ -48,7 +48,7 @@ const WS = hostRequire('ws');
 
 /** 造一个真实的 git 仓库：暂存一个可读懂的改动，供模型生成信息。 */
 async function makeRepo() {
-  const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), 'syao-commit-')));
+  const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liwen-commit-')));
   const git = (args) => run('git', args, { cwd: dir });
   await git(['init', '-q']);
   await git(['config', 'user.email', 'test@example.com']);
@@ -63,9 +63,9 @@ async function makeRepo() {
   return dir;
 }
 
-const home = await mkdtemp(path.join(os.tmpdir(), 'syao-commit-home-'));
+const home = await mkdtemp(path.join(os.tmpdir(), 'liwen-commit-home-'));
 const repo = await makeRepo();
-const env = { ...process.env, SYAOCODE_HOME: home };
+const env = { ...process.env, LIWENCODE_HOME: home };
 
 let host;
 let conn;

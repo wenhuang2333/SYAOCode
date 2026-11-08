@@ -68,11 +68,11 @@ describe('真实窗口验证脚本', () => {
     expect(window_).toContain('SKIP: apps/desktop/dist/main/index.js missing');
   });
 
-  it('用 SYAOCODE_HOME（Host 只认这个变量名），不是 SYAO_HOME', () => {
-    // 写成 SYAO_HOME 时 Host 会回退到 os.homedir()/.syaocode，
+  it('用 LIWENCODE_HOME（Host 只认这个变量名），不是 LIWEN_HOME', () => {
+    // 写成 LIWEN_HOME 时 Host 会回退到 os.homedir()/.liwencode，
     // 于是读到另一份配置——这个坑真实踩过。
-    expect(window_).toContain('SYAOCODE_HOME: home');
-    expect(window_).not.toContain('SYAO_HOME: home');
+    expect(window_).toContain('LIWENCODE_HOME: home');
+    expect(window_).not.toContain('LIWEN_HOME: home');
   });
 
   it('配置在启动前持久化，用的是同一份 HOME 与工作区', () => {
@@ -184,7 +184,7 @@ describe('没有凭据时必须跳过，而不是"通过"或失败', () => {
       delete env['REAL_API_KEY'];
       delete env['REAL_BASE_URL'];
       delete env['REAL_MODEL'];
-      delete env['SYAO_PLAYWRIGHT'];
+      delete env['LIWEN_PLAYWRIGHT'];
       const { stdout, stderr } = await run(
         'node',
         ['--import', 'tsx', path.join(ROOT, 'scripts', `${name}.mjs`)],

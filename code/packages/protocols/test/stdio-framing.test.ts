@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest';
 import { MessageFramer, byteLength, frameContentLength } from '../src/shared/jsonrpc.js';
 import { createStdioChannel } from '../src/shared/transport.js';
 import { createFakeRuntime } from './helpers/fake-runtime.js';
-import type { ProcessHandle, Runtime, ShellSpawnOptions } from '@syaocode/core';
+import type { ProcessHandle, Runtime, ShellSpawnOptions } from '@liwencode/core';
 
 // ── a real Shell over node:child_process (test-only; mirrors NodeShell) ────
 
@@ -132,18 +132,18 @@ const BODY = JSON.stringify(
 );
 
 /**
- * The real host combination: `@syaocode/node`'s `nodeRuntime()` + the protocol
+ * The real host combination: `@liwencode/node`'s `nodeRuntime()` + the protocol
  * edge's own `createStdioChannel`. This is the case that used to time out.
  *
- * `@syaocode/node` is not a declared dependency of this package (the edges
+ * `@liwencode/node` is not a declared dependency of this package (the edges
  * must stay host-agnostic), so it is imported dynamically and the case is
  * skipped when the host package is not installed.
  */
-describe('stdio framing with the real @syaocode/node host', () => {
+describe('stdio framing with the real @liwencode/node host', () => {
   it('reassembles a Content-Length frame through nodeRuntime()', async () => {
     let nodeRuntime: (() => Runtime) | undefined;
     try {
-      const node = (await import('@syaocode/node')) as { nodeRuntime?: () => Runtime };
+      const node = (await import('@liwencode/node')) as { nodeRuntime?: () => Runtime };
       nodeRuntime = node.nodeRuntime;
     } catch {
       nodeRuntime = undefined;

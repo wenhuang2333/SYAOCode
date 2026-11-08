@@ -15,7 +15,7 @@
  *
  * 用法：
  *   node scripts/smoke-electron.mjs
- *   SYAO_ELECTRON_BIN=/path/to/Electron node scripts/smoke-electron.mjs
+ *   LIWEN_ELECTRON_BIN=/path/to/Electron node scripts/smoke-electron.mjs
  *
  * 没装 Electron 二进制时跳过并以 0 退出，且绝不打印通过。
  */
@@ -31,7 +31,7 @@ const APP = path.join(ROOT, 'apps/desktop');
 
 /** 解析 Electron 可执行文件；在纯 Node 中 `require('electron')` 返回二进制绝对路径。 */
 function resolveElectron() {
-  if (process.env['SYAO_ELECTRON_BIN'] !== undefined) return process.env['SYAO_ELECTRON_BIN'];
+  if (process.env['LIWEN_ELECTRON_BIN'] !== undefined) return process.env['LIWEN_ELECTRON_BIN'];
   try {
     const req = createRequire(path.join(APP, 'package.json'));
     const bin = req('electron');
@@ -44,7 +44,7 @@ function resolveElectron() {
 
 const bin = resolveElectron();
 if (bin === undefined) {
-  console.log('SKIP: electron binary not found. Install dev deps or set SYAO_ELECTRON_BIN.');
+  console.log('SKIP: electron binary not found. Install dev deps or set LIWEN_ELECTRON_BIN.');
   process.exit(0);
 }
 
@@ -57,8 +57,8 @@ try {
   process.exit(0);
 }
 
-const home = await mkdtemp(path.join(os.tmpdir(), 'syao-smoke-'));
-const env = { ...process.env, HOME: home, SYAO_HOME: home, ELECTRON_ENABLE_LOGGING: '1' };
+const home = await mkdtemp(path.join(os.tmpdir(), 'liwen-smoke-'));
+const env = { ...process.env, HOME: home, LIWEN_HOME: home, ELECTRON_ENABLE_LOGGING: '1' };
 // 关键：不清掉会让 Electron 以纯 Node 模式运行，`require('electron')` 返回 undefined。
 delete env['ELECTRON_RUN_AS_NODE'];
 
@@ -92,7 +92,7 @@ const checks = [
   ['Host 在回环地址监听', /dhp: listening \{"host":"127\.0\.0\.1","port":\d+\}/],
   ['窗口创建并渲染完成', /\[main\] window ready-to-show/],
   ['WebSocket 连接已打开', /dhp: connection open/],
-  ['DHP 握手完成并声明能力', /dhp: hello \{"conn":"conn_1","client":"syaocode-desktop","capabilities":\d+\}/],
+  ['DHP 握手完成并声明能力', /dhp: hello \{"conn":"conn_1","client":"liwencode-desktop","capabilities":\d+\}/],
   ['渲染层连上 Host 并回报 ready', /SMOKE:READY/],
 ];
 
@@ -104,7 +104,7 @@ for (const [label, pattern] of checks) {
 }
 
 // 状态目录必须落在隔离的 HOME 下：证明没有污染真实用户数据。
-const stateDir = await readdir(path.join(home, '.syaocode')).catch(() => []);
+const stateDir = await readdir(path.join(home, '.liwencode')).catch(() => []);
 const isolated = stateDir.includes('desktop');
 if (!isolated) failures += 1;
 console.log(`${isolated ? 'PASS' : 'FAIL'} 状态写入隔离 HOME（${stateDir.join(', ') || '无'}）`);

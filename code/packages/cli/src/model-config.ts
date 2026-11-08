@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
 import { t, type Lang, type MsgKey } from './i18n/index.js';
 
@@ -6,8 +7,8 @@ import { t, type Lang, type MsgKey } from './i18n/index.js';
  * Provider catalog + user-facing model configuration (FR-135 /model).
  *
  * Storage layout (never committed; secrets never enter the repo or sessions):
- * - ~/.syaocode/config.json  — non-secret: default model, apiKeyEnv ref, baseUrl
- * - ~/.syaocode/env          — KEY=VALUE secrets, chmod 0600, loaded at startup
+ * - ~/.liwencode/config.json  — non-secret: default model, apiKeyEnv ref, baseUrl
+ * - ~/.liwencode/env          — KEY=VALUE secrets, chmod 0600, loaded at startup
  */
 
 export interface ProviderCatalogEntry {
@@ -68,16 +69,414 @@ export function catalogEntry(providerId: string): ProviderCatalogEntry | undefin
   return PROVIDER_CATALOG.find((p) => p.id === providerId);
 }
 
-// ── paths ────────────────────────────────────────────────────────────────
+// ── 数据目录（data home）解析与旧目录迁移 ─────────────────────────────────
 
-export function syaoHome(envHome: string | undefined = process.env.HOME): string {
-  return path.join(envHome ?? '.', '.syaocode');
+/** 新数据目录名（唯一写入目录）。 */
+export const LIWEN_HOME_DIRNAME = '.liwencode';
+/** 旧数据目录名（SYAOCode 时代）：只读兜底/迁移源，永不删除、永不移动。 */
+export const LEGACY_HOME_DIRNAME = '.syaocode';
+/** 新数据目录环境变量（优先级最高）。 */
+export const LIWEN_HOME_ENV = 'LIWENCODE_HOME';
+/** 旧数据目录环境变量（兼容：新变量存在时忽略）。 */
+export const LEGACY_HOME_ENV = 'SYAOCODE_HOME';
+/** 迁移标记文件：写入新目录，记录迁移时间与来源（供审计与人工核对）。 */
+export const MIGRATION_MARKER_FILE = '.migrated-from-syaocode.json';
+
+/** 数据目录来源：环境变量（新）> 环境变量（旧，兼容）> 默认 ~/.liwencode。 */
+export type HomeSource = 'env-new' | 'env-legacy' | 'default';
+
+/** 面向用户的提示（不阻断启动）。 */
+export interface HomeNotice {
+  code: string;
+  message: string;
 }
+
+/** 结构化告警（迁移失败等；必须可见，不得静默丢数据）。 */
+export interface HomeWarning extends HomeNotice {
+  /** 原始错误文本（便于定位权限/磁盘问题）。 */
+  cause?: string;
+}
+
+/** 迁移所需的最小 fs 面（结构兼容 node:fs；测试可注入故障实现）。 */
+export interface HomeFs {
+  existsSync(p: string): boolean;
+  mkdirSync(p: string, options?: { recursive?: boolean; mode?: number }): string | undefined;
+  readdirSync(p: string, options: { withFileTypes: true }): Dirent[];
+  lstatSync(p: string): Stats;
+  readlinkSync(p: string): string;
+  symlinkSync(target: string, p: string): void;
+  copyFileSync(src: string, dest: string): void;
+  chmodSync(p: string, mode: number): void;
+  readFileSync(p: string, encoding: 'utf8'): string;
+  writeFileSync(p: string, data: string, options?: { mode?: number }): void;
+  rmSync(p: string, options?: { recursive?: boolean; force?: boolean }): void;
+  renameSync(oldPath: string, newPath: string): void;
+}
+
+/** 注入面：fs / 用户主目录 / 环境变量 / 时钟均可替换，模块 import 时零副作用。 */
+export interface HomeOptions {
+  /** 文件系统实现（默认 node:fs）。 */
+  fs?: HomeFs;
+  /** 用户主目录（默认 env.HOME，缺省 '.'）。 */
+  home?: string;
+  /** 环境变量快照（默认 process.env）。 */
+  env?: Readonly<Record<string, string | undefined>>;
+  /** 时间源（默认 Date.now），用于迁移标记与临时目录名。 */
+  now?: () => number;
+}
+
+/** 数据目录解析结果（纯函数，无副作用）。 */
+export interface ResolvedDataHome {
+  /** 本进程应使用的数据目录（读与写都走这里；迁移失败时回退旧目录）。 */
+  dataDir: string;
+  /** 数据目录来源。 */
+  source: HomeSource;
+  /** 用户主目录。 */
+  userHome: string;
+  /** 默认新目录 ~/.liwencode（source=default 时既是目标也是唯一写入目录）。 */
+  defaultNewDir: string;
+  /** 默认旧目录 ~/.syaocode（source=default 时是迁移源，只读）。 */
+  defaultLegacyDir: string;
+  /** 提示（弃用提醒等）。 */
+  notices: HomeNotice[];
+}
+
+/** 迁移结果。 */
+export interface HomeMigrationResult {
+  /** 本进程应使用的数据目录。 */
+  dataDir: string;
+  /** 数据目录来源。 */
+  source: HomeSource;
+  /** 是否真的执行了复制。 */
+  migrated: boolean;
+  /** 是否因迁移失败回退到旧目录（旧目录数据完好，只读兜底）。 */
+  usedLegacyFallback: boolean;
+  /** 迁移标记文件路径（仅迁移成功时存在）。 */
+  markerPath?: string;
+  /** 提示。 */
+  notices: HomeNotice[];
+  /** 结构化告警。 */
+  warnings: HomeWarning[];
+}
+
+function envValue(env: Readonly<Record<string, string | undefined>>, name: string): string | undefined {
+  const raw = env[name];
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  return trimmed === '' ? undefined : trimmed;
+}
+
+/** `~` / `~/x` 展开到用户主目录；相对路径按 cwd 解析。 */
+function expandUserPath(value: string, userHome: string): string {
+  if (value === '~') return userHome;
+  if (value.startsWith('~/')) return path.join(userHome, value.slice(2));
+  return path.isAbsolute(value) ? value : path.resolve(value);
+}
+
+function errorText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function isDirectory(fsx: HomeFs, p: string): boolean {
+  try {
+    return fsx.lstatSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 解析数据目录（纯函数，无副作用）。
+ *
+ * 优先级：`LIWENCODE_HOME` > `SYAOCODE_HOME`（旧变量，兼容并提示）> `~/.liwencode`。
+ * 仅默认来源才涉及旧目录 `~/.syaocode` 的迁移；显式环境变量优先于一切。
+ */
+export function resolveDataHome(options: HomeOptions = {}): ResolvedDataHome {
+  const env = options.env ?? process.env;
+  const userHome = options.home ?? env['HOME'] ?? '.';
+  const defaultNewDir = path.join(userHome, LIWEN_HOME_DIRNAME);
+  const defaultLegacyDir = path.join(userHome, LEGACY_HOME_DIRNAME);
+  const notices: HomeNotice[] = [];
+
+  const newEnv = envValue(env, LIWEN_HOME_ENV);
+  if (newEnv !== undefined) {
+    return {
+      dataDir: expandUserPath(newEnv, userHome),
+      source: 'env-new',
+      userHome,
+      defaultNewDir,
+      defaultLegacyDir,
+      notices,
+    };
+  }
+
+  const legacyEnv = envValue(env, LEGACY_HOME_ENV);
+  if (legacyEnv !== undefined) {
+    const dir = expandUserPath(legacyEnv, userHome);
+    notices.push({
+      code: 'legacy-env-var',
+      message:
+        `${LEGACY_HOME_ENV} is deprecated; using ${dir} as the data directory. ` +
+        `Set ${LIWEN_HOME_ENV} to the same path to silence this warning.`,
+    });
+    return {
+      dataDir: dir,
+      source: 'env-legacy',
+      userHome,
+      defaultNewDir,
+      defaultLegacyDir,
+      notices,
+    };
+  }
+
+  return { dataDir: defaultNewDir, source: 'default', userHome, defaultNewDir, defaultLegacyDir, notices };
+}
+
+/** 进程级数据目录（模块级；仅由 ensureLiwenHome 显式设置，含迁移失败回退）。 */
+let activeDataDir: string | undefined;
+
+/**
+ * 数据目录。
+ * - 显式传入 `envHome`（旧 API 语义：用户主目录）时返回 `<envHome>/.liwencode`；
+ * - 否则按环境变量解析（`LIWENCODE_HOME` > `SYAOCODE_HOME` > `~/.liwencode`）；
+ *   迁移失败回退时返回旧目录。
+ */
+export function liwenHome(envHome?: string): string {
+  if (envHome !== undefined) return path.join(envHome, LIWEN_HOME_DIRNAME);
+  if (activeDataDir !== undefined) return activeDataDir;
+  return resolveDataHome().dataDir;
+}
+
 export function userConfigPath(home?: string): string {
-  return path.join(syaoHome(home), 'config.json');
+  return path.join(liwenHome(home), 'config.json');
 }
 export function envFilePath(home?: string): string {
-  return path.join(syaoHome(home), 'env');
+  return path.join(liwenHome(home), 'env');
+}
+
+// ── 旧目录迁移（SYAOCode → LIWENCode） ────────────────────────────────────
+
+/** 迁移标记内容（写入新目录，供审计/人工核对）。 */
+export interface MigrationMarker {
+  version: 1;
+  tool: 'liwencode';
+  /** ISO 时间戳。 */
+  migratedAt: string;
+  /** 旧目录绝对路径。 */
+  source: string;
+  /** 新目录绝对路径。 */
+  destination: string;
+  /** 复制（不是移动）：旧目录保留，旧版本仍可降级使用。 */
+  mode: 'copy';
+}
+
+/** 递归复制一棵目录树：保留文件权限（env 文件必须仍是 0600）、保留符号链接。 */
+function copyTree(fsx: HomeFs, src: string, dest: string): void {
+  const st = fsx.lstatSync(src);
+  if (st.isSymbolicLink()) {
+    fsx.symlinkSync(fsx.readlinkSync(src), dest);
+    return;
+  }
+  if (st.isDirectory()) {
+    fsx.mkdirSync(dest, { recursive: true });
+    for (const entry of fsx.readdirSync(src, { withFileTypes: true })) {
+      copyTree(fsx, path.join(src, entry.name), path.join(dest, entry.name));
+    }
+    fsx.chmodSync(dest, st.mode & 0o777);
+    return;
+  }
+  if (st.isFile()) {
+    fsx.copyFileSync(src, dest);
+    // 关键：保留源权限，env 文件迁移后仍必须是 0600
+    fsx.chmodSync(dest, st.mode & 0o777);
+    return;
+  }
+  // socket / fifo 等特殊文件跳过：复制它们没有意义，也可能阻塞
+}
+
+function writeMigrationMarker(
+  fsx: HomeFs,
+  dir: string,
+  source: string,
+  destination: string,
+  nowMs: number,
+): string {
+  const marker: MigrationMarker = {
+    version: 1,
+    tool: 'liwencode',
+    migratedAt: new Date(nowMs).toISOString(),
+    source,
+    destination,
+    mode: 'copy',
+  };
+  const file = path.join(dir, MIGRATION_MARKER_FILE);
+  fsx.writeFileSync(file, `${JSON.stringify(marker, null, 2)}\n`, { mode: 0o600 });
+  return file;
+}
+
+/**
+ * 旧数据目录迁移（复制语义，绝不 rename/move）。
+ *
+ * 规则：
+ * - 目标 `~/.liwencode` 已存在 → 直接使用，不复制、不覆盖（幂等，可反复调用）；
+ * - 目标不存在且源 `~/.syaocode` 存在 → 复制整棵树到临时目录 → 写迁移标记 → 原子改名到目标；
+ * - 任一步失败 → 清理临时目录（不留半成品新目录），回退旧目录并返回结构化告警；
+ * - 旧目录自始至终只读、原样保留（旧版本可降级）。
+ */
+export function migrateLegacyHome(options: HomeOptions = {}): HomeMigrationResult {
+  const fsx: HomeFs = options.fs ?? fs;
+  const resolved = resolveDataHome(options);
+  const notices = resolved.notices;
+
+  if (resolved.source !== 'default') {
+    // 显式环境变量指定了数据目录：新变量优先，旧变量只作提示，不做目录搬迁。
+    return {
+      dataDir: resolved.dataDir,
+      source: resolved.source,
+      migrated: false,
+      usedLegacyFallback: false,
+      notices,
+      warnings: [],
+    };
+  }
+
+  const target = resolved.defaultNewDir;
+  const legacy = resolved.defaultLegacyDir;
+
+  if (fsx.existsSync(target)) {
+    if (!isDirectory(fsx, target)) {
+      return {
+        dataDir: legacy,
+        source: resolved.source,
+        migrated: false,
+        usedLegacyFallback: true,
+        notices,
+        warnings: [
+          {
+            code: 'home-target-not-directory',
+            message: `${target} exists but is not a directory; falling back to ${legacy}.`,
+          },
+        ],
+      };
+    }
+    // 幂等：新目录已在，绝不覆盖。
+    return {
+      dataDir: target,
+      source: resolved.source,
+      migrated: false,
+      usedLegacyFallback: false,
+      notices,
+      warnings: [],
+    };
+  }
+
+  if (!fsx.existsSync(legacy)) {
+    // 首次使用：没有旧目录可迁移。
+    return {
+      dataDir: target,
+      source: resolved.source,
+      migrated: false,
+      usedLegacyFallback: false,
+      notices,
+      warnings: [],
+    };
+  }
+  if (!isDirectory(fsx, legacy)) {
+    return {
+      dataDir: target,
+      source: resolved.source,
+      migrated: false,
+      usedLegacyFallback: false,
+      notices,
+      warnings: [
+        {
+          code: 'home-legacy-not-directory',
+          message: `${legacy} exists but is not a directory; skipped migration.`,
+        },
+      ],
+    };
+  }
+
+  const nowMs = (options.now ?? Date.now)();
+  const temp = `${target}.migrating-${process.pid}-${nowMs}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    fsx.mkdirSync(path.dirname(target), { recursive: true });
+    copyTree(fsx, legacy, temp);
+    writeMigrationMarker(fsx, temp, legacy, target, nowMs);
+    fsx.renameSync(temp, target);
+    return {
+      dataDir: target,
+      source: resolved.source,
+      migrated: true,
+      usedLegacyFallback: false,
+      markerPath: path.join(target, MIGRATION_MARKER_FILE),
+      notices,
+      warnings: [],
+    };
+  } catch (e) {
+    const cause = errorText(e);
+    const warnings: HomeWarning[] = [
+      {
+        code: 'home-migration-failed',
+        message:
+          `Failed to migrate ${legacy} to ${target}: ${cause}. ` +
+          `Continuing with ${legacy}; the old directory is left untouched (no data lost).`,
+        cause,
+      },
+    ];
+    try {
+      // 回滚：清掉临时目录，绝不留半成品新目录。
+      fsx.rmSync(temp, { recursive: true, force: true });
+    } catch (cleanupError) {
+      warnings.push({
+        code: 'home-migration-cleanup-failed',
+        message: `Failed to clean up the partial migration directory ${temp}: ${errorText(cleanupError)}`,
+        cause: errorText(cleanupError),
+      });
+    }
+    if (isDirectory(fsx, target)) {
+      // 竞态：另一个进程刚完成了迁移 → 用它，不要回退。
+      return {
+        dataDir: target,
+        source: resolved.source,
+        migrated: false,
+        usedLegacyFallback: false,
+        notices,
+        warnings: [
+          ...warnings,
+          {
+            code: 'home-migration-raced',
+            message: `Another process completed the migration to ${target}; using it.`,
+          },
+        ],
+      };
+    }
+    return {
+      dataDir: legacy,
+      source: resolved.source,
+      migrated: false,
+      usedLegacyFallback: true,
+      notices,
+      warnings,
+    };
+  }
+}
+
+/**
+ * CLI 启动时调用：解析数据目录 + 必要时执行一次性迁移。
+ * 迁移失败时把后续 `liwenHome()` 调用回退到旧目录（提示与告警由调用方打印）。
+ */
+export function ensureLiwenHome(options: HomeOptions = {}): HomeMigrationResult {
+  const result = migrateLegacyHome(options);
+  // 进程内固定下来：后续 liwenHome() 与本函数返回的 dataDir 保持一致
+  // （迁移失败时即回退到旧目录，旧目录数据完好）。
+  activeDataDir = result.dataDir;
+  return result;
+}
+
+/** 仅供测试：清除模块级回退状态。 */
+export function resetLiwenHomeForTests(): void {
+  activeDataDir = undefined;
 }
 
 // ── user config (non-secret) ─────────────────────────────────────────────
@@ -92,7 +491,7 @@ export interface UserModelConfig {
 /** /setup 支持的四种 API 协议（后两种的适配器规划于 M2，配置先行保存） */
 export type ProtocolKind = 'anthropic' | 'openai-chat' | 'openai-responses' | 'gemini';
 
-/** 认证字段样式（密钥以 apiKeyEnv 存于 ~/.syaocode/env，绝不入 config.json） */
+/** 认证字段样式（密钥以 apiKeyEnv 存于 ~/.liwencode/env，绝不入 config.json） */
 export type AuthFieldKind = 'bearer' | 'x-api-key' | 'x-goog-api-key' | 'query-key';
 
 export const PROTOCOL_LABELS: Readonly<Record<ProtocolKind, string>> = {
@@ -119,13 +518,13 @@ export interface ModelProfile {
   protocol: ProtocolKind;
   /** 认证字段样式 */
   authField: AuthFieldKind;
-  /** 密钥所在的 env 字段名（值存 ~/.syaocode/env） */
+  /** 密钥所在的 env 字段名（值存 ~/.liwencode/env） */
   apiKeyEnv: string;
   createdAt: number;
   updatedAt: number;
 }
 
-/** 协议边（/peer、`syao mcp add`）：MCP server / A2A agent / ACP client */
+/** 协议边（/peer、`liwen mcp add`）：MCP server / A2A agent / ACP client */
 export interface PeerConfig {
   /** 协议：mcp（stdio 命令）/ a2a（agent card URL）/ acp（客户端） */
   protocol: 'mcp' | 'a2a' | 'acp';
@@ -149,7 +548,7 @@ export interface UserConfigFile {
   agentGroups?: Record<string, AgentGroup>;
   /** 当前激活的 agent 群（/model use @群名 或 --agents 设置） */
   activeAgentGroup?: string;
-  /** 协议边注册表（/peer、`syao mcp add`）：MCP server / A2A agent / ACP client */
+  /** 协议边注册表（/peer、`liwen mcp add`）：MCP server / A2A agent / ACP client */
   peers?: Record<string, PeerConfig>;
 }
 
@@ -267,7 +666,7 @@ export function readUserConfig(home?: string): UserConfigFile {
 }
 
 export function writeUserConfig(config: UserConfigFile, home?: string): void {
-  const dir = syaoHome(home);
+  const dir = liwenHome(home);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(userConfigPath(home), `${JSON.stringify(config, null, 2)}\n`);
 }
@@ -337,7 +736,7 @@ export function resolveDefaultModel(flagModel: string | undefined, home?: string
     const [provider, name] = flagModel.split(':');
     return { provider: provider ?? 'mock', name: name ?? 'default' };
   }
-  const env = process.env.SYAO_MODEL;
+  const env = process.env.LIWEN_MODEL;
   if (env !== undefined && env.includes(':')) {
     const [provider, name] = env.split(':');
     return { provider: provider ?? 'mock', name: name ?? 'default' };
@@ -371,7 +770,7 @@ export function formatEnvFile(entries: Record<string, string>): string {
 }
 
 export function writeEnvFile(entries: Record<string, string>, home?: string): void {
-  const dir = syaoHome(home);
+  const dir = liwenHome(home);
   fs.mkdirSync(dir, { recursive: true });
   const file = envFilePath(home);
   fs.writeFileSync(file, formatEnvFile(entries), { mode: 0o600 });
@@ -382,7 +781,7 @@ export function writeEnvFile(entries: Record<string, string>, home?: string): vo
   }
 }
 
-/** Merge ~/.syaocode/env into process env without overriding real env (BR-024 spirit). */
+/** Merge ~/.liwencode/env into process env without overriding real env (BR-024 spirit). */
 export function loadSecretsIntoEnv(home?: string): number {
   let count = 0;
   try {

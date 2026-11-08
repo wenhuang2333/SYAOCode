@@ -151,10 +151,10 @@ describe('verification discovery', () => {
     expect(commands.map((c) => c.command)).toEqual(['pnpm run test', 'pnpm run typecheck']);
   });
 
-  it('.syaocode/verify.json overrides discovery', async () => {
+  it('.liwencode/verify.json overrides discovery', async () => {
     const rt = fakeRuntime({
       '/ws/package.json': JSON.stringify({ scripts: { test: 'vitest run' } }),
-      '/ws/.syaocode/verify.json': JSON.stringify({ commands: [{ command: 'make check', scope: 'related' }] }),
+      '/ws/.liwencode/verify.json': JSON.stringify({ commands: [{ command: 'make check', scope: 'related' }] }),
     });
     const commands = await discoverVerification(rt, '/ws');
     expect(commands).toEqual([{ command: 'make check', source: 'config', scope: 'related' }]);
@@ -263,7 +263,7 @@ describe('verdict + claim linter (Evidence MVP)', () => {
     const summary = await agent.runOnce('go');
     expect(called).toBe(0);
     expect(summary.verdict).toBe('not_run');
-    expect(summary.verificationNote).toContain('syao verify init');
+    expect(summary.verificationNote).toContain('liwen verify init');
   });
 
   it('refuses a dangerous verification command even when explicitly configured', async () => {

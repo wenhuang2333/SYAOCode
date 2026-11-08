@@ -39,8 +39,8 @@ function git(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv): stri
 describe.skipIf(!hasGpg)('真实 GPG 签名提交', () => {
   it('配置好签名环境后，提交带上**可校验**的签名；审计记录为成功', async () => {
     // 1) 隔离的密钥环：绝不碰用户真实的 ~/.gnupg。
-    const gnupg = await fs.mkdtemp(path.join(os.tmpdir(), 'syao-gnupg-'));
-    const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'syao-signrepo-'));
+    const gnupg = await fs.mkdtemp(path.join(os.tmpdir(), 'liwen-gnupg-'));
+    const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'liwen-signrepo-'));
     await fs.chmod(gnupg, 0o700);
     const env: NodeJS.ProcessEnv = { ...process.env, GNUPGHOME: gnupg };
     // `GitWriteService` 内部用 `runGit` 起 git 子进程，它继承的是**进程环境**
@@ -53,7 +53,7 @@ describe.skipIf(!hasGpg)('真实 GPG 签名提交', () => {
       // 2) 无口令的 ed25519 密钥（批量参数，不需要交互）。
       execFileSync('gpg', [
         '--batch', '--yes', '--pinentry-mode', 'loopback', '--passphrase', '',
-        '--quick-generate-key', 'SYAO Test <syao-test@example.invalid>', 'ed25519', 'sign', '0',
+        '--quick-generate-key', 'LIWEN Test <liwen-test@example.invalid>', 'ed25519', 'sign', '0',
       ], { env, stdio: 'ignore', timeout: 60_000 });
 
       const keyId = execFileSync('gpg', ['--list-secret-keys', '--with-colons'], { env, encoding: 'utf8' })
@@ -63,8 +63,8 @@ describe.skipIf(!hasGpg)('真实 GPG 签名提交', () => {
 
       // 3) 仓库：关掉全局模板，显式开启签名并指定隔离密钥。
       git(repo, ['init', '-q'], env);
-      git(repo, ['config', 'user.email', 'syao-test@example.invalid'], env);
-      git(repo, ['config', 'user.name', 'SYAO Test'], env);
+      git(repo, ['config', 'user.email', 'liwen-test@example.invalid'], env);
+      git(repo, ['config', 'user.name', 'LIWEN Test'], env);
       git(repo, ['config', 'user.signingkey', String(keyId)], env);
       git(repo, ['config', 'commit.gpgsign', 'true'], env);
       git(repo, ['config', 'gpg.program', 'gpg'], env);
@@ -109,12 +109,12 @@ describe.skipIf(!hasGpg)('真实 GPG 签名提交', () => {
   }, 180_000);
 
   it('签名环境不可用时仍然归类为 git_signing_failed，不会静默降级成无签名提交', async () => {
-    const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'syao-signrepo2-'));
+    const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'liwen-signrepo2-'));
     const env: NodeJS.ProcessEnv = { ...process.env };
     try {
       git(repo, ['init', '-q'], env);
-      git(repo, ['config', 'user.email', 'syao-test@example.invalid'], env);
-      git(repo, ['config', 'user.name', 'SYAO Test'], env);
+      git(repo, ['config', 'user.email', 'liwen-test@example.invalid'], env);
+      git(repo, ['config', 'user.name', 'LIWEN Test'], env);
       await fs.writeFile(path.join(repo, 'a.txt'), 'base\n');
       git(repo, ['add', '--', 'a.txt'], env);
       git(repo, ['config', 'commit.gpgsign', 'false'], env);

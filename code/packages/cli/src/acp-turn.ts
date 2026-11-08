@@ -1,12 +1,12 @@
 /**
  * ACP prompt turns (audit C-3).
  *
- * `syao serve --acp` could `initialize` and open sessions, but never supplied
+ * `liwen serve --acp` could `initialize` and open sessions, but never supplied
  * `runTurn`, so every `session/prompt` failed with `-32603 "this agent has no
- * prompt handler"` — the documented `syao acp` scenario was unusable.
+ * prompt handler"` — the documented `liwen acp` scenario was unusable.
  *
  * This module runs one prompt turn through the SAME governed agent path as
- * `syao -p`: the tools are the kernel-registered ones (installMainPathGovernance),
+ * `liwen -p`: the tools are the kernel-registered ones (installMainPathGovernance),
  * so a turn produces ARF receipts, audit links and budget reservations, and the
  * editor sees the progress as `session/update` notifications.
  */
@@ -17,9 +17,9 @@ import {
   type PermissionHandler,
   type Runtime,
   type Tool,
-} from '@syaocode/core';
-import type { FileStateTracker } from '@syaocode/tools';
-import type { SecretRedactor } from '@syaocode/rpc';
+} from '@liwencode/core';
+import type { FileStateTracker } from '@liwencode/tools';
+import type { SecretRedactor } from '@liwencode/rpc';
 import { installMainPathGovernance, type MainPathGovernance } from './arf-main-path.js';
 
 export interface AcpTurnRequest {
@@ -92,7 +92,7 @@ export function createAcpTurnRunner(opts: AcpTurnRunnerOptions): AcpTurnRunner {
     runtime: opts.runtime,
     ...(opts.redactor !== undefined ? { redactor: opts.redactor } : {}),
     ...(opts.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
-    taskLabel: 'syao serve --acp',
+    taskLabel: 'liwen serve --acp',
   });
 
   return {

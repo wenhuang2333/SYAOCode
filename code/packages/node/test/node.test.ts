@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { contentHash, FileSessionStore } from '@syaocode/core';
+import { contentHash, FileSessionStore } from '@liwencode/core';
 import { nodeRuntime, sha256Hex } from '../src/index';
 
-describe('@syaocode/node host runtime', () => {
+describe('@liwencode/node host runtime', () => {
   it('provides a Node runtime with injected logger', async () => {
     const runtime = nodeRuntime();
     expect(typeof runtime.fs.readFile).toBe('function');
@@ -22,7 +22,7 @@ describe('@syaocode/node host runtime', () => {
   });
 
   it('FileSessionStore appends without interleaving under concurrency', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'syao-session-'));
+    const dir = mkdtempSync(join(tmpdir(), 'liwen-session-'));
     const runtime = nodeRuntime();
     try {
       const a = new FileSessionStore(runtime, dir, 'p');

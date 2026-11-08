@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ToolError, type Tool, type ToolContext, type ToolOutput } from '@syaocode/core';
+import { ToolError, type Tool, type ToolContext, type ToolOutput } from '@liwencode/core';
 
 /**
  * Restricted bash (FR-035, WP-1.5). Command risk classification happens in

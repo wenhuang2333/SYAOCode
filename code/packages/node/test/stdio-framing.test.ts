@@ -7,7 +7,7 @@ import {
   StdioTransportError,
   type StdioFrame,
 } from '../src/index';
-import type { ProcessHandle, Runtime } from '@syaocode/core';
+import type { ProcessHandle, Runtime } from '@liwencode/core';
 
 /**
  * Regression for the MCP stdio framing bug.

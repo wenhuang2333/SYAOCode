@@ -17,7 +17,7 @@
  *
  * 用法：
  *   REAL_API_KEY=... REAL_BASE_URL=https://... REAL_MODEL=... \
- *   SYAO_PLAYWRIGHT=... node scripts/verify-real-window.mjs
+ *   LIWEN_PLAYWRIGHT=... node scripts/verify-real-window.mjs
  *
  * 缺任一条件时**跳过**并 exit 0，绝不打印通过。密钥只经进程环境传递。
  */
@@ -45,14 +45,14 @@ if (!existsSync(path.join(APP, 'dist/main/index.js'))) {
 
 let _electron;
 try {
-  ({ _electron } = await import(process.env['SYAO_PLAYWRIGHT'] ?? 'playwright'));
+  ({ _electron } = await import(process.env['LIWEN_PLAYWRIGHT'] ?? 'playwright'));
 } catch {
-  console.log('SKIP: playwright not installed. Set SYAO_PLAYWRIGHT to its index.mjs.');
+  console.log('SKIP: playwright not installed. Set LIWEN_PLAYWRIGHT to its index.mjs.');
   process.exit(0);
 }
 
 const appRequire = createRequire(path.join(APP, 'package.json'));
-const electronBin = process.env['SYAO_ELECTRON_BIN'] ?? appRequire('electron');
+const electronBin = process.env['LIWEN_ELECTRON_BIN'] ?? appRequire('electron');
 if (typeof electronBin !== 'string' || !existsSync(electronBin)) {
   console.log('SKIP: electron binary not found.');
   process.exit(0);
@@ -64,7 +64,7 @@ const check = (label, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}${detail === '' ? '' : ` — ${detail}`}`);
 };
 
-const home = await mkdtemp(path.join(os.tmpdir(), 'syao-real-window-'));
+const home = await mkdtemp(path.join(os.tmpdir(), 'liwen-real-window-'));
 // Electron 以 `process.cwd()`（= apps/desktop）为工作区根，所以配置必须在同一处生效。
 const workspace = APP;
 
@@ -80,7 +80,7 @@ async function seedConfiguration(workspaceRoot) {
 
   const host = await createHost({
     workspaceRoot,
-    env: { SYAOCODE_HOME: home, OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE },
+    env: { LIWENCODE_HOME: home, OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE },
     logger: () => {},
   });
   try {
@@ -109,10 +109,10 @@ async function seedConfiguration(workspaceRoot) {
 const env = {
   ...process.env,
   HOME: home,
-  // Host 只认 `SYAOCODE_HOME`（`packages/host/src/paths.ts`）；
-  // 写成 `SYAO_HOME` 会让它回退到 `os.homedir()/.syaocode`，于是读到的是
+  // Host 只认 `LIWENCODE_HOME`（`packages/host/src/paths.ts`）；
+  // 写成 `LIWEN_HOME` 会让它回退到 `os.homedir()/.liwencode`，于是读到的是
   // **另一份**配置——界面显示 mock:default 就是这么来的。
-  SYAOCODE_HOME: home,
+  LIWENCODE_HOME: home,
   // Host 子进程继承主进程环境；模型凭据只走这里，不进状态文件。
   OPENAI_API_KEY: KEY,
   OPENAI_BASE_URL: BASE,
@@ -191,8 +191,8 @@ try {
   const stillStreaming = await page.locator('.streaming-dot').count();
   check('结束后不再显示流式指示', stillStreaming === 0, `剩余 ${stillStreaming} 个`);
 
-  await page.screenshot({ path: path.join(os.tmpdir(), 'syao-real-window.png') }).catch(() => undefined);
-  console.log(`截图: ${path.join(os.tmpdir(), 'syao-real-window.png')}`);
+  await page.screenshot({ path: path.join(os.tmpdir(), 'liwen-real-window.png') }).catch(() => undefined);
+  console.log(`截图: ${path.join(os.tmpdir(), 'liwen-real-window.png')}`);
 } catch (error) {
   check('真实窗口 + 真实模型', false, String(error).split('\n')[0]);
 } finally {

@@ -1,4 +1,4 @@
-import type { HttpResponse } from '@syaocode/core';
+import type { HttpResponse } from '@liwencode/core';
 
 /** Parse an SSE stream into `data:` payload strings (handles CRLF and multi-line). */
 export async function* sseEvents(res: HttpResponse): AsyncGenerator<string> {

@@ -9,7 +9,7 @@ const rt = fakeRuntime(
     '/outside/x.txt': 'x',
     '/home/u/.ssh/id_rsa': 'private',
     '/home/u/.aws/credentials': 'aws',
-    '/home/u/.syaocode/env': 'KEY=secret',
+    '/home/u/.liwencode/env': 'KEY=secret',
   },
   { env: { HOME: '/home/u' } },
 );
@@ -56,7 +56,7 @@ describe('read-path fence (report S4)', () => {
 
   it.each(['bypass', 'default', 'acceptEdits', 'plan', 'strict'] as const)('%s: sensitive paths always ask', async (mode) => {
     const e = engine({ mode });
-    for (const path of ['/ws/.env', '/home/u/.ssh/id_rsa', '/home/u/.aws/credentials', '/home/u/.syaocode/env']) {
+    for (const path of ['/ws/.env', '/home/u/.ssh/id_rsa', '/home/u/.aws/credentials', '/home/u/.liwencode/env']) {
       const verdict = await e.policyVerdict('read', 'read', { path });
       expect(verdict.outcome, `${mode} ${path}`).toBe('ask');
       if (verdict.outcome === 'ask') expect(verdict.sensitive).toBe(true);

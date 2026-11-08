@@ -10,7 +10,7 @@ import {
 /**
  * Verification discovery + execution (report §12.1 / §12.6).
  *
- * Priority: explicit `.syaocode/verify.json` → AGENTS.md → CI workflow →
+ * Priority: explicit `.liwencode/verify.json` → AGENTS.md → CI workflow →
  * package.json scripts → language conventions. The first source that yields
  * a command wins, so a team can pin its real merge gate once.
  */
@@ -66,7 +66,7 @@ async function readFileIfExists(runtime: Runtime, path: string): Promise<string 
 }
 
 async function readVerifyJson(runtime: Runtime, cwd: string): Promise<DiscoveredCommand[]> {
-  const text = await readFileIfExists(runtime, `${cwd}/.syaocode/verify.json`);
+  const text = await readFileIfExists(runtime, `${cwd}/.liwencode/verify.json`);
   if (text === undefined) return [];
   try {
     const parsed = JSON.parse(text) as unknown;

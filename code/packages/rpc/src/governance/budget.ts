@@ -15,7 +15,7 @@
  *   - expired holds are released on recovery (`recoverExpired`)
  */
 
-import type { IdGenerator } from '@syaocode/core';
+import type { IdGenerator } from '@liwencode/core';
 import type { BudgetAccount, BudgetEstimate, BudgetReservation, UsageReport } from '../ir/types.js';
 import type { BudgetLedger, BudgetStore, ReserveRequest } from './contracts.js';
 

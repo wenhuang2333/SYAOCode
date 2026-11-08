@@ -21,7 +21,7 @@ import type {
   PolicyDecision,
   Receipt,
   Task,
-} from '@syaocode/rpc';
+} from '@liwencode/rpc';
 import { t, type MsgKey } from './i18n/index.js';
 import { C, badge, bar, kv, panel, section, table } from './tui/panel.js';
 import { displayWidth, truncateToWidth } from './tui/width.js';
@@ -184,7 +184,7 @@ function emptyState(key: MsgKey): string {
  * code) so a new adapter can never hide a degradation by inventing a string.
  */
 const LOSSY_KEYS: Readonly<Record<string, MsgKey>> = {
-  // ── real codes emitted by @syaocode/protocols ─────────────────────────
+  // ── real codes emitted by @liwencode/protocols ─────────────────────────
   'mcp-legacy': 'lossy.mcpLegacy',
   'mcp-no-session': 'lossy.mcpNoSession',
   'mcp-no-server-initiated-request': 'lossy.mcpNoServerInitiatedRequest',
@@ -707,7 +707,7 @@ export function maxVisibleWidth(lines: readonly string[], cols = 100): boolean {
 
 // ── store / write-lease panel (06 §10.3) ──────────────────────────────────
 
-/** What `syao rpc store` reports. */
+/** What `liwen rpc store` reports. */
 export interface StoreStatus {
   /** Tenant directory, or null when the process is not persistent. */
   dir: string | null;

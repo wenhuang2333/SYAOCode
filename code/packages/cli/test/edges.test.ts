@@ -13,8 +13,8 @@ let home: string;
 const made: CliFabric[] = [];
 
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-edges-'));
-  home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-home-'));
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-edges-'));
+  home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-home-'));
   setLanguage('en');
 });
 
@@ -84,7 +84,7 @@ describe('messageIds / decodeFrames', () => {
 // ── the protocol package is a real dependency now ─────────────────────────
 
 describe('protocol edges', () => {
-  it('loads @syaocode/protocols in this build', async () => {
+  it('loads @liwencode/protocols in this build', async () => {
     expect(await protocolsAvailable()).toBe(true);
   });
 

@@ -10,7 +10,7 @@ import { contentHash, sha256Hex } from './hash.js';
  *
  * Hashing split (report C6): the audit/evidence chain and receipt digests use
  * SHA-256, while `contentHash` (FNV-1a) remains only for read-before-write
- * fencing in @syaocode/tools.
+ * fencing in @liwencode/tools.
  */
 
 /** SHA-256 digest of a string — the governance-facing hash. */
@@ -59,7 +59,7 @@ export class MemoryReceiptStore implements ReceiptStore {
  * Link from a tool call to the governance kernel that authorized it (ARF).
  *
  * Present only when the host routes tool execution through a `ToolGovernor`
- * (`@syaocode/rpc` fabric in the CLI). Embedders that keep the built-in
+ * (`@liwencode/rpc` fabric in the CLI). Embedders that keep the built-in
  * pipeline see no change: the field is optional everywhere.
  */
 export interface ToolGovernanceRef {

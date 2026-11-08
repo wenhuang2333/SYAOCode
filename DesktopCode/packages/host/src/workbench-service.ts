@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { ChannelConfig, ChannelInfo, ChannelModel, ContextInfo, DesktopOverview, SessionInspection, UsageQuery, UsageRecord, WorkspaceInfo } from '@syaocode/dhp';
+import type { ChannelConfig, ChannelInfo, ChannelModel, ContextInfo, DesktopOverview, SessionInspection, UsageQuery, UsageRecord, WorkspaceInfo } from '@liwencode/dhp';
 import { DesktopStateStore, type SavedSession } from './desktop-state.ts';
 import { DhpProtocolError } from './dhp-server.ts';
 import { SessionRegistry } from './session-registry.ts';

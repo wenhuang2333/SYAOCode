@@ -75,9 +75,9 @@ describe('JSON-RPC 帧', () => {
     if (r.ok && 'result' in r.frame) expect(r.frame.result).toEqual({ ok: true });
   });
 
-  it('错误响应带 syaoCode', () => {
-    const f = failure(1, -32006, 'denied', { kind: 'denied', syaoCode: 'SY-PERM-001' });
-    expect(f.error.data?.syaoCode).toBe('SY-PERM-001');
+  it('错误响应带 liwenCode', () => {
+    const f = failure(1, -32006, 'denied', { kind: 'denied', liwenCode: 'SY-PERM-001' });
+    expect(f.error.data?.liwenCode).toBe('SY-PERM-001');
   });
 });
 

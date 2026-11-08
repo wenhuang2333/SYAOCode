@@ -1,7 +1,7 @@
 {
-  "name": "@syaocode/tools",
+  "name": "@liwencode/tools",
   "version": "0.2.0-dev",
-  "description": "SYAOCode built-in tools: read/write/edit/glob/grep/bash with read-before-write fencing",
+  "description": "LIWENCode built-in tools: read/write/edit/glob/grep/bash with read-before-write fencing",
   "type": "module",
   "license": "Apache-2.0",
   "sideEffects": false,
@@ -15,11 +15,11 @@
     "prepublishOnly": "pnpm run typecheck && pnpm run build"
   },
   "dependencies": {
-    "@syaocode/core": "workspace:*",
+    "@liwencode/core": "workspace:*",
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@syaocode/testing": "workspace:*",
+    "@liwencode/testing": "workspace:*",
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
@@ -29,7 +29,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wenhuang2333/SYAOCode.git"
+    "url": "git+https://github.com/wenhuang2333/LIWENCode.git"
   },
   "files": [
     "dist",

@@ -66,7 +66,7 @@ describe('冒烟钩子不得影响正常启动', () => {
   });
 
   it('渲染层只在真正 ready 时回报，且忽略通道不存在', () => {
-    expect(renderer).toMatch(/if \(s === 'ready'\) void window\.syao\?\.smoke\?\.rendererReady\(\)\.catch/);
+    expect(renderer).toMatch(/if \(s === 'ready'\) void window\.liwen\?\.smoke\?\.rendererReady\(\)\.catch/);
   });
 
   it('preload 只暴露 rendererReady 一个方法', () => {

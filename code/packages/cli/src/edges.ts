@@ -1,7 +1,7 @@
 /**
  * Mounting real protocol edges on the CLI's fabric.
  *
- * `@syaocode/protocols` is imported LAZILY (dynamic `import()` inside
+ * `@liwencode/protocols` is imported LAZILY (dynamic `import()` inside
  * try/catch): the CLI must keep working in a build where the protocol package
  * is absent or half-finished, degrading with a sentence instead of a stack
  * trace. Everything that is not protocol-specific lives here, so the rest of
@@ -9,18 +9,18 @@
  *
  * Two directions:
  *
- *   client edge (`/peer add`, `syao mcp add`) — SYAOCode calls a remote MCP
+ *   client edge (`/peer add`, `liwen mcp add`) — LIWENCode calls a remote MCP
  *     server / A2A agent. The registry entry becomes a mounted adapter, so
  *     `fabric.call('mcp://<id>/tool/<name>')` reaches the peer through the
  *     ten-step pipeline.
  *
- *   server edge (`syao serve`) — a remote client calls SYAOCode. The server's
+ *   server edge (`liwen serve`) — a remote client calls LIWENCode. The server's
  *     executor / gateway funnels the inbound request back into
  *     `fabric.dispatcher.invoke`, so an inbound call is governed exactly like
  *     an outbound one.
  */
 
-import type { Runtime } from '@syaocode/core';
+import type { Runtime } from '@liwencode/core';
 import {
   type Protocol,
   CanonicalError,
@@ -29,7 +29,7 @@ import {
   type InvokeResult,
   type Principal,
   type ProtocolAdapter,
-} from '@syaocode/rpc';
+} from '@liwencode/rpc';
 import { t } from './i18n/index.js';
 import type { PeerConfig } from './peers.js';
 
@@ -72,7 +72,7 @@ export interface MountOptions {
  * degrades to "protocol edge not available in this build".
  */
 export async function loadProtocolModule(subpath: 'mcp' | 'a2a' | 'acp' | 'shared'): Promise<Record<string, unknown> | undefined> {
-  const specifier = `@syaocode/protocols/${subpath}`;
+  const specifier = `@liwencode/protocols/${subpath}`;
   try {
     return (await import(/* @vite-ignore */ specifier)) as unknown as Record<string, unknown>;
   } catch {
@@ -121,7 +121,7 @@ export function splitCommand(command: string): string[] {
  * Mount a *client* edge for a registered peer.
  *
  * `mcp` peers are stdio servers (a command line); `a2a` peers are HTTP agent
- * cards; `acp` peers are stdio clients that reverse-call into SYAOCode.
+ * cards; `acp` peers are stdio clients that reverse-call into LIWENCode.
  */
 export async function mountPeerEdge(peer: PeerConfig, id: string, opts: MountOptions): Promise<MountOutcome> {
   switch (peer.protocol) {
@@ -134,7 +134,7 @@ export async function mountPeerEdge(peer: PeerConfig, id: string, opts: MountOpt
   }
 }
 
-/** MCP client edge: SYAOCode → a remote MCP server over stdio. */
+/** MCP client edge: LIWENCode → a remote MCP server over stdio. */
 export async function mountMcpClientEdge(peer: PeerConfig, id: string, opts: MountOptions): Promise<MountOutcome> {
   const mod = await loadProtocolModule('mcp');
   if (mod === undefined) {
@@ -159,7 +159,7 @@ export async function mountMcpClientEdge(peer: PeerConfig, id: string, opts: Mou
       command,
       args: argv.slice(1),
       cwd: opts.cwd,
-      clientInfo: { name: 'syaocode', version: '0.3.0-dev' },
+      clientInfo: { name: 'liwencode', version: '0.3.0-dev' },
     });
     await opts.fabric.mount(adapter, { providerId: id, endpoint: `mcp://${id}` });
     const caps = await opts.fabric.discover();
@@ -179,7 +179,7 @@ export async function mountMcpClientEdge(peer: PeerConfig, id: string, opts: Mou
   }
 }
 
-/** A2A client edge: SYAOCode → a remote agent card over HTTP. */
+/** A2A client edge: LIWENCode → a remote agent card over HTTP. */
 export async function mountA2aClientEdge(peer: PeerConfig, id: string, opts: MountOptions): Promise<MountOutcome> {
   const mod = await loadProtocolModule('a2a');
   if (mod === undefined) {
@@ -210,7 +210,7 @@ export async function mountA2aClientEdge(peer: PeerConfig, id: string, opts: Mou
   }
 }
 
-/** ACP client edge: a stdio editor that reverse-calls into SYAOCode. */
+/** ACP client edge: a stdio editor that reverse-calls into LIWENCode. */
 export async function mountAcpClientEdge(peer: PeerConfig, id: string, opts: MountOptions): Promise<MountOutcome> {
   const mod = await loadProtocolModule('acp');
   if (mod === undefined) {
@@ -232,7 +232,7 @@ export async function mountAcpClientEdge(peer: PeerConfig, id: string, opts: Mou
       args: argv.slice(1),
       cwd: opts.cwd,
       clientId: id,
-      agentInfo: { name: 'syaocode', version: '0.3.0-dev' },
+      agentInfo: { name: 'liwencode', version: '0.3.0-dev' },
       gateway: reverseGateway(opts),
     }) as { adapter?: ProtocolAdapter } | undefined;
     if (edge?.adapter === undefined) {

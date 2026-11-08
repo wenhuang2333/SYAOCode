@@ -8,7 +8,7 @@
  * instead of degrading to a local shell.
  */
 
-import { acpCapabilityId, CanonicalError } from '@syaocode/rpc';
+import { acpCapabilityId, CanonicalError } from '@liwencode/rpc';
 import type { ReverseInvokeGateway } from '../shared/gateway.js';
 import { ACP_LOSSY } from './content.js';
 

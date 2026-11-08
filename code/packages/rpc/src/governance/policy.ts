@@ -17,7 +17,7 @@
  * "wrap first, replace later").
  */
 
-import { globMatch, type IdGenerator, type PermissionEngine } from '@syaocode/core';
+import { globMatch, type IdGenerator, type PermissionEngine } from '@liwencode/core';
 import type {
   Effect,
   Obligation,

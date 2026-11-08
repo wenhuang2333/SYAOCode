@@ -35,7 +35,7 @@ import {
   type GitPreflightResult,
   type GitStatusResult,
   type GitUploadResult,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 import { type CredentialProvider, keychainEntryFor } from './credentials.ts';
 import {
   GitError,
@@ -598,7 +598,7 @@ export class GitUploadService {
    * - 两者都用完立即删除（`27` §10.9 红线 3）。
    */
   private async credentialContext(remoteUrl: string): Promise<CredentialContext> {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'syaocode-git-cred-'));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'liwencode-git-cred-'));
     await fs.chmod(dir, 0o700);
     let disposed = false;
     const dispose = async (): Promise<void> => {
@@ -618,8 +618,8 @@ export class GitUploadService {
         return {
           env: {
             GIT_ASKPASS: script,
-            SYAOCODE_GIT_USERNAME: username,
-            SYAOCODE_GIT_PASSWORD: password,
+            LIWENCODE_GIT_USERNAME: username,
+            LIWENCODE_GIT_PASSWORD: password,
             ...helperDisabledEnv(),
           },
           used: true,
@@ -758,10 +758,10 @@ export class GitUploadService {
 /** 助手脚本：凭据只从环境变量读，脚本本身不含任何凭据（`27` §10.8.4）。 */
 const ASKPASS_SCRIPT = [
   '#!/bin/sh',
-  '# SYAOCode 临时 GIT_ASKPASS 助手：凭据只从环境变量读取，执行后立即删除。',
+  '# LIWENCode 临时 GIT_ASKPASS 助手：凭据只从环境变量读取，执行后立即删除。',
   'case "$1" in',
-  "  *[Uu]sername*) printf '%s\\n' \"$SYAOCODE_GIT_USERNAME\" ;;",
-  "  *) printf '%s\\n' \"$SYAOCODE_GIT_PASSWORD\" ;;",
+  "  *[Uu]sername*) printf '%s\\n' \"$LIWENCODE_GIT_USERNAME\" ;;",
+  "  *) printf '%s\\n' \"$LIWENCODE_GIT_PASSWORD\" ;;",
   'esac',
   '',
 ].join('\n');

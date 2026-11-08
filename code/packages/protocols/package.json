@@ -1,7 +1,7 @@
 {
-  "name": "@syaocode/protocols",
+  "name": "@liwencode/protocols",
   "version": "0.3.0-dev",
-  "description": "SYAOCode protocol edges: MCP / A2A / ACP adapters wrapping the ARF governance kernel",
+  "description": "LIWENCode protocol edges: MCP / A2A / ACP adapters wrapping the ARF governance kernel",
   "type": "module",
   "license": "Apache-2.0",
   "sideEffects": false,
@@ -19,8 +19,8 @@
     "prepublishOnly": "pnpm run typecheck && pnpm run build"
   },
   "dependencies": {
-    "@syaocode/core": "workspace:*",
-    "@syaocode/rpc": "workspace:*",
+    "@liwencode/core": "workspace:*",
+    "@liwencode/rpc": "workspace:*",
     "zod": "^3.24.0"
   },
   "devDependencies": {
@@ -33,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wenhuang2333/SYAOCode.git"
+    "url": "git+https://github.com/wenhuang2333/LIWENCode.git"
   },
   "files": [
     "dist",

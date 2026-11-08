@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createAgent, type AgentEvent, type Message, type PermissionHandler, type Tool, type ToolContext } from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
-import { createBuiltinTools, FileStateTracker } from '@syaocode/tools';
-import { MockProvider, mockText, mockToolUse } from '@syaocode/testing';
+import { createAgent, type AgentEvent, type Message, type PermissionHandler, type Tool, type ToolContext } from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
+import { createBuiltinTools, FileStateTracker } from '@liwencode/tools';
+import { MockProvider, mockText, mockToolUse } from '@liwencode/testing';
 import { z } from 'zod';
 import type { CliArgs } from '../src/args';
 import { EXIT_OK, EXIT_PERM, runPrint } from '../src/run';
@@ -16,7 +16,7 @@ import { setLanguage } from '../src/i18n/index';
 /**
  * Regression: the MAIN agent path is governed by the ARF kernel.
  *
- * Before task-8, `syao -p` / TUI / REPL tool calls went through core's
+ * Before task-8, `liwen -p` / TUI / REPL tool calls went through core's
  * pipeline only: the run produced no kernel receipt, no audit link and no
  * budget reservation (05-实现评估与结论 §4). These tests drive the real
  * `runPrint` entry point (and the real agent loop) and assert on the evidence
@@ -34,11 +34,11 @@ function setEnv(key: string, value: string | undefined): void {
 }
 
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-arf-main-'));
-  home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-arf-home-'));
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-arf-main-'));
+  home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-arf-home-'));
   setLanguage('en');
   setEnv('HOME', home);
-  setEnv('SYAO_MODEL', 'mock:default');
+  setEnv('LIWEN_MODEL', 'mock:default');
 });
 
 afterEach(async () => {
@@ -68,13 +68,13 @@ function cliArgs(cwd: string): CliArgs {
   };
 }
 
-/** Run the real `syao -p` entry point and capture its stdout. */
+/** Run the real `liwen -p` entry point and capture its stdout. */
 async function runPrintCaptured(
   prompt: string,
   script: Message[],
   args: Partial<CliArgs> = {},
 ): Promise<{ code: number; stdout: string }> {
-  process.env.SYAO_MOCK_SCRIPT = JSON.stringify(script);
+  process.env.LIWEN_MOCK_SCRIPT = JSON.stringify(script);
   const chunks: string[] = [];
   const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown): boolean => {
     chunks.push(String(chunk));
@@ -95,7 +95,7 @@ function readCall(path: string): Message[] {
 }
 
 describe('main path → ARF kernel (task-8)', () => {
-  it('a normal `syao -p` run leaves a receipt, an audit link and a settled budget reservation', async () => {
+  it('a normal `liwen -p` run leaves a receipt, an audit link and a settled budget reservation', async () => {
     fs.writeFileSync(path.join(tmp, 'note.txt'), 'hello kernel\n');
     const { code, stdout } = await runPrintCaptured('read note.txt', readCall('note.txt'));
     expect(code).toBe(EXIT_OK);
@@ -126,7 +126,7 @@ describe('main path → ARF kernel (task-8)', () => {
     const reservation = payload.governance.budget.reservations[0]!;
     expect(reservation.state).toBe('settled');
     expect(reservation.accountId).toBe('default');
-    expect(reservation.accountChain).toEqual(['tenant:syaocode-local', 'default']);
+    expect(reservation.accountChain).toEqual(['tenant:liwencode-local', 'default']);
     expect(payload.governance.budget.accounts.map((a) => a.id)).toContain('default');
   }, 60_000);
 

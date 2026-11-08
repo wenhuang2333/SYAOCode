@@ -70,12 +70,12 @@ if (failures.length === 0) ok('no dist file imports a .ts specifier');
 // ── 3. the CLI entry actually runs, resolved AS PUBLISHED ────────────────
 //
 // In the workspace the `exports` point at `./src/index.ts`, so a built
-// `dist/main.js` resolves `@syaocode/core` to a TypeScript source and dies with
+// `dist/main.js` resolves `@liwencode/core` to a TypeScript source and dies with
 // ERR_MODULE_NOT_FOUND. The published package uses `publishConfig.exports`,
 // so the smoke test reproduces THAT resolution: a shadow node_modules whose
 // package.json files carry the publishConfig exports and whose dist/ is the
 // built output.
-const shadow = join(tmpdir(), `syaocode-build-check-${process.pid}`);
+const shadow = join(tmpdir(), `liwencode-build-check-${process.pid}`);
 rmSync(shadow, { recursive: true, force: true });
 
 interface PkgInfo {
@@ -96,7 +96,7 @@ function publishManifest(dirName: string, dir: string): PkgInfo | undefined {
     exports?: unknown;
     publishConfig?: { exports?: unknown };
   };
-  // Use the PUBLISHED name (`syaocode`, `@syaocode/core`), not the directory.
+  // Use the PUBLISHED name (`liwencode`, `@liwencode/core`), not the directory.
   const name = manifest.name ?? dirName;
   return {
     name,
@@ -149,7 +149,7 @@ try {
     if (!existsSync(manifestPath)) continue;
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { dependencies?: Record<string, string> };
     for (const dep of Object.keys(manifest.dependencies ?? {})) {
-      if (dep.startsWith('@syaocode/') || externals.has(dep)) continue;
+      if (dep.startsWith('@liwencode/') || externals.has(dep)) continue;
       for (const candidate of [join(pkgDir, 'node_modules', ...dep.split('/')), join(root, 'node_modules', ...dep.split('/'))]) {
         if (existsSync(candidate)) {
           externals.set(dep, candidate);
@@ -164,7 +164,7 @@ try {
     symlinkSync(from, to, 'dir');
   }
 
-  const cliEntry = join(shadow, 'node_modules', 'syaocode', 'dist', 'main.js');
+  const cliEntry = join(shadow, 'node_modules', 'liwencode', 'dist', 'main.js');
   if (!existsSync(cliEntry)) {
     fail('built CLI entry missing in the shadow install');
   } else {
@@ -175,7 +175,7 @@ try {
         stdio: ['ignore', 'pipe', 'pipe'],
         cwd: root,
       });
-      if (!/syao v\d/.test(out)) fail(`built CLI printed an unexpected version line: ${out.trim().slice(0, 120)}`);
+      if (!/liwen v\d/.test(out)) fail(`built CLI printed an unexpected version line: ${out.trim().slice(0, 120)}`);
       else ok(`built CLI starts as published: ${out.trim().slice(0, 60)}`);
     } catch (e) {
       const err = e as { message?: string; stderr?: string };

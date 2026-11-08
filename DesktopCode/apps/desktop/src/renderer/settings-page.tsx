@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { ChannelConfig, ChannelInfo, ChannelModel, ChannelProtocol, QuotaSnapshot } from '@syaocode/dhp';
+import type { ChannelConfig, ChannelInfo, ChannelModel, ChannelProtocol, QuotaSnapshot } from '@liwencode/dhp';
 import { tv, type Lang } from './i18n-views';
 
 /** 界面语言选项。文案用各自语言书写，切换时不需要翻译。 */

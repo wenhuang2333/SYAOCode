@@ -2,7 +2,7 @@
  * DHP 错误码（对齐 `DesktopDoc/06-DHP-桌面宿主协议规范.md` §10）
  *
  * 三个层次，**互不混用**：
- *  - L1 内核错误（`SY-<域>-<序号>`，90 条 / 20 域）—— 由 `@syaocode/core` 产生，经 `data.syaoCode` 透传
+ *  - L1 内核错误（`SY-<域>-<序号>`，90 条 / 20 域）—— 由 `@liwencode/core` 产生，经 `data.liwenCode` 透传
  *  - L2 协议错误（本文件的 `-32xxx`）—— 由 Host 在 DHP 层产生
  *  - L3 壳层错误（`DSK-<区>-<序号>`）—— 由 Shell 产生，**不属于本协议**
  *

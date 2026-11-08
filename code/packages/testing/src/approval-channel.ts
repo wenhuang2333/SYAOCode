@@ -1,4 +1,4 @@
-import type { PermissionDecision, PermissionRequest } from '@syaocode/core';
+import type { PermissionDecision, PermissionRequest } from '@liwencode/core';
 
 /**
  * Fake approval channel (03 §3.5).

@@ -1,5 +1,5 @@
 import type { ContentBlock, Message, StopReason, ToolCall, Usage } from './types.js';
-import type { SerializedError } from './errors/syao-error.js';
+import type { SerializedError } from './errors/liwen-error.js';
 import type { PermissionRequest } from './permissions.js';
 import type { ToolReceipt, VerificationResult } from './evidence.js';
 

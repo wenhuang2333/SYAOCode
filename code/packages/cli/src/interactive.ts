@@ -4,7 +4,7 @@ import {
   createAgent,
   estimateMessagesTokens,
   FileSessionStore,
-  SyaoError,
+  LIWENError,
   projectHashOf,
   Redactor,
   rulesFromConfig,
@@ -16,10 +16,10 @@ import {
   type PermissionRequest,
   type PermissionRule,
   type Provider,
-} from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
-import { createFileReceiptStore } from '@syaocode/node';
-import { createBuiltinTools } from '@syaocode/tools';
+} from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
+import { createFileReceiptStore } from '@liwencode/node';
+import { createBuiltinTools } from '@liwencode/tools';
 import type { CliArgs } from './args.js';
 import { resolvePermissionTier } from './args.js';
 import { buildProvider, type ProviderSpec } from './provider-select.js';
@@ -36,7 +36,7 @@ import {
   catalogEntry,
   envFilePath,
   keyStatusOf,
-  syaoHome,
+  liwenHome,
   maskKey,
   PROVIDER_CATALOG,
   modelSpecLabel,
@@ -101,8 +101,8 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
   const runtime = nodeRuntime();
   const config = await loadCliConfig(opts.args, runtime);
   const redactor = createCliRedactor();
-  const receipts = createFileReceiptStore(runtime, `${syaoHome()}/evidence`);
-  const sessionStore = new FileSessionStore(runtime, `${syaoHome()}/sessions`, String(projectHashOf(cwd)));
+  const receipts = createFileReceiptStore(runtime, `${liwenHome()}/evidence`);
+  const sessionStore = new FileSessionStore(runtime, `${liwenHome()}/sessions`, String(projectHashOf(cwd)));
   const builtins = createBuiltinTools();
   const usageTotals: UsageTotals = {
     inputTokens: 0,
@@ -112,7 +112,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
     costUsd: 0,
     requests: 0,
   };
-  // 工作区跨会话用量账本（~/.syaocode/usage/<hash>.json），/cost 的数据源
+  // 工作区跨会话用量账本（~/.liwencode/usage/<hash>.json），/cost 的数据源
   let workspaceUsage = readWorkspaceUsage(cwd);
   let usagePersistWarned = false;
 
@@ -135,7 +135,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
     runtime,
     redactor,
     ...(config.limits.maxBudgetUsd !== undefined ? { maxBudgetUsd: config.limits.maxBudgetUsd } : {}),
-    taskLabel: 'syao repl session',
+    taskLabel: 'liwen repl session',
   });
 
   const rl = readline.createInterface({ input, output, prompt: promptOf() });
@@ -152,7 +152,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
   let agent = createCurrentAgent();
 
   function promptOf(): string {
-    return ANSI.cyan(`syao (${modelSpecLabel(spec)}) ❯ `);
+    return ANSI.cyan(`liwen (${modelSpecLabel(spec)}) ❯ `);
   }
 
   function createCurrentAgent(resumeSessionId?: string): Agent {
@@ -532,7 +532,7 @@ export async function runInteractive(opts: InteractiveOptions): Promise<number> 
           key !== undefined
             ? t('model.keyLine', {
                 status: key.set
-                  ? t('model.keySetSource', { env: entry?.apiKeyEnv ?? '', source: key.source === 'env-file' ? '~/.syaocode/env' : 'process env' })
+                  ? t('model.keySetSource', { env: entry?.apiKeyEnv ?? '', source: key.source === 'env-file' ? '~/.liwencode/env' : 'process env' })
                   : t('model.keyUnset', { env: entry?.apiKeyEnv ?? '' }),
               })
             : t('model.keyNotNeeded'),

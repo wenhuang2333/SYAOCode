@@ -5,7 +5,7 @@
  * 两边算出的条目名不同，就意味着"渲染层写进去的令牌，Host 找不到"。
  * `apps/desktop/test/credential-entries.test.ts` 会断言两者相等。
  *
- * 规则：`syaocode.git.<host>.<method>`
+ * 规则：`liwencode.git.<host>.<method>`
  *  - `host`：远端主机名（`https://github.com/x` → `github.com`；`git@host:path` → `host`）；
  *    没有主机名的本地路径远端由调用方传入工作区名。
  *  - `method`：`oauth` / `ssh-agent` / `ssh-key` / `token`。
@@ -28,8 +28,8 @@ export function remoteHost(remoteUrl: string): string {
   }
 }
 
-/** 条目名：`syaocode.git.<host>.<method>`。 */
+/** 条目名：`liwencode.git.<host>.<method>`。 */
 export function credentialEntry(host: string, method: CredentialMethod): string {
   const safeHost = host.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120) || 'unknown';
-  return `syaocode.git.${safeHost}.${method}`;
+  return `liwencode.git.${safeHost}.${method}`;
 }

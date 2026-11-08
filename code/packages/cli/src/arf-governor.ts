@@ -1,11 +1,11 @@
 /**
  * Route the main agent path through the ARF kernel.
  *
- * A normal `syao -p`, TUI or REPL tool call used to execute through core's
+ * A normal `liwen -p`, TUI or REPL tool call used to execute through core's
  * pipeline only: the model was gated by the local `PermissionEngine` and the
  * tool ran directly, so the run produced NO kernel receipt, NO audit link and
  * NO budget reservation — the ARF kernel was a parallel universe reachable
- * only from `syao serve|call|rpc` (05-实现评估与结论 §4).
+ * only from `liwen serve|call|rpc` (05-实现评估与结论 §4).
  *
  * `ArfToolGovernor` closes that gap. It implements core's `ToolGovernor` seam
  * (`ToolGovernor` in packages/core/src/tool.ts) and turns one proposed tool
@@ -48,9 +48,9 @@ import {
   type ToolOutput,
   type ToolResultContent,
   type ToolResultMeta,
-} from '@syaocode/core';
-import { CanonicalError, type ApprovalRecord, type InvokeResult, type SecretRedactor } from '@syaocode/rpc';
-import type { FileStateTracker } from '@syaocode/tools';
+} from '@liwencode/core';
+import { CanonicalError, type ApprovalRecord, type InvokeResult, type SecretRedactor } from '@liwencode/rpc';
+import type { FileStateTracker } from '@liwencode/tools';
 import { createCliFabric, type CliFabric, type CliFabricOptions } from './arf.js';
 
 /** Verdict of one kernel approval, answered by the interactive authority. */
@@ -147,7 +147,7 @@ export function markToolAuthorized(step: string): void {
  * second question.
  *
  * Returns `undefined` when the call did not come from the agent path (e.g.
- * `syao call …`), so the host's own presenter handles it.
+ * `liwen call …`), so the host's own presenter handles it.
  */
 export function createPermissionEngineApprovalBridge(
   engine: () => PermissionEngine,
@@ -193,7 +193,7 @@ export class ArfToolGovernor implements ToolGovernor {
       const session = await cli.ensureSession();
       const created = await cli.fabric.tasks.create({
         sessionId: session.id,
-        blocks: [{ type: 'text', text: this.opts.taskLabel ?? 'syao agent session' }],
+        blocks: [{ type: 'text', text: this.opts.taskLabel ?? 'liwen agent session' }],
       });
       return created.id;
     })().catch((e: unknown) => {

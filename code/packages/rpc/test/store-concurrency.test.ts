@@ -19,7 +19,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { nodeRuntime, sha256Hex } from '@syaocode/node';
+import { nodeRuntime, sha256Hex } from '@liwencode/node';
 import { createFileStores } from '../src/runtime/file-stores.js';
 import { forceUnlock, readEpoch, readLeaseOwner } from '../src/runtime/lock.js';
 
@@ -33,7 +33,7 @@ const TENANT = 'ten_mp';
 const dirs: string[] = [];
 
 function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'syao-mp-'));
+  const dir = mkdtempSync(join(tmpdir(), 'liwen-mp-'));
   dirs.push(dir);
   return dir;
 }

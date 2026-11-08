@@ -22,7 +22,7 @@ import {
   type Runtime,
   type Shell,
   type ShellSpawnOptions,
-} from '@syaocode/core';
+} from '@liwencode/core';
 
 export interface FakeRuntime extends Runtime {
   /** Paths written through `runtime.fs.writeFile` (must stay empty for ACP). */

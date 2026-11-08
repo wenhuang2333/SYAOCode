@@ -24,7 +24,7 @@ import {
 } from '../src/tui/agent-wizard';
 
 function isolatedHome(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'syao-agents-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-agents-'));
 }
 
 function group(over: Partial<AgentGroup> = {}): AgentGroup {
@@ -45,12 +45,12 @@ describe('agent 群数据层（/set-agents · /model · --agents）', () => {
     const res = activateAgentGroup('cheap', home);
     expect(res.ok).toBe(true);
     expect(res.common).toBe('deepseek:deepseek-chat');
-    const cfg = JSON.parse(fs.readFileSync(path.join(home, '.syaocode', 'config.json'), 'utf8')) as { model: { provider: string; name: string }; activeAgentGroup: string };
+    const cfg = JSON.parse(fs.readFileSync(path.join(home, '.liwencode', 'config.json'), 'utf8')) as { model: { provider: string; name: string }; activeAgentGroup: string };
     expect(cfg.model).toEqual({ provider: 'deepseek', name: 'deepseek-chat' });
     expect(cfg.activeAgentGroup).toBe('cheap');
 
     expect(deleteAgentGroup('cheap', home)).toBe(true);
-    const after = JSON.parse(fs.readFileSync(path.join(home, '.syaocode', 'config.json'), 'utf8')) as { activeAgentGroup?: string };
+    const after = JSON.parse(fs.readFileSync(path.join(home, '.liwencode', 'config.json'), 'utf8')) as { activeAgentGroup?: string };
     expect(after.activeAgentGroup).toBeUndefined();
   });
 

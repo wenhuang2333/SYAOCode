@@ -22,7 +22,7 @@ import {
 let home: string;
 
 beforeEach(() => {
-  home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-test-'));
+  home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-test-'));
   setLanguage('en');
 });
 afterEach(() => {
@@ -82,7 +82,7 @@ describe('model-config (FR-121: secrets never in repo/sessions)', () => {
   it('user config round-trips; default model resolution honors flag > env > saved', () => {
     writeUserConfig({ model: { provider: 'deepseek', name: 'deepseek-chat' } }, home);
     expect(readUserConfig(home).model?.provider).toBe('deepseek');
-    expect(userConfigPath(home)).toBe(path.join(home, '.syaocode', 'config.json'));
+    expect(userConfigPath(home)).toBe(path.join(home, '.liwencode', 'config.json'));
 
     expect(resolveDefaultModel('anthropic:claude-sonnet-4', home)).toEqual({ provider: 'anthropic', name: 'claude-sonnet-4' });
     expect(resolveDefaultModel(undefined, home)).toEqual({ provider: 'deepseek', name: 'deepseek-chat' });

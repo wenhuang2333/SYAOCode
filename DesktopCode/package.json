@@ -1,8 +1,8 @@
 {
-  "name": "syaocode-desktop-workspace",
+  "name": "liwencode-desktop-workspace",
   "private": true,
   "version": "0.1.0",
-  "description": "SYAOCode Desktop: Electron shell + DHP host/client/ui",
+  "description": "LIWENCode Desktop: Electron shell + DHP host/client/ui",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -10,8 +10,8 @@
   "scripts": {
     "typecheck": "pnpm -r --workspace-concurrency=2 run typecheck",
     "test": "pnpm -r --workspace-concurrency=2 run test",
-    "build": "pnpm --filter @syaocode/host run build && pnpm --filter syaocode-desktop run build",
-    "build:host": "pnpm --filter @syaocode/host run build",
+    "build": "pnpm --filter @liwencode/host run build && pnpm --filter liwencode-desktop run build",
+    "build:host": "pnpm --filter @liwencode/host run build",
     "verify:layout": "node scripts/verify-layout.mjs",
     "verify:theme": "node scripts/verify-theme.mjs",
     "verify:smoke": "node scripts/smoke-electron.mjs",
@@ -25,10 +25,10 @@
     "verify:real-approval": "node --import tsx scripts/verify-real-approval.mjs",
     "dev:host": "pnpm run build:host && node scripts/dev-host.mjs",
     "dev:desktop": "node scripts/dev-desktop.mjs",
-    "package:dir": "pnpm run build && pnpm --filter syaocode-desktop run package:dir",
-    "package:mac": "pnpm run build && pnpm --filter syaocode-desktop run package:mac",
-    "package:win": "pnpm run build && pnpm --filter syaocode-desktop run package:win",
-    "package:linux": "pnpm run build && pnpm --filter syaocode-desktop run package:linux"
+    "package:dir": "pnpm run build && pnpm --filter liwencode-desktop run package:dir",
+    "package:mac": "pnpm run build && pnpm --filter liwencode-desktop run package:mac",
+    "package:win": "pnpm run build && pnpm --filter liwencode-desktop run package:win",
+    "package:linux": "pnpm run build && pnpm --filter liwencode-desktop run package:linux"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

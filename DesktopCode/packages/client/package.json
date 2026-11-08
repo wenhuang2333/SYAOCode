@@ -1,7 +1,7 @@
 {
-  "name": "@syaocode/client",
+  "name": "@liwencode/client",
   "version": "0.1.0",
-  "description": "SYAOCode Desktop client: DHP connection, projection store, typed methods (browser + node)",
+  "description": "LIWENCode Desktop client: DHP connection, projection store, typed methods (browser + node)",
   "type": "module",
   "license": "Apache-2.0",
   "sideEffects": false,
@@ -11,6 +11,6 @@
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json"
   },
-  "dependencies": { "@syaocode/dhp": "workspace:*" },
+  "dependencies": { "@liwencode/dhp": "workspace:*" },
   "devDependencies": { "typescript": "^5.7.2", "vitest": "^3.2.4", "ws": "^8.18.0", "@types/ws": "^8.5.13" }
 }

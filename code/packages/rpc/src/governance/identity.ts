@@ -20,7 +20,7 @@
  * peer B.
  */
 
-import type { IdGenerator } from '@syaocode/core';
+import type { IdGenerator } from '@liwencode/core';
 import { canonicalJson } from '../ir/schemas.js';
 import { CanonicalError } from '../ir/errors.js';
 import type { DelegationToken, Principal, TrustTier } from '../ir/types.js';
@@ -28,7 +28,7 @@ import type { AuthenticatedCaller, Hasher, IdentityService, TransportCredential 
 import { deepClone } from '../runtime/projection.js';
 
 /** Domain separator for the delegation signature. */
-export const DELEGATION_DOMAIN = 'syaocode/arf/delegation/v1';
+export const DELEGATION_DOMAIN = 'liwencode/arf/delegation/v1';
 
 export interface IdentityServiceOptions {
   hash: Hasher;

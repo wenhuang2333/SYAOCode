@@ -200,8 +200,8 @@ describe('文案承诺 vs 实际行为（本轮核实的几处）', () => {
 
   it('"本地会话自动保存"对应的持久化确实由 Host 负责（渲染层不自己编）', () => {
     // 渲染层不得自己写 localStorage 冒充"已保存会话"；只有 Git 标签页偏好与主题走本地存储。
-    expect(workbench).toContain("const GIT_TAB_KEY = 'syao:git-tab'");
-    expect(workbench).not.toMatch(/localStorage\.setItem\('syao:(session|sessions)/);
+    expect(workbench).toContain("const GIT_TAB_KEY = 'liwen:git-tab'");
+    expect(workbench).not.toMatch(/localStorage\.setItem\('liwen:(session|sessions)/);
     expect(tv('zh', 'workbench.sessions.emptyBody')).toContain('保存在本机');
   });
 

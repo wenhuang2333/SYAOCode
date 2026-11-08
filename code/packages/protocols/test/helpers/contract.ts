@@ -20,8 +20,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { contentHash, MemoryLogger, Redactor, sha256Hex, type Logger, type Runtime } from '@syaocode/core';
-import { CanonicalError, createFabric, RulePolicyEngine, withRevision, type Fabric } from '@syaocode/rpc';
+import { contentHash, MemoryLogger, Redactor, sha256Hex, type Logger, type Runtime } from '@liwencode/core';
+import { CanonicalError, createFabric, RulePolicyEngine, withRevision, type Fabric } from '@liwencode/rpc';
 import type {
   AdapterContext,
   Protocol,
@@ -40,7 +40,7 @@ import type {
   InvokeResultPayload,
   ProtocolAdapter,
   PolicyRule,
-} from '@syaocode/rpc';
+} from '@liwencode/rpc';
 import type { FakePeer, FakePeerNotification } from './fake-peer.js';
 
 /**

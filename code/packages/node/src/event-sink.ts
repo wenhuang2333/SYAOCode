@@ -4,7 +4,7 @@ import {
   type AgentEvent,
   type EventSink,
   type Runtime,
-} from '@syaocode/core';
+} from '@liwencode/core';
 
 /**
  * File-backed event sink (report C3).

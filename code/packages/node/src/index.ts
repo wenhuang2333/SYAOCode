@@ -15,10 +15,10 @@ import {
   type Shell,
   type ShellSpawnOptions,
   type StoredOutput,
-} from '@syaocode/core';
+} from '@liwencode/core';
 import { nodeHasher } from './hasher.js';
 
-export type { HttpResponse } from '@syaocode/core';
+export type { HttpResponse } from '@liwencode/core';
 
 class NodeFileSystem implements FileSystem {
   async readFile(path: string): Promise<string> {

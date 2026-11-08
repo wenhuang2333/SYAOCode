@@ -6,7 +6,7 @@
  * card's skills into canonical `DiscoveredCapability` records.
  */
 
-import { a2aCapabilityId, CanonicalError, type DiscoveredCapability } from '@syaocode/rpc';
+import { a2aCapabilityId, CanonicalError, type DiscoveredCapability } from '@liwencode/rpc';
 
 export interface A2aAgentInterface {
   url: string;

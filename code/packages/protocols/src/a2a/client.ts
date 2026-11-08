@@ -7,8 +7,8 @@
  * an unsupported peer answers `VersionNotSupportedError` (-32022).
  */
 
-import type { Logger, Runtime } from '@syaocode/core';
-import { CanonicalError, type AdapterCapabilities, type DiscoveredCapability, type InvokeResultPayload } from '@syaocode/rpc';
+import type { Logger, Runtime } from '@liwencode/core';
+import { CanonicalError, type AdapterCapabilities, type DiscoveredCapability, type InvokeResultPayload } from '@liwencode/rpc';
 import {
   AdapterBase,
   mergeLossy,
@@ -277,13 +277,13 @@ export class A2aAdapter extends AdapterBase {
     };
   }
 
-  async discover(ctx: import('@syaocode/rpc').AdapterContext): Promise<DiscoveredCapability[]> {
+  async discover(ctx: import('@liwencode/rpc').AdapterContext): Promise<DiscoveredCapability[]> {
     void ctx;
     const card = await this.client.getExtendedAgentCard();
     return agentCardCapabilities(card, this.client.agentId);
   }
 
-  async invoke(req: import('@syaocode/rpc').AuthorizedInvocation, ctx: import('@syaocode/rpc').AdapterContext): Promise<InvokeResultPayload> {
+  async invoke(req: import('@liwencode/rpc').AuthorizedInvocation, ctx: import('@liwencode/rpc').AdapterContext): Promise<InvokeResultPayload> {
     const messageId = req.idempotencyKey ?? ctx.runtime.ids.next('msg');
     const message = inputToMessage(req.input, messageId);
     const timeoutMs = remainingMs(ctx.runtime, ctx);
@@ -308,8 +308,8 @@ export class A2aAdapter extends AdapterBase {
   /** Poll `GetTask` until terminal / approval-resolved / deadline. */
   private async awaitTerminal(
     initial: A2aTask,
-    req: import('@syaocode/rpc').AuthorizedInvocation,
-    ctx: import('@syaocode/rpc').AdapterContext,
+    req: import('@liwencode/rpc').AuthorizedInvocation,
+    ctx: import('@liwencode/rpc').AdapterContext,
     callOptions: A2aCallOptions,
   ): Promise<A2aTask> {
     let task = initial;
@@ -399,7 +399,7 @@ export class A2aAdapter extends AdapterBase {
     }
   }
 
-  async cancel(taskId: string, reason: string, ctx: import('@syaocode/rpc').AdapterContext): Promise<void> {
+  async cancel(taskId: string, reason: string, ctx: import('@liwencode/rpc').AdapterContext): Promise<void> {
     void ctx;
     await this.client.cancelTask(taskId, reason);
   }

@@ -1,10 +1,10 @@
 /**
- * `@syaocode/protocols/mcp` — the MCP 2026-07-28 edge.
+ * `@liwencode/protocols/mcp` — the MCP 2026-07-28 edge.
  *
  * Two halves:
- *   - {@link createMcpAdapter} / {@link McpAdapter}: SYAOCode as an MCP *client*
+ *   - {@link createMcpAdapter} / {@link McpAdapter}: LIWENCode as an MCP *client*
  *     (discover + `tools/call` + MRTR), governed by the ARF dispatcher;
- *   - {@link createMcpServer} / {@link McpServer}: SYAOCode as an MCP *server*
+ *   - {@link createMcpServer} / {@link McpServer}: LIWENCode as an MCP *server*
  *     (modern era, `resultType`, MRTR, legacy `initialize` fallback).
  *
  * Both halves talk to the governance kernel through injected callbacks
@@ -103,7 +103,7 @@ export type { McpHttpHeaderCheck, McpHttpRequestInfo } from './http.js';
 export { createHttpChannel, createLoopbackPair, createStdioChannel } from '../shared/transport.js';
 export type { DuplexChannel, StdioChannelOptions } from '../shared/transport.js';
 
-import type { Logger, Runtime } from '@syaocode/core';
+import type { Logger, Runtime } from '@liwencode/core';
 import type { DuplexChannel } from '../shared/transport.js';
 import { createHttpChannel, createStdioChannel } from '../shared/transport.js';
 import { buildMcpHttpHeaders } from './http.js';
@@ -119,7 +119,7 @@ export function createMcpAdapter(options: McpAdapterOptions): McpAdapter {
 /** Alias used by the CLI and the docs (03 §3.3 spells it `mcpAdapter()`). */
 export const mcpAdapter = createMcpAdapter;
 
-/** Create the MCP server edge (expose SYAOCode's capabilities to hosts). */
+/** Create the MCP server edge (expose LIWENCode's capabilities to hosts). */
 export function createMcpServer(options: McpServerOptions): McpServer {
   return new McpServer(options);
 }
@@ -140,7 +140,7 @@ export interface McpStdioEdgeOptions {
 
 /**
  * Convenience factory: spawn a stdio MCP server through `Runtime.shell` and
- * wrap it as a governed adapter. The CLI's `syao mcp` command uses this.
+ * wrap it as a governed adapter. The CLI's `liwen mcp` command uses this.
  */
 export function createStdioMcpAdapter(options: McpStdioEdgeOptions): McpAdapter {
   const spawnOptions: { cwd?: string; env?: Record<string, string> } = {};

@@ -33,7 +33,7 @@ export const JsonRpcErrorSchema = z.object({
       /** L2 的 `kind` —— 客户端必须按它分支。 */
       kind: z.string().optional(),
       /** L1 内核错误码（`SY-<域>-<序号>`）。 */
-      syaoCode: z.string().optional(),
+      liwenCode: z.string().optional(),
       /** 面向用户的中英文案（由 `16` 决定，Host 填充）。 */
       messageZh: z.string().optional(),
       messageEn: z.string().optional(),

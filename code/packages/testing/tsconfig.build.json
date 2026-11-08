@@ -9,7 +9,7 @@
     "declarationMap": false,
     "rewriteRelativeImportExtensions": true,
     "paths": {
-      "@syaocode/core": [
+      "@liwencode/core": [
         "../core/dist/index.d.ts"
       ]
     }

@@ -1,7 +1,7 @@
 /**
- * `@syaocode/protocols/shared` — transport, JSON-RPC and drift utilities.
+ * `@liwencode/protocols/shared` — transport, JSON-RPC and drift utilities.
  *
- * Subpath export: importers of `@syaocode/protocols/mcp` do not pull the A2A or
+ * Subpath export: importers of `@liwencode/protocols/mcp` do not pull the A2A or
  * ACP code in (03 §3.3).
  */
 

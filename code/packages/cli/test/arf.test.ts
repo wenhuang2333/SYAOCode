@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CanonicalError, EXIT, type InvokeResult, type ProtocolAdapter } from '@syaocode/rpc';
+import { CanonicalError, EXIT, type InvokeResult, type ProtocolAdapter } from '@liwencode/rpc';
 import { createCliFabric, errorText, exitCodeForError, getCliFabric, disposeCliFabric, hasCliFabric, isLoopbackHost, tierDefaultEffect, tierPolicyRules, type CliFabric } from '../src/arf';
 import { setLanguage } from '../src/i18n/index';
 
@@ -10,7 +10,7 @@ let tmp: string;
 const made: CliFabric[] = [];
 
 beforeEach(() => {
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-arf-'));
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-arf-'));
   setLanguage('en');
 });
 
@@ -21,7 +21,7 @@ afterEach(async () => {
 });
 
 function cli(opts: Parameters<typeof createCliFabric>[0] = {}): CliFabric {
-  // Hermetic by default: a test must never touch the developer's ~/.syaocode.
+  // Hermetic by default: a test must never touch the developer's ~/.liwencode.
   const created = createCliFabric({ cwd: tmp, permissionMode: 'default', home: tmp, persist: false, ...opts });
   made.push(created);
   return created;
@@ -120,7 +120,7 @@ describe('createCliFabric', () => {
   it('returns a working fabric bound to the CLI workspace and tenant', async () => {
     const c = cli({ tools: false });
     const status = await c.fabric.status();
-    expect(status.tenantId).toBe('syaocode-local');
+    expect(status.tenantId).toBe('liwencode-local');
     expect(status.capabilityCount).toBe(0);
     expect(status.pendingApprovals).toBe(0);
     expect(c.workspaceRoots).toEqual([tmp]);
@@ -239,20 +239,20 @@ describe('createCliFabric', () => {
 
 // ── C-4: governance records outlive the process ───────────────────────────
 //
-// The audit found that every record lived in memory, so `syao rpc audit` after
-// a `syao -p` run reported "0 checked" — the chain existed but was gone by the
+// The audit found that every record lived in memory, so `liwen rpc audit` after
+// a `liwen -p` run reported "0 checked" — the chain existed but was gone by the
 // time anyone could read it. These tests build two fabrics over the SAME
 // directory to model two CLI processes.
 
 describe('createCliFabric — durable governance records (C-4)', () => {
   it('a second fabric over the same directory sees the first one\'s audit chain', async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-persist-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-persist-'));
     try {
       const first = createCliFabric({ cwd: tmp, permissionMode: 'default', home, persist: true });
       try {
         await first.fabric.stores.audit.append({
           ts: '2026-10-28T00:00:00.000Z',
-          tenantId: 'syaocode-local',
+          tenantId: 'liwencode-local',
           actor: { type: 'user', id: 'user:local' },
           action: 'policy.decide',
           subject: { type: 'capability', id: 'local://tools/read' },
@@ -277,13 +277,13 @@ describe('createCliFabric — durable governance records (C-4)', () => {
   });
 
   it('persist: false keeps the fabric hermetic (no files written)', async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-hermetic-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-hermetic-'));
     try {
       const c = createCliFabric({ cwd: tmp, permissionMode: 'default', home, persist: false });
       try {
         await c.fabric.stores.audit.append({
           ts: '2026-10-28T00:00:00.000Z',
-          tenantId: 'syaocode-local',
+          tenantId: 'liwencode-local',
           actor: { type: 'user', id: 'user:local' },
           action: 'policy.decide',
           subject: { type: 'capability', id: 'x' },
@@ -292,7 +292,7 @@ describe('createCliFabric — durable governance records (C-4)', () => {
       } finally {
         await c.dispose();
       }
-      expect(fs.existsSync(path.join(home, '.syaocode', 'arf'))).toBe(false);
+      expect(fs.existsSync(path.join(home, '.liwencode', 'arf'))).toBe(false);
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
     }

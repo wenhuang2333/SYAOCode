@@ -17,7 +17,7 @@ export function assembleSystemPrompt(cfg: ContextConfig): string {
   const segments: string[] = [];
   segments.push(
     cfg.baseInstructions ??
-      'You are SYAOCode, a coding agent operating in a workspace. ' +
+      'You are LIWENCode, a coding agent operating in a workspace. ' +
       'Use the provided tools to read, modify and verify files. ' +
       'Prefer precise, minimal changes and verify your work by running tests when possible.',
   );

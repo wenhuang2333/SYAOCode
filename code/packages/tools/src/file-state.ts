@@ -1,4 +1,4 @@
-import { FsError, contentHash } from '@syaocode/core';
+import { FsError, contentHash } from '@liwencode/core';
 
 /**
  * FileStateTracker (DD-4): supports read-before-write (BR-004) and external-

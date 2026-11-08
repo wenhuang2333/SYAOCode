@@ -20,7 +20,7 @@ import * as os from 'node:os';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import type { GitFileEntry, GitFileStatus, GitStatusResult } from '@syaocode/dhp';
+import type { GitFileEntry, GitFileStatus, GitStatusResult } from '@liwencode/dhp';
 import { MemoryCredentialProvider, keychainEntryFor } from '../src/credentials.ts';
 import { GitUploadError, GitUploadService } from '../src/git-upload.ts';
 import {
@@ -37,11 +37,11 @@ import {
  *
  * 原因：有一条断言要检查"凭据临时目录用完即删"（`27` §10.9 红线 3），
  * 而 `os.tmpdir()` 是全进程共享的——其它测试文件在并行 worker 里同时创建
- * `syaocode-git-cred-*` 时，这条断言会随机变红（真实发生过的 flake）。
+ * `liwencode-git-cred-*` 时，这条断言会随机变红（真实发生过的 flake）。
  * 把本文件的 TMPDIR 指向私有目录后，`readdir(os.tmpdir())` 只会看到本文件
  * 自己的临时目录，断言既严格又稳定。
  */
-const privateTmp = mkdtempSync(path.join(tmpdir(), 'syaocode-gw-tmp-'));
+const privateTmp = mkdtempSync(path.join(tmpdir(), 'liwencode-gw-tmp-'));
 process.env['TMPDIR'] = privateTmp;
 
 const hasGit = spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0;
@@ -79,11 +79,11 @@ function git(cwd: string, args: readonly string[]): GitOutput {
 
 /** 建一个带初始提交的仓库（分支名固定 `main`）。 */
 async function makeRepo(): Promise<string> {
-  const dir = await tempDir('syaocode-repo-');
+  const dir = await tempDir('liwencode-repo-');
   git(dir, ['init', '-q']);
   git(dir, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
   git(dir, ['config', 'user.email', 'test@example.com']);
-  git(dir, ['config', 'user.name', 'SYAOCode Test']);
+  git(dir, ['config', 'user.name', 'LIWENCode Test']);
   git(dir, ['config', 'commit.gpgsign', 'false']);
   await fs.writeFile(path.join(dir, 'README.md'), '# 测试仓库\n');
   git(dir, ['add', '--', 'README.md']);
@@ -93,7 +93,7 @@ async function makeRepo(): Promise<string> {
 
 /** 建一个本地裸仓库当远端（不联网）。 */
 async function makeBare(): Promise<string> {
-  const dir = await tempDir('syaocode-bare-');
+  const dir = await tempDir('liwencode-bare-');
   git(dir, ['init', '--bare', '-q', '-b', 'main']);
   return dir;
 }
@@ -466,7 +466,7 @@ describe('Git 预检与上传', () => {
     git(root, ['push', '-q', '-u', 'origin', 'main']);
 
     // 另一个人从裸仓库克隆并推了一个新提交。
-    const clone = await tempDir('syaocode-clone-');
+    const clone = await tempDir('liwencode-clone-');
     git(clone, ['clone', '-q', bare, '.']);
     git(clone, ['config', 'user.email', 'other@example.com']);
     git(clone, ['config', 'user.name', 'Other']);
@@ -514,7 +514,7 @@ describe('Git 预检与上传', () => {
     git(root, ['remote', 'add', 'origin', bare]);
     git(root, ['push', '-q', '-u', 'origin', 'main']);
 
-    const clone = await tempDir('syaocode-clone2-');
+    const clone = await tempDir('liwencode-clone2-');
     git(clone, ['clone', '-q', bare, '.']);
     git(clone, ['config', 'user.email', 'other@example.com']);
     git(clone, ['config', 'user.name', 'Other']);
@@ -548,7 +548,7 @@ async function startAuthServer(): Promise<AuthServer> {
   const server = http.createServer((request, response) => {
     const header = request.headers.authorization;
     if (header !== undefined) authorizations.push(header);
-    response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="syaocode-test"' });
+    response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="liwencode-test"' });
     response.end('需要认证');
   });
   await new Promise<void>((resolve) => {
@@ -638,7 +638,7 @@ describe('凭据注入与审计脱敏', () => {
 
       // 临时凭据目录用完立即删除（`27` §10.9 红线 3）。
       const leftovers = (await fs.readdir(os.tmpdir())).filter((name) =>
-        name.startsWith('syaocode-git-cred-'),
+        name.startsWith('liwencode-git-cred-'),
       );
       expect(leftovers).toEqual([]);
     } finally {

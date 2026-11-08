@@ -143,7 +143,7 @@ describe('界面语言跟随配置（FR-N-037 / config 是单一真相）', () =
     expect(useWorkbenchSrc).toMatch(/setLanguage\(explicit \? config\.language : DESKTOP_DEFAULT_LANGUAGE\)/);
     // 不该出现"用 navigator.language 猜"这类做法。
     expect(useWorkbenchSrc).not.toContain('navigator.language');
-    expect(useWorkbenchSrc).not.toMatch(/localStorage\.setItem\('syao:language/);
+    expect(useWorkbenchSrc).not.toMatch(/localStorage\.setItem\('liwen:language/);
   });
 
   it('设置页能真的切换语言（写 Host 配置，不是本地偏好）', () => {

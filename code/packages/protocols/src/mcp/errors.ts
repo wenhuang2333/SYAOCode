@@ -11,7 +11,7 @@ import {
   canonicalFromJsonRpcError,
   type CanonicalErrorShape,
   type Protocol,
-} from '@syaocode/rpc';
+} from '@liwencode/rpc';
 
 export { MCP_ERROR_CODES };
 

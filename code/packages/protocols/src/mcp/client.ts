@@ -9,7 +9,7 @@
  * was written is reported as `indeterminate` and never retried (I10 / ADR-R6).
  */
 
-import type { Logger, Runtime } from '@syaocode/core';
+import type { Logger, Runtime } from '@liwencode/core';
 import {
   CanonicalError,
   type ApprovalOption,
@@ -17,7 +17,7 @@ import {
   type ApprovalSubject,
   type CanonicalErrorShape,
   type DiscoveredCapability,
-} from '@syaocode/rpc';
+} from '@liwencode/rpc';
 import {
   AdapterBase,
   appendEdgeEvent,
@@ -164,7 +164,7 @@ export class McpClient {
     const base = buildMcpMeta({
       protocolVersion: this.pinnedVersion,
       clientCapabilities: this.options.clientCapabilities ?? {},
-      clientInfo: this.options.clientInfo ?? { name: 'syaocode', version: '0.3.0-dev' },
+      clientInfo: this.options.clientInfo ?? { name: 'liwencode', version: '0.3.0-dev' },
     });
     return extra === undefined ? base : { ...base, ...extra };
   }
@@ -199,7 +199,7 @@ export class McpClient {
       {
         protocolVersion: this.pinnedVersion,
         capabilities: this.options.clientCapabilities ?? {},
-        clientInfo: this.options.clientInfo ?? { name: 'syaocode', version: '0.3.0-dev' },
+        clientInfo: this.options.clientInfo ?? { name: 'liwencode', version: '0.3.0-dev' },
       },
       this.requestOptions(),
     )) as { protocolVersion?: string; serverInfo?: { name: string; version: string }; capabilities?: Record<string, unknown> };
@@ -450,7 +450,7 @@ export class McpAdapter extends AdapterBase {
     this.transport = options.transport ?? 'stdio';
   }
 
-  capabilities(): import('@syaocode/rpc').AdapterCapabilities {
+  capabilities(): import('@liwencode/rpc').AdapterCapabilities {
     return {
       protocol: 'mcp',
       version: MCP_PROTOCOL_VERSION,
@@ -477,12 +477,12 @@ export class McpAdapter extends AdapterBase {
     };
   }
 
-  async discover(ctx: import('@syaocode/rpc').AdapterContext): Promise<DiscoveredCapability[]> {
+  async discover(ctx: import('@liwencode/rpc').AdapterContext): Promise<DiscoveredCapability[]> {
     void ctx;
     return this.client.discover();
   }
 
-  async invoke(req: import('@syaocode/rpc').AuthorizedInvocation, ctx: import('@syaocode/rpc').AdapterContext): Promise<import('@syaocode/rpc').InvokeResultPayload> {
+  async invoke(req: import('@liwencode/rpc').AuthorizedInvocation, ctx: import('@liwencode/rpc').AdapterContext): Promise<import('@liwencode/rpc').InvokeResultPayload> {
     const kind = req.capability.kind;
     const name = capabilityName(req.capability.id);
     if (name === undefined) {
@@ -511,10 +511,10 @@ export class McpAdapter extends AdapterBase {
 
   private async invokeTool(
     toolName: string,
-    req: import('@syaocode/rpc').AuthorizedInvocation,
-    ctx: import('@syaocode/rpc').AdapterContext,
+    req: import('@liwencode/rpc').AuthorizedInvocation,
+    ctx: import('@liwencode/rpc').AdapterContext,
     callOptions: McpCallOptions,
-  ): Promise<import('@syaocode/rpc').InvokeResultPayload> {
+  ): Promise<import('@liwencode/rpc').InvokeResultPayload> {
     let outcome = await this.client.callTool(toolName, req.input, callOptions);
     let rounds = 0;
     while ((outcome.result.resultType ?? 'complete') === 'input_required') {
@@ -578,7 +578,7 @@ export class McpAdapter extends AdapterBase {
     return { outcome: 'succeeded', output: outcome.output, lossy: this.adapterLossy() };
   }
 
-  async cancel(taskId: string, reason: string, ctx: import('@syaocode/rpc').AdapterContext): Promise<void> {
+  async cancel(taskId: string, reason: string, ctx: import('@liwencode/rpc').AdapterContext): Promise<void> {
     void ctx;
     try {
       await this.client.cancelTask(taskId, reason);
@@ -594,7 +594,7 @@ export class McpAdapter extends AdapterBase {
     await super.close();
   }
 
-  private failurePayload(error: unknown): import('@syaocode/rpc').InvokeResultPayload {
+  private failurePayload(error: unknown): import('@liwencode/rpc').InvokeResultPayload {
     // An OAuth-protected HTTP peer: we do not implement OAuth 2.1 / PRM, so we
     // fail closed with an honest error instead of pretending to be authorized.
     if (this.transport === 'http') {
@@ -623,7 +623,7 @@ export class McpAdapter extends AdapterBase {
     }
     const canonical = wireError('mcp', error);
     const shape: CanonicalErrorShape = canonical.toShape();
-    const outcome: import('@syaocode/rpc').InvokeResultPayload['outcome'] = canonical.kind === 'cancelled' ? 'cancelled' : 'failed';
+    const outcome: import('@liwencode/rpc').InvokeResultPayload['outcome'] = canonical.kind === 'cancelled' ? 'cancelled' : 'failed';
     return { outcome, error: shape, lossy: this.adapterLossy() };
   }
 

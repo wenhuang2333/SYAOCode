@@ -6,7 +6,7 @@ import type * as React from 'react';
  * 所以这里显示的 `runState` 来自投影，而不是"我刚点了发送"。
  */
 
-import type { RunState, SessionMeta } from '@syaocode/dhp';
+import type { RunState, SessionMeta } from '@liwencode/dhp';
 import type { Lang, Messages } from './i18n.ts';
 
 export interface StatusBarProps {

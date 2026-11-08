@@ -6,9 +6,9 @@
  *
  * Usage: corepack pnpm exec tsx evals/run-eval.ts [--json]
  */
-import { createAgent, type Message } from '@syaocode/core';
-import { createBuiltinTools } from '@syaocode/tools';
-import { MemoryRuntime, MockProvider, mockText, mockToolUse } from '@syaocode/testing';
+import { createAgent, type Message } from '@liwencode/core';
+import { createBuiltinTools } from '@liwencode/tools';
+import { MemoryRuntime, MockProvider, mockText, mockToolUse } from '@liwencode/testing';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';

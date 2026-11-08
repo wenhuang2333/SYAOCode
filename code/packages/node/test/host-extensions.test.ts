@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { sha256Hex as coreSha256Hex, type AgentEvent } from '@syaocode/core';
+import { sha256Hex as coreSha256Hex, type AgentEvent } from '@liwencode/core';
 import {
   createFileAuditStore,
   createFileBudgetStore,
@@ -38,7 +38,7 @@ describe('node host · hasher adapter (C6)', () => {
     const hasher = createNodeHasher();
     expect(hasher.sha256('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
     expect(hasher.sha256('abc')).toBe(coreSha256Hex('abc'));
-    expect(createVerifiedHasher().sha256('syaocode')).toBe(coreSha256Hex('syaocode'));
+    expect(createVerifiedHasher().sha256('liwencode')).toBe(coreSha256Hex('liwencode'));
   });
 
   it('is injected into the node runtime', () => {
@@ -48,7 +48,7 @@ describe('node host · hasher adapter (C6)', () => {
 
 describe('node host · FileEventSink (C3)', () => {
   it('persists only governance-relevant events by default', async () => {
-    const dir = tempDir('syao-events-');
+    const dir = tempDir('liwen-events-');
     const runtime = nodeRuntime();
     try {
       const path = join(dir, 'events.jsonl');
@@ -71,7 +71,7 @@ describe('node host · FileEventSink (C3)', () => {
   });
 
   it('can persist the full stream and serializes concurrent writes', async () => {
-    const dir = tempDir('syao-events-all-');
+    const dir = tempDir('liwen-events-all-');
     const runtime = nodeRuntime();
     try {
       const path = join(dir, 'all.jsonl');
@@ -89,7 +89,7 @@ describe('node host · FileEventSink (C3)', () => {
 
 describe('node host · file-backed stores', () => {
   it('task store round-trips and finds unterminated work', async () => {
-    const dir = tempDir('syao-tasks-');
+    const dir = tempDir('liwen-tasks-');
     const runtime = nodeRuntime();
     try {
       const store = createFileTaskStore<TaskRecord>({ runtime, dir });
@@ -113,7 +113,7 @@ describe('node host · file-backed stores', () => {
   });
 
   it('budget store keeps accounts and reservations apart', async () => {
-    const dir = tempDir('syao-budget-');
+    const dir = tempDir('liwen-budget-');
     const runtime = nodeRuntime();
     try {
       const store = createFileBudgetStore<
@@ -135,7 +135,7 @@ describe('node host · file-backed stores', () => {
   });
 
   it('idempotency store replays, refuses conflicts and allows retry after failure', async () => {
-    const dir = tempDir('syao-idem-');
+    const dir = tempDir('liwen-idem-');
     const runtime = nodeRuntime();
     try {
       const store = createFileIdempotencyStore<{
@@ -163,7 +163,7 @@ describe('node host · file-backed stores', () => {
   });
 
   it('audit store appends a verifiable SHA-256 chain per tenant', async () => {
-    const dir = tempDir('syao-audit-');
+    const dir = tempDir('liwen-audit-');
     const runtime = nodeRuntime();
     try {
       const store = createFileAuditStore<{
@@ -207,14 +207,14 @@ describe('node host · secret references (BR-023)', () => {
   });
 
   it('resolves from the environment and from a file', async () => {
-    const dir = tempDir('syao-secret-');
+    const dir = tempDir('liwen-secret-');
     const runtime = nodeRuntime();
     try {
       const path = join(dir, 'token');
       await runtime.fs.writeFile(path, 'file-secret\n');
-      const envRuntime = { ...runtime, env: { get: (n: string) => (n === 'SYAO_TOKEN' ? 'env-secret' : undefined) } };
+      const envRuntime = { ...runtime, env: { get: (n: string) => (n === 'LIWEN_TOKEN' ? 'env-secret' : undefined) } };
       const resolver = createSecretResolver({ runtime: envRuntime });
-      expect(await resolver.resolve('env:SYAO_TOKEN')).toBe('env-secret');
+      expect(await resolver.resolve('env:LIWEN_TOKEN')).toBe('env-secret');
       expect(await resolver.resolve(`file:${path}`)).toBe('file-secret');
       expect(resolver.canResolve('literal-value')).toBe(false);
     } finally {
@@ -233,10 +233,10 @@ describe('node host · secret references (BR-023)', () => {
 
 describe('node host · file permission store (C5)', () => {
   it('round-trips remembered project rules and tolerates a corrupt file', async () => {
-    const dir = tempDir('syao-perm-');
+    const dir = tempDir('liwen-perm-');
     const runtime = nodeRuntime();
     try {
-      const path = join(dir, '.syaocode', 'permissions.json');
+      const path = join(dir, '.liwencode', 'permissions.json');
       const store = createFilePermissionStore(runtime, path);
       expect(await store.load()).toEqual([]);
       const rule = { effect: 'allow' as const, tool: 'write', source: 'user' as const, match: { path: 'a.ts' } };

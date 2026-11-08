@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { PermissionEngine, ToolRegistry } from '@syaocode/core';
+import { PermissionEngine, ToolRegistry } from '@liwencode/core';
 import { createFabric } from '../src/runtime/fabric.js';
 import { CanonicalError } from '../src/ir/errors.js';
 import type { AdapterCapabilities, AdapterContext, AuthorizedInvocation, InvokeResultPayload, ProtocolAdapter } from '../src/governance/contracts.js';

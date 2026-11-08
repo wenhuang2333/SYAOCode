@@ -18,7 +18,7 @@ import {
   type SessionDelta,
   type SessionMeta,
   type SessionSnapshot,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 
 export type StoreListener = (snapshot: SessionSnapshot) => void;
 

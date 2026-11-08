@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { GRID_HEIGHT, gridWidth, textToPoints } from '../src/tui/font5x7';
 
 describe('tui/font5x7 点阵字形', () => {
-  it('SYAO CODE 点阵坐标在边界内', () => {
-    const text = 'SYAO CODE';
+  it('LIWEN CODE 点阵坐标在边界内', () => {
+    const text = 'LIWEN CODE';
     const points = textToPoints(text);
     // 9 个字符（含 1 个空格）× 每字最多 5×7=35 点，至少应有实质数量
     expect(points.length).toBeGreaterThan(120);
@@ -12,13 +12,13 @@ describe('tui/font5x7 点阵字形', () => {
       expect(p.col).toBeLessThan(gridWidth(text));
       expect(p.row).toBeGreaterThanOrEqual(0);
       expect(p.row).toBeLessThan(GRID_HEIGHT);
-      expect('SYAOCODE '.includes(p.ch)).toBe(true);
+      expect('LIWEN CODE'.includes(p.ch)).toBe(true);
     }
   });
 
   it('gridWidth = 字符数×6−1（含 1 列字间距）', () => {
-    expect(gridWidth('SYAO CODE')).toBe('SYAO CODE'.length * 6 - 1);
-    expect(gridWidth('SYAO CODE')).toBe(9 * 6 - 1);
+    expect(gridWidth('LIWEN CODE')).toBe('LIWEN CODE'.length * 6 - 1);
+    expect(gridWidth('LIWEN CODE')).toBe(10 * 6 - 1);
     expect(gridWidth('L')).toBe(5);
   });
 
@@ -30,6 +30,6 @@ describe('tui/font5x7 点阵字形', () => {
   });
 
   it('同一字形确定性（两次渲染一致）', () => {
-    expect(textToPoints('SYAO CODE')).toEqual(textToPoints('SYAO CODE'));
+    expect(textToPoints('LIWEN CODE')).toEqual(textToPoints('LIWEN CODE'));
   });
 });

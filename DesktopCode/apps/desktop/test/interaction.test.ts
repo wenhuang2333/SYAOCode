@@ -75,7 +75,7 @@ describe('流式对话的真实窗口验证（N-18）', () => {
   });
 
   it('保留成功路径截图，便于人眼复核真实界面', () => {
-    expect(script).toContain('syao-interaction.png');
+    expect(script).toContain('liwen-interaction.png');
     expect(script).toContain('截图');
   });
 });

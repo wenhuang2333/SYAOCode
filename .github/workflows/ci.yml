@@ -34,7 +34,7 @@ jobs:
       - run: corepack pnpm test:evals
       # The kernel's coverage thresholds (03 §7.1) are enforced here: the audit
       # found the >=85% target was unverifiable because no tooling existed.
-      - run: corepack pnpm --filter @syaocode/rpc run test:coverage
+      - run: corepack pnpm --filter @liwencode/rpc run test:coverage
       # Real child processes sharing one tenant directory (06 §11.2). This is
       # the only job that proves the write lease actually excludes across
       # processes; it is separate so a flake here is visible on its own.

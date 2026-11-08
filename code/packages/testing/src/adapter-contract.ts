@@ -7,8 +7,8 @@ import { describe, expect, it } from 'vitest';
  * governance invariants, so the SAME suite runs against each adapter — the
  * analogue of `defineProviderContract` for protocol adapters.
  *
- * Deliberately structural: `@syaocode/testing` depends on `@syaocode/core`
- * only, so this file never imports `@syaocode/rpc` types. A fixture supplies
+ * Deliberately structural: `@liwencode/testing` depends on `@liwencode/core`
+ * only, so this file never imports `@liwencode/rpc` types. A fixture supplies
  * closures and the harness asserts the *behaviour* described by the design
  * doc, not the shape of any particular adapter class.
  */

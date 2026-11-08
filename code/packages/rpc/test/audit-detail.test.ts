@@ -19,7 +19,7 @@ import {
 import { RecordingRedactor } from '../src/governance/redactor-bridge.js';
 import { canonicalJson } from '../src/ir/schemas.js';
 import { deterministicIds } from '../src/ir/ids.js';
-import { sha256Hex } from '@syaocode/core';
+import { sha256Hex } from '@liwencode/core';
 import type { AuditEvent, AuditDetailSidecar } from '../src/ir/types.js';
 
 const TENANT = 'ten_a';
@@ -43,7 +43,7 @@ function baseEvent(
   return {
     ts: NOW,
     tenantId: TENANT,
-    actor: { type: 'agent', id: 'prn_syao' },
+    actor: { type: 'agent', id: 'prn_liwen' },
     action: 'invocation.allowed',
     subject: { type: 'capability', id: 'mcp://github/tool/create_issue' },
     outcome: 'success',

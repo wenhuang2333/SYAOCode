@@ -14,7 +14,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { nodeRuntime } from '@syaocode/node';
+import { nodeRuntime } from '@liwencode/node';
 import {
   CommandDeniedError,
   MAX_COMMAND_OUTPUT_BYTES,

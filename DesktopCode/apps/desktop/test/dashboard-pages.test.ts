@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { EMPTY_USAGE, type ChannelInfo, type UsageReport, type UsageTotals } from '@syaocode/dhp';
+import { EMPTY_USAGE, type ChannelInfo, type UsageReport, type UsageTotals } from '@liwencode/dhp';
 import {
   UsagePage, cacheHitRate, cacheCoverage, channelRequestHealth, costCoverage, formatCompact,
   formatNumber, formatPercent, formatUsd, identifyDatePreset, localDateValue, presetUsageQuery, usageGroupColor, usageQueryForDates,

@@ -2,7 +2,7 @@
  * Purity gate (03 §7.3).
  *
  * `packages/protocols/src` must never import `node:` (all IO goes through the
- * injected `@syaocode/core` Runtime) and must never call `Tool.execute` (the
+ * injected `@liwencode/core` Runtime) and must never call `Tool.execute` (the
  * dispatcher is the only path to a side effect).
  *
  * This test only reads files; `node:fs` is fine here because it is test code.
@@ -59,7 +59,7 @@ describe('purity', () => {
       // allowed; a raw Tool handle is not.
       if (/\bTool\.execute\b/.test(text)) offenders.push(`${file}: Tool.execute`);
       if (/\btool\.execute\s*\(/.test(text)) offenders.push(`${file}: tool.execute`);
-      if (/from\s+['"]@syaocode\/tools/.test(text)) offenders.push(`${file}: imports @syaocode/tools`);
+      if (/from\s+['"]@liwencode\/tools/.test(text)) offenders.push(`${file}: imports @liwencode/tools`);
       if (/from\s+['"][^'"]*core\/src\/agent\.js/.test(text)) offenders.push(`${file}: imports core/src/agent`);
     }
     expect(offenders).toEqual([]);

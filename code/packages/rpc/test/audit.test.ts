@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { sha256Hex } from '@syaocode/core';
+import { sha256Hex } from '@liwencode/core';
 import { buildTestStores, fixedClock, sha256Hasher, T0 } from './helpers.js';
 import { MemoryAuditStore, checkpointHashOf, recomputeAuditHash } from '../src/governance/audit.js';
 import { canonicalJson } from '../src/ir/schemas.js';
@@ -17,7 +17,7 @@ function baseEvent(overrides: Partial<Omit<AuditEvent, 'prevHash' | 'hash'>> = {
     id: '',
     ts: T0,
     tenantId: TENANT,
-    actor: { type: 'agent', id: 'prn_syao' },
+    actor: { type: 'agent', id: 'prn_liwen' },
     action: 'invocation.allowed',
     subject: { type: 'capability', id: 'mcp://github/tool/create_issue' },
     outcome: 'success',

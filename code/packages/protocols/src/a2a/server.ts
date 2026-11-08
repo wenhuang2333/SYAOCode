@@ -1,5 +1,5 @@
 /**
- * A2A 1.0.0 server — expose SYAOCode as an A2A agent.
+ * A2A 1.0.0 server — expose LIWENCode as an A2A agent.
  *
  * Enforced here:
  *   - PascalCase JSON-RPC method names, exactly as pinned (01 §2.2);
@@ -13,8 +13,8 @@
  *   - push notification configs answer `PushNotificationNotSupportedError`.
  */
 
-import type { Logger, Runtime } from '@syaocode/core';
-import { type CanonicalErrorShape, type DiscoveredCapability, type InvokeResultPayload } from '@syaocode/rpc';
+import type { Logger, Runtime } from '@liwencode/core';
+import { type CanonicalErrorShape, type DiscoveredCapability, type InvokeResultPayload } from '@liwencode/rpc';
 import { AdapterBase, type DuplexChannel } from '../shared/index.js';
 import { NO_RESPONSE, JsonRpcConnection, type JsonRpcHandlerResult, type JsonRpcId, type SseSink } from '../shared/jsonrpc.js';
 import {
@@ -413,7 +413,7 @@ export class A2aServer extends AdapterBase {
 
   // ── adapter-ish surface (the server is not a client adapter) ────────────
 
-  capabilities(): import('@syaocode/rpc').AdapterCapabilities {
+  capabilities(): import('@liwencode/rpc').AdapterCapabilities {
     return {
       protocol: 'a2a',
       version: this.version,

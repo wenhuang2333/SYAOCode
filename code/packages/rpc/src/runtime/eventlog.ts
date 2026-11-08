@@ -18,7 +18,7 @@
  * Host-agnostic: no `node:` imports, ids and the clock are injected.
  */
 
-import type { IdGenerator } from '@syaocode/core';
+import type { IdGenerator } from '@liwencode/core';
 import { newId } from '../ir/ids.js';
 import type { CanonicalEvent, Task } from '../ir/types.js';
 import type { EventLog } from '../governance/contracts.js';

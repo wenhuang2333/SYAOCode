@@ -2,7 +2,7 @@
  * Dependency-free hashing.
  *
  * `contentHash` (four FNV-1a lanes) is a fast, non-cryptographic digest used
- * for read-before-write state checks in @syaocode/tools. It must never be used
+ * for read-before-write state checks in @liwencode/tools. It must never be used
  * for the governance audit/evidence hash chain (report C6).
  *
  * `sha256Hex` is a real SHA-256, implemented in TypeScript so the kernel stays

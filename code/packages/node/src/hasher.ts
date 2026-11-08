@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
-import { sha256Hex, type Hasher } from '@syaocode/core';
+import { sha256Hex, type Hasher } from '@liwencode/core';
 
 /**
  * SHA-256 backed hasher adapter (report C6 / 03 §3.5).
  *
- * The kernel ships a dependency-free SHA-256 so `@syaocode/core` stays
+ * The kernel ships a dependency-free SHA-256 so `@liwencode/core` stays
  * host-agnostic; this adapter gives the host the platform implementation,
  * which is faster and shares the audit chain's digest with every other Node
- * tool. It is structurally identical to `@syaocode/rpc`'s `Hasher`, so a host
+ * tool. It is structurally identical to `@liwencode/rpc`'s `Hasher`, so a host
  * can inject the same object into both kernels.
  */
 export function createNodeHasher(): Hasher {
@@ -28,6 +28,6 @@ export const nodeHasher: Hasher = createNodeHasher();
  */
 export function createVerifiedHasher(): Hasher {
   const hasher = createNodeHasher();
-  const probe = 'syaocode-hash-probe';
+  const probe = 'liwencode-hash-probe';
   return hasher.sha256(probe) === sha256Hex(probe) ? hasher : { sha256: sha256Hex };
 }

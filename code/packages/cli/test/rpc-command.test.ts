@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { EXIT, type ProtocolAdapter } from '@syaocode/rpc';
+import { EXIT, type ProtocolAdapter } from '@liwencode/rpc';
 import { UsageError, parseArgs } from '../src/args';
 import { createCliFabric, type CliFabric } from '../src/arf';
 import { savePeer } from '../src/peers';
@@ -58,7 +58,7 @@ describe('parseArgs — ARF subcommands', () => {
   });
 });
 
-// ── `syao rpc ...` ────────────────────────────────────────────────────────
+// ── `liwen rpc ...` ────────────────────────────────────────────────────────
 
 describe('parseRpcCommand', () => {
   it('maps every documented subcommand onto a view', () => {
@@ -110,7 +110,7 @@ describe('parseRpcCommand', () => {
   });
 });
 
-// ── `syao call ...` ───────────────────────────────────────────────────────
+// ── `liwen call ...` ───────────────────────────────────────────────────────
 
 describe('parseCallCommand / resolveCallInput', () => {
   it('reads the capability id, the input and the json flag', () => {
@@ -138,14 +138,14 @@ describe('parseCallCommand / resolveCallInput', () => {
   });
 
   it('reads @file input from disk', () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'syao-input-')), 'in.json');
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-input-')), 'in.json');
     fs.writeFileSync(file, JSON.stringify({ hello: 'world' }));
     expect(resolveCallInput(`@${file}`)).toEqual({ hello: 'world' });
     expect(() => resolveCallInput(`@${file}.missing`)).toThrow(UsageError);
   });
 });
 
-// ── `syao mcp ...` ────────────────────────────────────────────────────────
+// ── `liwen mcp ...` ────────────────────────────────────────────────────────
 
 describe('parseMcpCommand', () => {
   it('parses list/add/remove/tools', () => {
@@ -173,7 +173,7 @@ describe('parseMcpCommand', () => {
   });
 });
 
-// ── `syao serve ...` ──────────────────────────────────────────────────────
+// ── `liwen serve ...` ──────────────────────────────────────────────────────
 
 describe('parseServeArgv / servePlan', () => {
   it('reads the protocol, the transport, the port and the host', () => {
@@ -225,9 +225,9 @@ describe('parseServeArgv / servePlan', () => {
   });
 
   it('reads the token from the environment, never from a file', () => {
-    expect(resolveServeToken({ SYAO_RPC_TOKEN: 'abc' })).toBe('abc');
+    expect(resolveServeToken({ LIWEN_RPC_TOKEN: 'abc' })).toBe('abc');
     expect(resolveServeToken({})).toBeUndefined();
-    expect(resolveServeToken({ SYAO_RPC_TOKEN: '' })).toBeUndefined();
+    expect(resolveServeToken({ LIWEN_RPC_TOKEN: '' })).toBeUndefined();
   });
 });
 
@@ -290,7 +290,7 @@ describe('JSON envelope', () => {
   });
 
   it('carries the canonical kind of a kernel error', async () => {
-    const { CanonicalError } = await import('@syaocode/rpc');
+    const { CanonicalError } = await import('@liwencode/rpc');
     const envelope = rpcErrorEnvelope('call', new CanonicalError({ kind: 'capability_not_found', message: 'nope' }));
     expect(envelope.error?.kind).toBe('capability_not_found');
     expect(envelope.error?.exitCode).toBe(EXIT.UNAVAILABLE);
@@ -305,7 +305,7 @@ describe('JSON envelope', () => {
 
 describe('rpcView — lazily mounts registered peers', () => {
   it('explains the policy for a registered (but not yet mounted) peer capability', async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-rpcview-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-rpcview-'));
     const cli: CliFabric = createCliFabric({ cwd: home, permissionMode: 'default', home, persist: false });
     try {
       savePeer('demo', { protocol: 'mcp', target: 'node noop.mjs', addedAt: Date.now() }, home);

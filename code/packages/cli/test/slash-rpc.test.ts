@@ -108,7 +108,7 @@ describe('commandDocs — the new commands are advertised', () => {
 describe('peer registry (the store behind /peer and /mcp)', () => {
   let home: string;
   beforeEach(() => {
-    home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-peers-'));
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-peers-'));
   });
   afterEach(() => {
     fs.rmSync(home, { recursive: true, force: true });
@@ -130,7 +130,7 @@ describe('peer registry (the store behind /peer and /mcp)', () => {
   it('refuses an unusable id and never stores a secret value', () => {
     expect(savePeer('bad id', { protocol: 'mcp', target: 'x', addedAt: 1 }, home)).toBe(false);
     savePeer('gh', { protocol: 'mcp', target: 'npx -y github-mcp', tokenEnv: 'GH_TOKEN', addedAt: 1 }, home);
-    const raw = fs.readFileSync(path.join(home, '.syaocode', 'config.json'), 'utf8');
+    const raw = fs.readFileSync(path.join(home, '.liwencode', 'config.json'), 'utf8');
     expect(raw).toContain('GH_TOKEN');
     expect(raw).not.toContain('ghp_');
   });

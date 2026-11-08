@@ -28,7 +28,7 @@
  * `contentHash`.
  */
 
-import type { IdGenerator } from '@syaocode/core';
+import type { IdGenerator } from '@liwencode/core';
 import { canonicalJson } from '../ir/schemas.js';
 import { newId } from '../ir/ids.js';
 import type {

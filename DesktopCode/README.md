@@ -1,6 +1,6 @@
-# SYAOCode Desktop
+# LIWENCode Desktop
 
-> SYAOCode 的桌面端实现。内核复用 `../code/` 的 `@syaocode/*` 包，**不改一行内核代码**。
+> LIWENCode 的桌面端实现。内核复用 `../code/` 的 `@liwencode/*` 包，**不改一行内核代码**。
 
 设计与规格文档仅在本地保留：`doc/DesktopDoc/` 与重构补充文档 `doc/newDesktopDoc/`，不随公开仓库发布。
 
@@ -16,14 +16,14 @@ Electron 主进程（壳）
    ▼
 Host（Node 进程）── DHP over WebSocket（127.0.0.1 + Bearer）──► 渲染层（React）
    │
-   └── @syaocode/core（agent 循环、权限、工具、会话）
+   └── @liwencode/core（agent 循环、权限、工具、会话）
 ```
 
 三条不变量：
 
 | 编号 | 不变量 | 落地位置 |
 | --- | --- | --- |
-| P1 | 渲染层不碰文件系统、不持密钥 | `apps/desktop/src/preload/index.ts`（窄桥）+ `@syaocode/ui` 零 `node:` 依赖 |
+| P1 | 渲染层不碰文件系统、不持密钥 | `apps/desktop/src/preload/index.ts`（窄桥）+ `@liwencode/ui` 零 `node:` 依赖 |
 | P2 | 治理状态只有一个所有者 | 单 Host 进程；`packages/host/src/session-registry.ts` |
 | P3 | 会话事实源只有一份 | Host 持有投影；客户端只读（`packages/client/src/projection-store.ts`） |
 
@@ -81,14 +81,29 @@ corepack pnpm package:mac
 
 ### 数据目录
 
-默认 `~/.syaocode`。桌面工作区、完整会话历史、渠道和请求账本保存在 `desktop/state-v1.json`，不迁移或修改 CLI JSONL。用 `SYAOCODE_HOME` 覆盖（**这是本项目实现的 OI-D-07**）：
+默认 `~/.liwencode`。桌面工作区、完整会话历史、渠道和请求账本保存在 `desktop/state-v2.json`（`state-v1.json` 只作为旧版备份保留，不迁移或修改 CLI JSONL）。用 `LIWENCODE_HOME` 覆盖（**这是本项目实现的 OI-D-07**）：
 
 ```bash
-SYAOCODE_HOME=/tmp/syao-test corepack pnpm dev:host
+LIWENCODE_HOME=/tmp/liwen-test corepack pnpm dev:host
 ```
 
-> 未设置 `SYAOCODE_HOME` 且 `os.homedir()` 为空时**直接报错**，不再静默回退到 `.`
+> 未设置 `LIWENCODE_HOME` 且 `os.homedir()` 为空时**直接报错**，不再静默回退到 `.`
 > ——旧行为会把会话写进当前工作目录，用户完全不会察觉。
+
+#### 旧目录迁移（SYAOCode → LIWENCode）
+
+改名把默认家园目录从 `~/.syaocode` 换成了 `~/.liwencode`。Host 启动时（**在打开状态存储之前**）会做一次安全迁移：
+
+| 情形 | 行为 |
+| --- | --- |
+| 新目录不存在、旧目录存在 | **复制**整棵旧目录到新目录（不是移动），旧目录原样保留，可随时降级回旧版本 |
+| 新目录已存在 | 新目录优先：不复制、不覆盖任何新内容（重复启动幂等） |
+| 复制失败 | 清理半成品（新目录不会被创建），**继续用旧目录**，并在日志里给出结构化告警 |
+| `SYAOCODE_HOME`（旧变量）仍被设置 | 仍然识别并提示废弃；`LIWENCODE_HOME` 优先 |
+
+复制成功后会在新目录写下迁移标记 `.migrated-from-syaocode.json`（时间、来源目录、工具版本、文件数与字节数）。运行时锁文件 `desktop/host.lock` 不搬——它是进程锁不是数据，带着它会让升级后的应用"状态被锁"而开不起来。
+
+旧目录候选顺序：`SYAOCODE_HOME` → 新目录同级的 `.syaocode` → 家目录下的 `.syaocode`（仅当新目录就在家目录内）。默认家目录场景下就是 `~/.syaocode` → `~/.liwencode`。
 
 ### 离线可用
 
@@ -107,9 +122,10 @@ corepack pnpm dev:host
 
 | 变量 | 作用 |
 | --- | --- |
-| `SYAOCODE_HOME` | 数据目录（默认 `~/.syaocode`） |
-| `SYAO_MODEL` | 覆盖模型（`provider:model`），优先级最高 |
-| `SYAO_PERMISSION_MODE` | 覆盖权限模式（`strict`/`default`/`acceptEdits`/`plan`/`bypass`） |
+| `LIWENCODE_HOME` | 数据目录（默认 `~/.liwencode`） |
+| `SYAOCODE_HOME` | **已废弃**：旧数据目录变量；未设 `LIWENCODE_HOME` 时仍然生效（并提示），同时作为旧目录迁移的来源候选 |
+| `LIWEN_MODEL` | 覆盖模型（`provider:model`），优先级最高 |
+| `LIWEN_PERMISSION_MODE` | 覆盖权限模式（`strict`/`default`/`acceptEdits`/`plan`/`bypass`） |
 | `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | provider 密钥 |
 | `DEEPSEEK_BASE_URL` / `OPENAI_BASE_URL` | 自定义端点 |
 
@@ -120,7 +136,7 @@ corepack pnpm dev:host
 | 能力 | 状态 |
 | --- | --- |
 | DHP 协议：46 个错误码、版本协商、命令信封六态 ACK、三条投影铁律 | 已实现，23 项测试 |
-| Host：会话/事件环/补洞、审批代理、配置分层、工作区围栏、MCP / Agent 群 / Git / 提交信息 | 已实现，269 项测试（含真实 WebSocket 端到端场景） |
+| Host：会话/事件环/补洞、审批代理、配置分层、工作区围栏、MCP / Agent 群 / Git / 提交信息 | 已实现，307 项测试（含真实 WebSocket 端到端场景、旧数据目录迁移） |
 | 客户端：连接、抖动重连、投影 store（断档重订阅、隔离过期会话 delta） | 已实现，11 项测试 |
 | UI：Markdown 时间线、Composer、审批卡片、状态栏、i18n | 已实现，9 项共享组件测试 |
 | 三栏工作台：多项目、多会话、搜索、归档恢复、模型与权限控制、文件预览 | 已实现；启动不自动创建会话，每个会话使用真实 cwd 和独立历史 |
@@ -153,7 +169,7 @@ corepack pnpm dev:host
 | 1 | `revision` 与 `snapshot.revision` 是两个字段，各自演化 | 客户端读到的 revision 与服务端不一致 → 所有写命令 `stale` | 单一真相：只用 `snapshot.revision` |
 | 2 | `applyDelta` 每来一条流式事件就 `revision += 1` | 用户正要点的那张审批卡，因为"期间来了 3 个字"变成 `stale` | revision 只守卫**命令级**状态，流式一致性交给 `seq` |
 | 3 | 内核 `session.end` 被当成"会话关闭" | 一轮结束就切断会话 → 多轮对话不可用 | 内核 `session.end` → DHP `turn.end`；`session.end` 只由 `session/close` 产生 |
-| 4 | `dhp` 包 import `@syaocode/core` | 浏览器打包时把内核（含 `node:`）一起拖进来 | DHP 与内核解耦，用结构化 `TextBlockLike` |
+| 4 | `dhp` 包 import `@liwencode/core` | 浏览器打包时把内核（含 `node:`）一起拖进来 | DHP 与内核解耦，用结构化 `TextBlockLike` |
 | 5 | `z.unknown()` 接受 `undefined` | 既无 `method` 也无 `result` 的畸形帧被当成"成功响应" | `.refine(o => 'result' in o)` |
 | 6 | `tool.receipt` 未纳入不可丢事件 | 证据链在 UI 侧断链 | 补入 + 测试断言 19 类事件全覆盖 |
 | 7 | 本 shell 里 `ELECTRON_RUN_AS_NODE=1` 是**全局设置** | `electron .` 直接以 Node 模式跑，`require('electron')` 返回 undefined，应用"静默不启动" | 启动脚本显式 `env -u ELECTRON_RUN_AS_NODE` |
@@ -169,8 +185,8 @@ corepack pnpm dev:host
 
 - `../code/` 是**只读的内核**。本目录通过 `link:../../../code/packages/*` 引用它。
 - 新增能力一律在 `DesktopCode/` 内实现；需要改内核的，先记入 `DesktopDoc/00-基线` §7.3 的缺口清单。
-- 本模块的 747 项测试独立运行，不能替代内核回归。
-- 2026-11-06 单独复测 `@syaocode/rpc`：21 个测试文件、325 项测试通过；本轮未修改内核。
+- 本模块的 767 项测试独立运行，不能替代内核回归。
+- 2026-11-06 单独复测 `@liwencode/rpc`：21 个测试文件、325 项测试通过；本轮未修改内核。
 
 ```bash
 cd ../code && corepack pnpm typecheck && corepack pnpm test

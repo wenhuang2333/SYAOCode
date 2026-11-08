@@ -1,15 +1,15 @@
-import { createAgent, rulesFromConfig, SyaoError, type Agent, type AgentEvent, type EndReason, type PermissionHandler, type RunSummary } from '@syaocode/core';
-import { nodeRuntime, createFileReceiptStore } from '@syaocode/node';
-import { createBuiltinTools } from '@syaocode/tools';
-import { createOpenAICompatibleProvider, createAnthropicProvider } from '@syaocode/providers';
-import { MockProvider } from '@syaocode/testing';
+import { createAgent, rulesFromConfig, LIWENError, type Agent, type AgentEvent, type EndReason, type PermissionHandler, type RunSummary } from '@liwencode/core';
+import { nodeRuntime, createFileReceiptStore } from '@liwencode/node';
+import { createBuiltinTools } from '@liwencode/tools';
+import { createOpenAICompatibleProvider, createAnthropicProvider } from '@liwencode/providers';
+import { MockProvider } from '@liwencode/testing';
 import type { CliArgs } from './args.js';
 import { resolvePermissionTier } from './args.js';
 import { buildCliContext } from './context.js';
 import { recordUsage } from './usage-store.js';
 import { resolveProvider } from './provider-select.js';
 import { cliCwd, cliModelSpec, createCliRedactor, loadCliConfig } from './effective-config.js';
-import { syaoHome } from './model-config.js';
+import { liwenHome } from './model-config.js';
 import { governanceReport, installMainPathGovernance } from './arf-main-path.js';
 
 /** BR-042 exit codes. */
@@ -58,7 +58,7 @@ export async function runPrint(args: CliArgs, prompt: string): Promise<number> {
   const provider = resolveProvider(args, { mockProvider: (script) => new MockProvider({ script }) }, { spec });
   const builtins = createBuiltinTools();
   const redactor = createCliRedactor();
-  const receipts = createFileReceiptStore(runtime, `${syaoHome()}/evidence`);
+  const receipts = createFileReceiptStore(runtime, `${liwenHome()}/evidence`);
 
   // ── ARF governance on the main path ─────────────────────────────────────
   // Every tool call of this run is a governed invocation: the kernel gates it,
@@ -74,7 +74,7 @@ export async function runPrint(args: CliArgs, prompt: string): Promise<number> {
     runtime,
     redactor,
     ...(config.limits.maxBudgetUsd !== undefined ? { maxBudgetUsd: config.limits.maxBudgetUsd } : {}),
-    taskLabel: `syao -p: ${prompt.slice(0, 120)}`,
+    taskLabel: `liwen -p: ${prompt.slice(0, 120)}`,
   });
 
   // Headless permission policy (BR-042): ask → deny with a clear note.
@@ -127,7 +127,7 @@ export async function runPrint(args: CliArgs, prompt: string): Promise<number> {
       emitEvent(r.value);
     }
   } catch (e) {
-    if (SyaoError.is(e)) {
+    if (LIWENError.is(e)) {
       stderr(redactor.redact(`error: ${e.code} ${e.message}`).text);
       exitCode = e.code === 'SY-CLI-002' || e.category === 'permission' ? EXIT_PERM : EXIT_ERROR;
     } else {

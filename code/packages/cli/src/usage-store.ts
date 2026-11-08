@@ -1,12 +1,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { projectHashOf, type Usage } from '@syaocode/core';
-import { syaoHome } from './model-config.js';
+import { projectHashOf, type Usage } from '@liwencode/core';
+import { liwenHome } from './model-config.js';
 
 /**
  * 工作区维度的用量/计费账本（/cost 的数据来源）。
  *
- * 存储：`~/.syaocode/usage/<projectHash>.json`。文件按工作区路径哈希分桶，
+ * 存储：`~/.liwencode/usage/<projectHash>.json`。文件按工作区路径哈希分桶，
  * 桶内再以**工作区绝对路径**为索引，因此哈希碰撞也不会串账；每个工作区累计
  * 请求数、输入/输出/缓存读写 token 与费用，并按 `provider:model` 分模型累计。
  * `/cost` 因此输出的是该工作区**跨会话**的累计值，而非本次会话。
@@ -58,7 +58,7 @@ export function modelUsageKey(provider: string, model: string): string {
 
 /** 账本文件路径（与 session 存储同样按路径哈希分桶） */
 export function usageFilePath(cwd: string, home?: string): string {
-  return path.join(syaoHome(home), 'usage', `${projectHashOf(cwd)}.json`);
+  return path.join(liwenHome(home), 'usage', `${projectHashOf(cwd)}.json`);
 }
 
 export function emptyWorkspaceUsage(cwd: string, now = Date.now()): WorkspaceUsage {

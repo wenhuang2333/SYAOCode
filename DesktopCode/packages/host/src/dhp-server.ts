@@ -5,7 +5,7 @@
  *  - 只绑回环地址；非回环必须显式配置 + 令牌，否则**拒启**（复用 `SY-SRV-002` 语义）
  *  - 令牌在**握手期**校验（`Authorization: Bearer`），不走 query string
  *  - 校验失败直接 401 并断开，**不回**业务错误、**不**泄漏原因
- *  - Origin 必须在允许列表内（打包态是 `syao-app://app`；开发态是 dev server）
+ *  - Origin 必须在允许列表内（打包态是 `liwen-app://app`；开发态是 dev server）
  */
 
 import { createServer, type IncomingMessage, type Server } from 'node:http';
@@ -29,7 +29,7 @@ import {
   type DhpCapability,
   type JsonRpcFrame,
   type JsonRpcRequest,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 
 export interface DhpHandlerContext {
   readonly connectionId: string;
@@ -267,7 +267,7 @@ export async function startDhpServer(opts: DhpServerOptions = {}): Promise<DhpSe
       safeSend(
         conn,
         success(request.id, {
-          hostName: 'syaocode-desktop-host',
+          hostName: 'liwencode-desktop-host',
           hostVersion: HOST_VERSION,
           dhpVersion: verdict.negotiated,
           capabilities: verdict.capabilities,
@@ -405,23 +405,23 @@ export function mapError(err: unknown): {
     };
   }
 
-  // 内核 `SyaoError`：带 `code` 字段（`SY-<域>-<序号>`）。
+  // 内核 `LIWENError`：带 `code` 字段（`SY-<域>-<序号>`）。
   const maybe = err as { code?: unknown; message?: unknown };
-  const syaoCode = typeof maybe.code === 'string' && /^SY-[A-Z]+-\d{3}$/.test(maybe.code) ? maybe.code : undefined;
-  if (syaoCode !== undefined) {
-    const kind = kindForSyaoCode(syaoCode);
+  const liwenCode = typeof maybe.code === 'string' && /^SY-[A-Z]+-\d{3}$/.test(maybe.code) ? maybe.code : undefined;
+  if (liwenCode !== undefined) {
+    const kind = kindForLIWENCode(liwenCode);
     // `invalid_request` / `internal` 走 JSON-RPC 标准码段，不占自定义段。
     if (kind === ('invalid_request' as never)) {
       return {
         code: -32602,
         message: typeof maybe.message === 'string' ? maybe.message : 'invalid request',
-        data: { kind: 'invalid_request', syaoCode },
+        data: { kind: 'invalid_request', liwenCode },
       };
     }
     return {
       code: codeForKind(kind),
       message: typeof maybe.message === 'string' ? maybe.message : 'kernel error',
-      data: { kind, syaoCode },
+      data: { kind, liwenCode },
     };
   }
 
@@ -433,7 +433,7 @@ export function mapError(err: unknown): {
 }
 
 /** 内核错误码 → DHP `kind`（`06` §10.4 的映射表，只保留高频项）。 */
-function kindForSyaoCode(code: string): Parameters<typeof codeForKind>[0] {
+function kindForLIWENCode(code: string): Parameters<typeof codeForKind>[0] {
   if (code.startsWith('SY-PERM-003')) return 'outside_workspace';
   if (code.startsWith('SY-PERM-')) return 'denied';
   if (code.startsWith('SY-PRV-')) return 'remote_error';

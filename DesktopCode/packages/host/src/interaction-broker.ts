@@ -14,8 +14,8 @@
  *     降级为 `once`（与 CLI 行为一致，见 `00` §6.4）。
  */
 
-import type { PermissionDecision, PermissionRequest, ToolRisk } from '@syaocode/core';
-import type { PendingInteraction } from '@syaocode/dhp';
+import type { PermissionDecision, PermissionRequest, ToolRisk } from '@liwencode/core';
+import type { PendingInteraction } from '@liwencode/dhp';
 
 /** 审批超时。内核侧是 10 分钟，这里留 30 秒余量，保证**我们**先超时。 */
 export const INTERACTION_TIMEOUT_MS = 9 * 60 * 1000;

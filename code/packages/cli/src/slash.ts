@@ -6,7 +6,7 @@
  * configured CLI language; command names and syntax tokens stay literal.
  */
 
-import type { PermissionMode } from '@syaocode/core';
+import type { PermissionMode } from '@liwencode/core';
 import { t } from './i18n/index.js';
 
 export interface SlashCommand {

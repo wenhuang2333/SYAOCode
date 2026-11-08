@@ -1,5 +1,5 @@
 /**
- * `syao serve` — expose the governance fabric over a protocol edge.
+ * `liwen serve` — expose the governance fabric over a protocol edge.
  *
  * Split in two so tests never open a socket:
  *
@@ -21,7 +21,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { stdin, stdout } from 'node:process';
-import type { Fabric, Principal } from '@syaocode/rpc';
+import type { Fabric, Principal } from '@liwencode/rpc';
 import { isLoopbackHost } from './arf.js';
 import { loadProtocolModule, mcpServerExecutor } from './edges.js';
 import { t } from './i18n/index.js';
@@ -57,7 +57,7 @@ export interface ServeIo {
  * a test can assert the refusal instead of the fake completion.
  */
 export const A2A_EXECUTION_UNSUPPORTED_MESSAGE =
-  'SYAOCode A2A edge accepts discovery and task bookkeeping but does not execute agent turns in this build; the task was recorded and cancelled rather than reported as completed.';
+  'LIWENCode A2A edge accepts discovery and task bookkeeping but does not execute agent turns in this build; the task was recorded and cancelled rather than reported as completed.';
 
 /**
  * The wire framing for one binding.
@@ -101,7 +101,7 @@ export function edgePath(protocol: ServeProtocol): string {
 
 /** The token the CLI would use, from the environment (never from a file). */
 export function resolveServeToken(env: Record<string, string | undefined> = process.env): string | undefined {
-  const raw = env.SYAO_RPC_TOKEN;
+  const raw = env.LIWEN_RPC_TOKEN;
   return raw !== undefined && raw !== '' ? raw : undefined;
 }
 
@@ -281,7 +281,7 @@ export async function mountServerEdge(
     ensureSession: ctx.ensureSession,
   };
 
-  const serverId = opts.serverId ?? 'syaocode';
+  const serverId = opts.serverId ?? 'liwencode';
   let close: () => Promise<void> = async () => {
     end();
   };
@@ -303,7 +303,7 @@ export async function mountServerEdge(
         runtime: mountOpts.runtime,
         channel,
         serverId,
-        serverInfo: { name: 'syaocode', version: '0.3.0-dev' },
+        serverInfo: { name: 'liwencode', version: '0.3.0-dev' },
         tools,
         executor: mcpServerExecutor(mountOpts),
       });
@@ -317,8 +317,8 @@ export async function mountServerEdge(
       const buildAgentCard = cardMod?.buildAgentCard as ((o: Record<string, unknown>) => unknown) | undefined;
       if (typeof buildAgentCard !== 'function') return undefined;
       const card = buildAgentCard({
-        name: 'syaocode',
-        description: 'SYAOCode governance fabric',
+        name: 'liwencode',
+        description: 'LIWENCode governance fabric',
         url: `http://127.0.0.1:${DEFAULT_PORTS.a2a}/`,
         version: '0.3.0-dev',
         capabilities: {},
@@ -388,7 +388,7 @@ export async function mountServerEdge(
         channel,
         clientId: serverId,
         gateway,
-        agentInfo: { name: 'syaocode', version: '0.3.0-dev' },
+        agentInfo: { name: 'liwencode', version: '0.3.0-dev' },
         // ACP is the editor edge: the turn runs through the governed agent
         // path, and the editor is the approval authority.
         ...(ctx.runTurn !== undefined ? { runTurn: ctx.runTurn } : {}),
@@ -524,7 +524,7 @@ export async function runServe(
     // stdio: the protocol messages own stdout, so the panel goes to stderr.
     io.err(`${servePanel(effective, { listening: true, endpoints: effective.endpoints }).join('\n')}\n`);
     const edge = await mountServerEdge(plan.protocol, ctx, {
-      serverId: deps.serverId ?? 'syaocode',
+      serverId: deps.serverId ?? 'liwencode',
       transport: plan.transport,
     });
     if (edge === undefined) return 7;
@@ -559,7 +559,7 @@ async function startHttpServer(
   const edge = plan.edgeUnavailable
     ? undefined
     : await mountServerEdge(plan.protocol, deps.ctx, {
-        serverId: deps.serverId ?? 'syaocode',
+        serverId: deps.serverId ?? 'liwencode',
         bufferStdout: false,
         transport: plan.transport,
       });
@@ -612,8 +612,8 @@ async function startHttpServer(
     if (activePlan.protocol !== 'a2a') return undefined;
     const base = `http://${activePlan.host}:${activePlan.port}`;
     return {
-      name: 'syaocode',
-      description: 'SYAOCode governance fabric (experimental preview)',
+      name: 'liwencode',
+      description: 'LIWENCode governance fabric (experimental preview)',
       version: '0.4.0-dev',
       supportedInterfaces: [
         {

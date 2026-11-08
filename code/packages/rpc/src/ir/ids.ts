@@ -7,7 +7,7 @@
  * deterministic and the kernel stays host-agnostic.
  */
 
-import type { IdGenerator } from '@syaocode/core';
+import type { IdGenerator } from '@liwencode/core';
 
 export const ID_PREFIX = {
   tenant: 'ten',
@@ -42,7 +42,7 @@ export function newId(ids: IdGenerator, kind: IdKind): string {
 
 /**
  * Deterministic id for tests and fixtures: `<prefix>_<kind>-<index>`.
- * Kept in the kernel (not in @syaocode/testing) so adapters can use it when
+ * Kept in the kernel (not in @liwencode/testing) so adapters can use it when
  * replaying recorded wire fixtures.
  */
 export function deterministicIds(start = 0): IdGenerator {

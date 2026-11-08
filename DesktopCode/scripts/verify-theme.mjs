@@ -6,7 +6,7 @@
  *
  * 用法：
  *   node scripts/verify-theme.mjs
- *   SYAO_PLAYWRIGHT=... SYAO_CHROMIUM=... node scripts/verify-theme.mjs
+ *   LIWEN_PLAYWRIGHT=... LIWEN_CHROMIUM=... node scripts/verify-theme.mjs
  *
  * 没装 Playwright / 起不了浏览器时跳过并以 0 退出，且绝不打印通过。
  */
@@ -16,9 +16,9 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PW = process.env['SYAO_PLAYWRIGHT'] ?? 'playwright';
-const EXE = process.env['SYAO_CHROMIUM'];
-const OUT = path.join(os.tmpdir(), `syao-theme-${Date.now().toString(36)}`);
+const PW = process.env['LIWEN_PLAYWRIGHT'] ?? 'playwright';
+const EXE = process.env['LIWEN_CHROMIUM'];
+const OUT = path.join(os.tmpdir(), `liwen-theme-${Date.now().toString(36)}`);
 mkdirSync(OUT, { recursive: true });
 
 const css = [
@@ -117,11 +117,11 @@ let chromium;
 try {
   ({ chromium } = await import(PW));
 } catch {
-  console.log('SKIP: playwright not installed. Set SYAO_PLAYWRIGHT to its index.mjs to run this check.');
+  console.log('SKIP: playwright not installed. Set LIWEN_PLAYWRIGHT to its index.mjs to run this check.');
   process.exit(0);
 }
 const browser = await chromium.launch(EXE === undefined ? {} : { executablePath: EXE }).catch((error) => {
-  console.log(`SKIP: cannot launch chromium (${error.message.split('\n')[0]}). Set SYAO_CHROMIUM to a browser binary.`);
+  console.log(`SKIP: cannot launch chromium (${error.message.split('\n')[0]}). Set LIWEN_CHROMIUM to a browser binary.`);
   process.exit(0);
 });
 

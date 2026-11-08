@@ -6,7 +6,7 @@
  * formatStatusLine 渲染为适配终端宽度的一行。
  */
 
-import type { AgentEventBody } from '@syaocode/core';
+import type { AgentEventBody } from '@liwencode/core';
 import { t } from '../i18n/index.js';
 import { displayWidth } from './width.js';
 

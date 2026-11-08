@@ -16,7 +16,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { createFabric, type PolicyRule } from '@syaocode/rpc';
+import { createFabric, type PolicyRule } from '@liwencode/rpc';
 import { a2aAdapter } from '../src/a2a/index.js';
 import { acpAdapter } from '../src/acp/index.js';
 import { mcpAdapter } from '../src/mcp/index.js';

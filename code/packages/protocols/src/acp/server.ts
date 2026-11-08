@@ -1,5 +1,5 @@
 /**
- * ACP v1 server — SYAOCode as an ACP **agent** (01 §2.3, 03 §5.3).
+ * ACP v1 server — LIWENCode as an ACP **agent** (01 §2.3, 03 §5.3).
  *
  * Implemented surface:
  *   - `initialize` — connection-level negotiation. `protocolVersion` is a
@@ -18,14 +18,14 @@
  * every reverse effect goes through the {@link ReverseInvokeGateway}.
  */
 
-import type { Logger, Runtime } from '@syaocode/core';
+import type { Logger, Runtime } from '@liwencode/core';
 import {
   ACP_ERROR_CODES,
   acpCapabilityId,
   type CanonicalErrorShape,
   type DiscoveredCapability,
   type InvokeResultPayload,
-} from '@syaocode/rpc';
+} from '@liwencode/rpc';
 import { AdapterBase, type DuplexChannel } from '../shared/index.js';
 import { JsonRpcConnection, type JsonRpcHandlerResult, type JsonRpcId } from '../shared/jsonrpc.js';
 import type { ReverseInvokeGateway } from '../shared/gateway.js';
@@ -466,7 +466,7 @@ export class AcpServer extends AdapterBase {
 
   // ── adapter-ish surface ─────────────────────────────────────────────────
 
-  capabilities(): import('@syaocode/rpc').AdapterCapabilities {
+  capabilities(): import('@liwencode/rpc').AdapterCapabilities {
     return {
       protocol: 'acp',
       version: String(ACP_PROTOCOL_VERSION),

@@ -34,10 +34,10 @@ export interface CliArgs {
   /**
    * Raw argv after an ARF subcommand (`rpc` / `call` / `mcp` / `serve`).
    * The sub-commands parse their own flags — the global parser stops here so
-   * `syao call x --input @f.json` never sees `--input`.
+   * `liwen call x --input @f.json` never sees `--input`.
    */
   subArgv: string[];
-  /** Overwrite an existing .syaocode/verify.json (syao verify init). */
+  /** Overwrite an existing .liwencode/verify.json (liwen verify init). */
   force?: boolean;
 }
 

@@ -1,13 +1,13 @@
 /**
  * CI guard for report E1 / 03 §7.3: the kernel and the Agent RPC kernel must
- * not import Node builtins. Host capabilities live in @syaocode/node and are
+ * not import Node builtins. Host capabilities live in @liwencode/node and are
  * injected through Runtime.
  *
  * Scanned packages:
- *   @syaocode/core       — the kernel (host-agnostic by ADR-03)
- *   @syaocode/rpc        — the governance kernel (03 §3.1: depends on core only)
- *   @syaocode/protocols  — protocol edges; Node IO must go through
- *                          @syaocode/node helpers, never `node:` directly
+ *   @liwencode/core       — the kernel (host-agnostic by ADR-03)
+ *   @liwencode/rpc        — the governance kernel (03 §3.1: depends on core only)
+ *   @liwencode/protocols  — protocol edges; Node IO must go through
+ *                          @liwencode/node helpers, never `node:` directly
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';

@@ -13,7 +13,7 @@
  * {@link acpOutcomeFromApproval} for ARF → ACP.
  */
 
-import type { ApprovalOption, ApprovalOptionKind, ApprovalOutcome, ApprovalSubject } from '@syaocode/rpc';
+import type { ApprovalOption, ApprovalOptionKind, ApprovalOutcome, ApprovalSubject } from '@liwencode/rpc';
 
 export type AcpPermissionOptionKind = 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always';
 

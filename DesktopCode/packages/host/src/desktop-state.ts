@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { Message } from '@syaocode/core';
+import type { Message } from '@liwencode/core';
 import type {
   AgentGroup,
   Artifact,
@@ -14,7 +14,7 @@ import type {
   SourceRef,
   UsageRecord,
   WorkspaceInfo,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 import { channelSchema, modelSpecSchema, nonnegative, permissionSchema, timestamp, titleSchema, z } from './workbench-validation.ts';
 
 export interface SavedSession {
@@ -291,7 +291,7 @@ export function repairHistory(messages: readonly Message[]): Message[] {
  * 迁移规则：
  *  1. 只有 v1 → 读入、补齐默认、写 v2、**保留 v1 备份**；
  *  2. v2 损坏 → 报错并保留原文件，不静默覆盖；
- *  3. v2 只在同一个 `SYAOCODE_HOME` 内生效。
+ *  3. v2 只在同一个 `LIWENCODE_HOME` 内生效。
  */
 export class DesktopStateStore {
   readonly file: string;

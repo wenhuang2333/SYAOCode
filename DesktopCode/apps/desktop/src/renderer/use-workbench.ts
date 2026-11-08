@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DhpConnection, ProjectionStore, type WebSocketLike } from '@syaocode/client';
+import { DhpConnection, ProjectionStore, type WebSocketLike } from '@liwencode/client';
 import {
   FeatureMethod, Method, WorkbenchMethod, isSuccessfulStatus,
   type AckResult, type AgentsListResult, type AgentsSaveParams, type ChannelConfig, type ConfigGetResult, type DesktopOverview, type DesktopPermissionMode,
@@ -7,7 +7,7 @@ import {
   type GitRemotesResult, type GitStatusResult, type GitUploadResult, type McpAddParams, type McpServerInfo, type McpToolSummary,
   type SessionChangeDiffResult, type SessionChangesNotification, type SessionRunCommandResult, type SessionInspection, type SessionSnapshot, type UsageQuery, type UsageReport,
   type WorkspaceTreeResult, type WorkspaceReadFileResult,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 import { isSigningFailure, type GitCommitInput } from './git-sidebar';
 import { tv } from './i18n-views';
 import type { Lang } from './i18n';
@@ -36,7 +36,7 @@ interface Bridge {
   readonly events: { onHostCrashed(cb: (p: { stderrTail: string }) => void): () => void };
 }
 
-declare global { interface Window { readonly syao?: Bridge } }
+declare global { interface Window { readonly liwen?: Bridge } }
 
 /**
  * 命令信封（`27` §5.1）：`commandId` + `baseRevision`。
@@ -207,7 +207,7 @@ export function useWorkbench() {
       if (ticket !== selection.current) return;
       store.current?.replacement(next);
       setWorkspaceRoot(next.meta.workspaceRoot);
-      localStorage.setItem('syao:last-session', sid);
+      localStorage.setItem('liwen:last-session', sid);
       await request(Method.SessionSubscribe, { sessionId: sid, baseSeq: next.seq, epoch: next.epoch });
       if (ticket === selection.current) await inspect();
     } catch (e) {
@@ -218,7 +218,7 @@ export function useWorkbench() {
   }, [request, inspect]);
 
   useEffect(() => {
-    const bridge = window.syao;
+    const bridge = window.liwen;
     if (!bridge) { setStatus('error'); setError(tv(language, 'errors.desktopBridgeMissing')); return; }
     let disposed = false;
     let connection: DhpConnection | undefined;
@@ -243,7 +243,7 @@ export function useWorkbench() {
             if (disposed) return;
             setStatus(s === 'ready' ? 'ready' : s === 'closed' ? 'error' : s === 'reconnecting' ? 'reconnecting' : 'booting');
             // 冒烟探测：只有真正连上 Host 才算 ready。正常运行时该通道不存在，忽略即可。
-            if (s === 'ready') void window.syao?.smoke?.rendererReady().catch(() => undefined);
+            if (s === 'ready') void window.liwen?.smoke?.rendererReady().catch(() => undefined);
           },
           onSnapshot: (sid, s) => { if (!disposed && sid === active.current) projection.replacement(s); },
           onDelta: (sid, d) => {
@@ -270,7 +270,7 @@ export function useWorkbench() {
         if (disposed) return;
         const data = await refresh();
         if (disposed || !data) return;
-        const remembered = localStorage.getItem('syao:last-session');
+        const remembered = localStorage.getItem('liwen:last-session');
         const target = data.sessions.find((s) => !s.archived && s.sessionId === remembered) ?? data.sessions.find((s) => !s.archived);
         if (target) await selectSession(target.sessionId);
       } catch (e) {
@@ -554,7 +554,7 @@ export function useWorkbench() {
 
   /** 打开外部链接（主进程只放行 http(s)）：必须由用户手势触发。 */
   const openExternal = useCallback(async (url: string): Promise<boolean> => {
-    const bridge = window.syao?.app;
+    const bridge = window.liwen?.app;
     if (!bridge?.openExternal) return false;
     const result = await bridge.openExternal(url);
     return result === undefined ? true : result.opened;
@@ -562,21 +562,21 @@ export function useWorkbench() {
 
   /** 凭据写入（主进程窄桥，只写不读回）。 */
   const gitSetToken = useCallback(async (root: string, remote: string, url: string, token: string): Promise<void> => {
-    const bridge = window.syao?.git;
+    const bridge = window.liwen?.git;
     if (!bridge) throw new Error(tv(language, 'errors.noCredentialChannel'));
     await bridge.setToken({ workspaceRoot: root, remote, url, token });
     await gitRefresh(root);
   }, [gitRefresh]);
 
   const gitClearAuth = useCallback(async (root: string, remote: string, url: string): Promise<void> => {
-    const bridge = window.syao?.git;
+    const bridge = window.liwen?.git;
     if (!bridge) throw new Error(tv(language, 'errors.noCredentialChannelPlain'));
     await bridge.clear({ workspaceRoot: root, remote, url });
     await gitRefresh(root);
   }, [gitRefresh]);
 
   const gitUseSshAgent = useCallback(async (root: string, remote: string, url: string): Promise<void> => {
-    const bridge = window.syao?.git;
+    const bridge = window.liwen?.git;
     if (!bridge?.useSshAgent) throw new Error(tv(language, 'errors.noSshCredentialChannel'));
     await bridge.useSshAgent({ workspaceRoot: root, remote, url });
     await gitRefresh(root);
@@ -656,7 +656,7 @@ export function useWorkbench() {
   }), [perform, workspaceRoot, request, refresh, selectSession]);
 
   const openWorkspace = useCallback(() => perform(async () => {
-    const path = await window.syao?.app.openDirectory();
+    const path = await window.liwen?.app.openDirectory();
     if (!path) return;
     const result = await request<{ workspaceRoot: string }>(Method.WorkspaceOpen, { path });
     await refresh();

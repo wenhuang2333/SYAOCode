@@ -1,7 +1,7 @@
 {
-  "name": "@syaocode/node",
+  "name": "@liwencode/node",
   "version": "0.2.0-dev",
-  "description": "SYAOCode Node.js host: filesystem, shell, HTTP, clock and id runtime",
+  "description": "LIWENCode Node.js host: filesystem, shell, HTTP, clock and id runtime",
   "type": "module",
   "license": "Apache-2.0",
   "sideEffects": false,
@@ -15,7 +15,7 @@
     "prepublishOnly": "pnpm run typecheck && pnpm run build"
   },
   "dependencies": {
-    "@syaocode/core": "workspace:*"
+    "@liwencode/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -27,7 +27,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wenhuang2333/SYAOCode.git"
+    "url": "git+https://github.com/wenhuang2333/LIWENCode.git"
   },
   "files": [
     "dist",

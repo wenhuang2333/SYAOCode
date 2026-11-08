@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { AgentGroup } from '@syaocode/dhp';
+import type { AgentGroup } from '@liwencode/dhp';
 import { AgentsService, AgentsServiceError } from '../src/agents-service.ts';
 
 const group = (name: string, roles: Record<'hyaki' | 'sota' | 'common', string>, extra: Partial<AgentGroup> = {}): AgentGroup => ({

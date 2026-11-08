@@ -14,19 +14,19 @@ const TENANT = 'ten_a';
 const AUDIENCE = 'arf:test';
 
 const alice: Principal = { id: 'prn_alice', kind: 'user', tenantId: TENANT, scopes: ['repo:read', 'repo:write'], trustTier: 'first_party' };
-const syao: Principal = { id: 'prn_syao', kind: 'agent', tenantId: TENANT, scopes: ['repo:read'], trustTier: 'verified' };
+const liwen: Principal = { id: 'prn_liwen', kind: 'agent', tenantId: TENANT, scopes: ['repo:read'], trustTier: 'verified' };
 
 function service(clock = fixedClock('2026-01-01T00:00:00.000Z')) {
   const identity = new LocalIdentityService({ hash: sha256Hasher(), ids: deterministicIds(), now: clock.now, audience: AUDIENCE, secret: 'test-secret' });
   identity.registerPrincipal(alice);
-  identity.registerPrincipal(syao);
+  identity.registerPrincipal(liwen);
   return { identity, clock };
 }
 
 function body(overrides: Partial<Omit<DelegationToken, 'signature' | 'id'>> = {}): Omit<DelegationToken, 'signature' | 'id'> {
   return {
     issuer: alice.id,
-    subject: syao.id,
+    subject: liwen.id,
     audience: AUDIENCE,
     scopes: ['repo:read'],
     constraints: { tenantId: TENANT, expiresAt: '2027-01-01T00:00:00.000Z', maxHops: 3 },
@@ -58,9 +58,9 @@ describe('authenticate', () => {
 
   it('accepts a registered bearer token', async () => {
     const { identity } = service();
-    identity.registerBearerToken('tok_1', syao);
+    identity.registerBearerToken('tok_1', liwen);
     const caller = await identity.authenticate({ kind: 'bearer', token: 'tok_1', tenantId: TENANT });
-    expect(caller.principal.id).toBe(syao.id);
+    expect(caller.principal.id).toBe(liwen.id);
   });
 
   it('rejects an unknown bearer token', async () => {
@@ -70,7 +70,7 @@ describe('authenticate', () => {
 
   it('rejects a bearer token presented for another tenant (I8)', async () => {
     const { identity } = service();
-    identity.registerBearerToken('tok_1', syao);
+    identity.registerBearerToken('tok_1', liwen);
     await expectCanonicalError(identity.authenticate({ kind: 'bearer', token: 'tok_1', tenantId: 'ten_b' }), 'unauthorized');
   });
 
@@ -78,7 +78,7 @@ describe('authenticate', () => {
     const { identity } = service();
     const token = await identity.issueDelegation(body());
     const caller = await identity.authenticate({ kind: 'delegation', token });
-    expect(caller.principal.id).toBe(syao.id);
+    expect(caller.principal.id).toBe(liwen.id);
     expect(caller.principal.tenantId).toBe(TENANT);
   });
 });
@@ -98,7 +98,7 @@ describe('delegation issue/verify', () => {
     const caller = await identity.verifyDelegation(token, AUDIENCE);
     // alice has repo:write, but the token only grants repo:read.
     expect(caller.principal.scopes).toEqual(['repo:read']);
-    expect(caller.delegationChain).toEqual([alice.id, syao.id]);
+    expect(caller.delegationChain).toEqual([alice.id, liwen.id]);
   });
 
   it('binds the token to its audience', async () => {
@@ -106,7 +106,7 @@ describe('delegation issue/verify', () => {
     const token = await identity.issueDelegation(body({ audience: 'arf:other' }));
     await expectCanonicalError(identity.verifyDelegation(token, AUDIENCE), 'unauthorized', /audience/);
     const ok = await identity.verifyDelegation(token, 'arf:other');
-    expect(ok.principal.id).toBe(syao.id);
+    expect(ok.principal.id).toBe(liwen.id);
   });
 
   it('rejects an expired token', async () => {
@@ -157,7 +157,7 @@ describe('monotonic shrinking', () => {
     const child = await identity.issueDelegation(body({ parentTokenId: parent.id, scopes: ['repo:read'] }));
     expect(child.scopes).toEqual(['repo:read']);
     const caller = await identity.verifyDelegation(child, AUDIENCE);
-    expect(caller.delegationChain).toEqual([alice.id, syao.id, syao.id]);
+    expect(caller.delegationChain).toEqual([alice.id, liwen.id, liwen.id]);
   });
 
   it('rejects a child that outlives its parent', async () => {
@@ -230,7 +230,7 @@ describe('monotonic shrinking', () => {
     const first = await identity.issueDelegation(body());
     const second = await identity.issueDelegation(body({ parentTokenId: first.id, subject: 'prn_third' }));
     const caller = await identity.verifyDelegation(second, AUDIENCE);
-    expect(caller.delegationChain).toEqual([alice.id, syao.id, 'prn_third']);
+    expect(caller.delegationChain).toEqual([alice.id, liwen.id, 'prn_third']);
   });
 
   it('falls back to a two-hop chain for a token with an unknown parent', async () => {
@@ -240,7 +240,7 @@ describe('monotonic shrinking', () => {
     const fresh = service().identity;
     const token = await fresh.issueDelegation(body());
     const caller = await fresh.verifyDelegation(token, AUDIENCE);
-    expect(caller.delegationChain).toEqual([alice.id, syao.id]);
+    expect(caller.delegationChain).toEqual([alice.id, liwen.id]);
     expect(orphan.parentTokenId).toBe('dgt_elsewhere');
   });
 });

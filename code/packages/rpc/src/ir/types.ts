@@ -37,7 +37,7 @@ export type PrincipalKind = 'user' | 'agent' | 'service' | 'anonymous';
 export type TrustTier = 'first_party' | 'verified' | 'untrusted';
 
 export interface Principal {
-  /** `user:alice` / `agent:syao` / `service:ci`. */
+  /** `user:alice` / `agent:liwen` / `service:ci`. */
   id: string;
   kind: PrincipalKind;
   tenantId: string;

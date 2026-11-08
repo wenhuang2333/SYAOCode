@@ -3,10 +3,10 @@
  *
  * The CLI used to have two parallel worlds:
  *
- *   - the agent path (`syao -p`, TUI, REPL): core's pipeline gated the call
+ *   - the agent path (`liwen -p`, TUI, REPL): core's pipeline gated the call
  *     with the local `PermissionEngine` and ran the tool directly — no kernel
  *     receipt, no audit link, no budget reservation;
- *   - the governance path (`syao serve|call|rpc`, `/rpc`, `/call`): every call
+ *   - the governance path (`liwen serve|call|rpc`, `/rpc`, `/call`): every call
  *     went through the kernel.
  *
  * `installMainPathGovernance` joins them. It registers the agent's own tools
@@ -22,9 +22,9 @@
  * `/call` and `/approve` read the SAME evidence chain the agent produced.
  */
 
-import { PermissionEngine, ToolRegistry, type PermissionMode, type PermissionRule, type PermissionSubject, type Runtime, type Tool } from '@syaocode/core';
-import type { SecretRedactor } from '@syaocode/rpc';
-import type { FileStateTracker } from '@syaocode/tools';
+import { PermissionEngine, ToolRegistry, type PermissionMode, type PermissionRule, type PermissionSubject, type Runtime, type Tool } from '@liwencode/core';
+import type { SecretRedactor } from '@liwencode/rpc';
+import type { FileStateTracker } from '@liwencode/tools';
 import { createCliFabric, installCliFabric, releaseCliFabric, type CliFabric } from './arf.js';
 import {
   ArfToolGovernor,
@@ -55,7 +55,7 @@ export interface MainPathGovernanceOptions {
   /** Label of the kernel task that groups the session's invocations. */
   taskLabel?: string;
   /**
-   * Persist governance records under `~/.syaocode/arf/<tenant>/`.
+   * Persist governance records under `~/.liwencode/arf/<tenant>/`.
    *
    * Defaults to ON for the real CLI. A test MUST pass `false`: persistence is
    * a cross-process lease over one directory, so two test files sharing the
@@ -203,7 +203,7 @@ export interface GovernanceReport {
 /**
  * The evidence one main-path run left in the kernel.
  *
- * `syao -p --output-format json` reports it, so a script can prove that a
+ * `liwen -p --output-format json` reports it, so a script can prove that a
  * normal run produced receipts, audit links and budget reservations without
  * reaching into the process (the same data `/rpc audit` and `/rpc budget`
  * render in the TUI).

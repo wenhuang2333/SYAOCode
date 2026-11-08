@@ -1,9 +1,10 @@
 import * as fs from 'node:fs';
 import { parseModelSpec } from './provider-select.js';
+import { userConfigPath } from './model-config.js';
 import { t } from './i18n/index.js';
 
 /**
- * syao doctor (FR-173): runs with NO provider keys. Checks Node version,
+ * liwen doctor (FR-173): runs with NO provider keys. Checks Node version,
  * workspace writability, config presence and provider env references —
  * printing only whether keys are *set*, never their values (BR-023).
  */
@@ -28,7 +29,7 @@ export function runDoctor(cwd: string): DoctorCheck[] {
   checks.push({ name: 'workspace', status: 'ok', detail: cwd });
 
   try {
-    const probe = `${cwd}/.syaocode-doctor-probe`;
+    const probe = `${cwd}/.liwencode-doctor-probe`;
     fs.writeFileSync(probe, '');
     fs.unlinkSync(probe);
     checks.push({ name: 'workspace-writable', status: 'ok', detail: t('doctor.writableOk') });
@@ -40,8 +41,8 @@ export function runDoctor(cwd: string): DoctorCheck[] {
     });
   }
 
-  const userConfig = `${process.env.HOME ?? ''}/.syaocode/config.json`;
-  const projectConfig = `${cwd}/.syaocode/config.json`;
+  const userConfig = userConfigPath();
+  const projectConfig = `${cwd}/.liwencode/config.json`;
   const userConfigExists = fs.existsSync(userConfig);
   const projectConfigExists = fs.existsSync(projectConfig);
   checks.push({

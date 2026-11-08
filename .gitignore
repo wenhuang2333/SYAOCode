@@ -23,6 +23,8 @@
 node_modules/
 dist/
 coverage/
+__pycache__/
+*.pyc
 *.tsbuildinfo
 
 # 机密与本地状态
@@ -30,7 +32,7 @@ coverage/
 .env.*
 *.log
 .DS_Store
-.syaocode/local.json
+.liwencode/local.json
 sessions/
 
 # 含明文密钥的本地凭据文件（**绝不**入库）

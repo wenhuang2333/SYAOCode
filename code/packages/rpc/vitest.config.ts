@@ -7,7 +7,7 @@ import { defineConfig } from 'vitest/config';
  * coverage tooling. The threshold is enforced here so a change that stops
  * exercising a branch fails the gate instead of quietly lowering it.
  *
- * Run with: corepack pnpm --filter @syaocode/rpc run test:coverage
+ * Run with: corepack pnpm --filter @liwencode/rpc run test:coverage
  */
 export default defineConfig({
   test: {

@@ -3,7 +3,7 @@
  *
  * 安全姿态（`13-安全与隐私设计` §4）：
  *  - `contextIsolation: true` + `sandbox: true`：渲染层碰不到 Node
- *  - 只暴露 `window.syao` 这一个对象，且每个方法都是**窄接口**
+ *  - 只暴露 `window.liwen` 这一个对象，且每个方法都是**窄接口**
  *  - 令牌不进入渲染层，由主进程注入本地 WebSocket 请求头
  *
  * 这里**不**提供任何文件系统 / 子进程能力。
@@ -12,7 +12,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 
-export interface SyaoBridge {
+export interface LIWENBridge {
   readonly host: {
     /** Host 的公开连接信息，不含令牌。 */
     info(): Promise<{ port: number; workspaceRoot: string }>;
@@ -72,7 +72,7 @@ export interface SyaoBridge {
   };
 }
 
-const bridge: SyaoBridge = {
+const bridge: LIWENBridge = {
   host: {
     info: () => ipcRenderer.invoke('host:info') as Promise<{ port: number; workspaceRoot: string }>,
   },
@@ -122,4 +122,4 @@ const bridge: SyaoBridge = {
   },
 };
 
-contextBridge.exposeInMainWorld('syao', bridge);
+contextBridge.exposeInMainWorld('liwen', bridge);

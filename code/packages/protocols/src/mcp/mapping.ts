@@ -12,7 +12,7 @@
  *   - `ToolAnnotations` are untrusted hints and never widen permissions (G8).
  */
 
-import { mcpCapabilityId, mcpToolName, type CapabilityKind, type DiscoveredCapability, type Risk } from '@syaocode/rpc';
+import { mcpCapabilityId, mcpToolName, type CapabilityKind, type DiscoveredCapability, type Risk } from '@liwencode/rpc';
 
 // ── wire shapes ───────────────────────────────────────────────────────────
 

@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { chainHash } from '@syaocode/core';
+import { chainHash } from '@liwencode/core';
 import { buildTestStores, fixedClock, makeApproval, makeReceipt, makeTask, T0, T1, T2 } from './helpers.js';
 import { MemoryReceiptStore, HashChainEvidenceSealer, GENESIS_HASH, receiptBody, recomputeReceiptHash } from '../src/governance/receipts.js';
 import { canonicalJson } from '../src/ir/schemas.js';

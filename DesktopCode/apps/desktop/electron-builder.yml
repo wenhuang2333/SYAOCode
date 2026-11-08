@@ -1,5 +1,5 @@
-appId: app.syaocode.desktop
-productName: SYAOCode
+appId: app.liwencode.desktop
+productName: LIWENCode
 directories:
   output: release
 files:

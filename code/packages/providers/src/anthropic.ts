@@ -1,5 +1,5 @@
 import {
-  SyaoError,
+  LIWENError,
   mapHttpStatus,
   type Capabilities,
   type ContentBlock,
@@ -8,7 +8,7 @@ import {
   type ModelStreamEvent,
   type Provider,
   type Runtime,
-} from '@syaocode/core';
+} from '@liwencode/core';
 import { sseEvents } from './sse.js';
 
 /**
@@ -64,7 +64,7 @@ export function createAnthropicProvider(opts: AnthropicOptions): Provider {
           signal,
         });
       } catch (e) {
-        throw new SyaoError({ code: 'SY-PRV-003', message: e instanceof Error ? e.message : String(e), cause: e });
+        throw new LIWENError({ code: 'SY-PRV-003', message: e instanceof Error ? e.message : String(e), cause: e });
       }
       if (res.status !== 200) {
         const text = await res.text();
@@ -88,7 +88,7 @@ export function createAnthropicProvider(opts: AnthropicOptions): Provider {
         try {
           ev = JSON.parse(data);
         } catch {
-          throw new SyaoError({ code: 'SY-PRV-008', message: 'unparsable SSE chunk', details: { data: data.slice(0, 200) } });
+          throw new LIWENError({ code: 'SY-PRV-008', message: 'unparsable SSE chunk', details: { data: data.slice(0, 200) } });
         }
 
         switch (ev.type) {
@@ -163,7 +163,7 @@ export function createAnthropicProvider(opts: AnthropicOptions): Provider {
           case 'message_stop':
             break;
           case 'error':
-            throw new SyaoError({ code: 'SY-PRV-009', message: 'provider streamed an error event', details: { data: data.slice(0, 300) } });
+            throw new LIWENError({ code: 'SY-PRV-009', message: 'provider streamed an error event', details: { data: data.slice(0, 300) } });
           default:
             break;
         }

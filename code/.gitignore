@@ -1,10 +1,11 @@
 node_modules/
 dist/
 coverage/
+__pycache__/
 *.tsbuildinfo
 .env
 .env.*
 *.log
 .DS_Store
-.syaocode/local.json
+.liwencode/local.json
 sessions/

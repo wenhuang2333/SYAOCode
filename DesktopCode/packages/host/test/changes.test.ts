@@ -8,8 +8,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { nodeRuntime } from '@syaocode/node';
-import type { Tool, ToolContext, ToolOutput } from '@syaocode/core';
+import { nodeRuntime } from '@liwencode/node';
+import type { Tool, ToolContext, ToolOutput } from '@liwencode/core';
 import { createDesktopAgent } from '../src/agent-factory.ts';
 import {
   artifactKindFor,

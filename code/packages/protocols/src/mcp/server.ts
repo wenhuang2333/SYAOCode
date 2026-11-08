@@ -1,5 +1,5 @@
 /**
- * MCP server — expose SYAOCode as a modern (2026-07-28) MCP capability endpoint.
+ * MCP server — expose LIWENCode as a modern (2026-07-28) MCP capability endpoint.
  *
  * Server-side rules from 01 §2.1 that this file enforces:
  *   - **never initiate a request**: a need for input is expressed by returning
@@ -12,8 +12,8 @@
  *   - `ToolAnnotations` are re-published as untrusted hints only.
  */
 
-import type { Logger, Runtime } from '@syaocode/core';
-import { mcpCapabilityId, mcpToolName, type CanonicalErrorShape, type InvokeResultPayload } from '@syaocode/rpc';
+import type { Logger, Runtime } from '@liwencode/core';
+import { mcpCapabilityId, mcpToolName, type CanonicalErrorShape, type InvokeResultPayload } from '@liwencode/rpc';
 import { AdapterBase, mergeLossy, type DuplexChannel } from '../shared/index.js';
 import { NO_RESPONSE, JsonRpcConnection, type JsonRpcId, type JsonRpcHandlerResult } from '../shared/jsonrpc.js';
 import { MCP_ERROR_CODES, mcpError } from './errors.js';
@@ -219,7 +219,7 @@ export class McpServer extends AdapterBase {
       capabilities,
       ttlMs: this.options.ttlMs ?? 300_000,
       cacheScope: this.options.cacheScope ?? 'private',
-      serverInfo: this.options.serverInfo ?? { name: 'syaocode', version: '0.3.0-dev' },
+      serverInfo: this.options.serverInfo ?? { name: 'liwencode', version: '0.3.0-dev' },
     };
   }
 
@@ -227,7 +227,7 @@ export class McpServer extends AdapterBase {
     return {
       protocolVersion: this.supportedVersions()[0] ?? MCP_PROTOCOL_VERSION,
       capabilities: this.discoverResult()['capabilities'],
-      serverInfo: this.options.serverInfo ?? { name: 'syaocode', version: '0.3.0-dev' },
+      serverInfo: this.options.serverInfo ?? { name: 'liwencode', version: '0.3.0-dev' },
     };
   }
 
@@ -392,7 +392,7 @@ export class McpServer extends AdapterBase {
 
   // ── adapter surface ─────────────────────────────────────────────────────
 
-  capabilities(): import('@syaocode/rpc').AdapterCapabilities {
+  capabilities(): import('@liwencode/rpc').AdapterCapabilities {
     const supports = this.options.capabilities ?? {};
     return {
       protocol: 'mcp',

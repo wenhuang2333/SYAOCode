@@ -14,7 +14,7 @@
  * different capability is a conflict, not a replay.
  */
 
-import type { IdGenerator } from '@syaocode/core';
+import type { IdGenerator } from '@liwencode/core';
 import { canonicalJson } from '../ir/schemas.js';
 import type { CanonicalErrorShape, IdempotencyRecord, SideEffect } from '../ir/types.js';
 import type { Hasher, IdempotencyBegin, IdempotencyStore } from './contracts.js';

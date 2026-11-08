@@ -68,7 +68,7 @@ describe('i18n 目录完整性', () => {
 describe('语言持久化（/language 写入，下次启动生效）', () => {
   let home: string;
   beforeEach(() => {
-    home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-lang-'));
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-lang-'));
     setLanguage('en');
   });
   afterEach(() => {
@@ -80,14 +80,14 @@ describe('语言持久化（/language 写入，下次启动生效）', () => {
     expect(savedLanguage(home)).toBe('en');
     saveLanguage('zh', home);
     expect(savedLanguage(home)).toBe('zh');
-    const raw = JSON.parse(fs.readFileSync(path.join(home, '.syaocode', 'config.json'), 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(path.join(home, '.liwencode', 'config.json'), 'utf8'));
     expect(raw.language).toBe('zh');
     saveLanguage('en', home);
     expect(savedLanguage(home)).toBe('en');
   });
 
   it('保存语言不会覆盖其他配置（模型/权限档位）', () => {
-    const file = path.join(home, '.syaocode', 'config.json');
+    const file = path.join(home, '.liwencode', 'config.json');
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify({ model: { provider: 'mock', name: 'default' }, permissionMode: 'plan' }));
     saveLanguage('zh', home);
@@ -98,7 +98,7 @@ describe('语言持久化（/language 写入，下次启动生效）', () => {
   });
 
   it('未知/损坏的语言值回退英语', () => {
-    const file = path.join(home, '.syaocode', 'config.json');
+    const file = path.join(home, '.liwencode', 'config.json');
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify({ language: 'klingon' }));
     expect(savedLanguage(home)).toBe('en');

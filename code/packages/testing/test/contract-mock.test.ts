@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Message, Provider } from '@syaocode/core';
+import type { Message, Provider } from '@liwencode/core';
 import { MemoryRuntime, MockProvider, mockText, mockToolUse } from '../src';
 import { defineProviderContract } from '../src/contract';
 

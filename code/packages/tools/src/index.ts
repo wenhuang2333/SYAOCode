@@ -1,4 +1,4 @@
-import type { Tool } from '@syaocode/core';
+import type { Tool } from '@liwencode/core';
 import { FileStateTracker } from './file-state.js';
 import { createReadTool, createWriteTool, createEditTool } from './fs-tools.js';
 import { createGlobTool, createGrepTool } from './search-tools.js';

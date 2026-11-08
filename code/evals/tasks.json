@@ -14,12 +14,12 @@
     "id": "E02-write-new-file",
     "description": "Agent creates a new file",
     "seed": {},
-    "prompt": "Create hello.txt with the content 'hi syao'.",
+    "prompt": "Create hello.txt with the content 'hi liwen'.",
     "script": [
-      { "toolUse": { "id": "c1", "name": "write", "input": { "path": "hello.txt", "content": "hi syao" } } },
+      { "toolUse": { "id": "c1", "name": "write", "input": { "path": "hello.txt", "content": "hi liwen" } } },
       { "text": "Created hello.txt." }
     ],
-    "verify": { "fileEquals": { "path": "/ws/hello.txt", "content": "hi syao" } }
+    "verify": { "fileEquals": { "path": "/ws/hello.txt", "content": "hi liwen" } }
   },
   {
     "id": "E03-edit-unique-match",
@@ -72,12 +72,12 @@
     "id": "E07-bash-run-command",
     "description": "Agent runs a safe shell command through the permission pipeline",
     "seed": {},
-    "prompt": "Run echo syao-ok and report the output.",
+    "prompt": "Run echo liwen-ok and report the output.",
     "script": [
-      { "toolUse": { "id": "c1", "name": "bash", "input": { "command": "echo syao-ok" } } },
-      { "text": "Output was syao-ok." }
+      { "toolUse": { "id": "c1", "name": "bash", "input": { "command": "echo liwen-ok" } } },
+      { "text": "Output was liwen-ok." }
     ],
-    "verify": { "finalTextIncludes": "syao-ok" }
+    "verify": { "finalTextIncludes": "liwen-ok" }
   },
   {
     "id": "E08-bash-dangerous-refused",
@@ -106,11 +106,11 @@
   {
     "id": "E10-report-after-tools",
     "description": "Agent summarizes gathered info in its final message",
-    "seed": { "/ws/pkg.json": "{ \"name\": \"syaocode\", \"version\": \"0.1.0\" }\n" },
+    "seed": { "/ws/pkg.json": "{ \"name\": \"liwencode\", \"version\": \"0.1.0\" }\n" },
     "prompt": "What is the package name and version?",
     "script": [
       { "toolUse": { "id": "c1", "name": "read", "input": { "path": "pkg.json" } } },
-      { "text": "The package is syaocode at version 0.1.0." }
+      { "text": "The package is liwencode at version 0.1.0." }
     ],
     "verify": { "finalTextIncludes": "0.1.0" }
   }

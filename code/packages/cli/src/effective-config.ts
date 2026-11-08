@@ -1,21 +1,21 @@
-import { loadConfig, SyaoError, type PermissionMode, type PermissionRule, type Runtime, type SyaoConfig } from '@syaocode/core';
+import { loadConfig, LIWENError, type PermissionMode, type PermissionRule, type Runtime, type LIWENConfig } from '@liwencode/core';
 import * as path from 'node:path';
 import type { CliArgs } from './args.js';
 import { resolvePermissionTier } from './args.js';
-import { envFilePath, getProfile, parseEnvFile, syaoHome, userConfigPath } from './model-config.js';
+import { envFilePath, getProfile, parseEnvFile, userConfigPath } from './model-config.js';
 import type { ProviderSpec } from './provider-select.js';
 import { readFileSync } from 'node:fs';
-import { Redactor } from '@syaocode/core';
+import { Redactor } from '@liwencode/core';
 
 /**
  * One effective-config path for every CLI entry (report E2/E3/E4):
  * defaults (CLI's default tier) → user → project → env → CLI flags.
  * Interactive, TUI, -p/exec and `config` all use this instead of reading
- * `~/.syaocode/config.json` directly, so project policy and env overrides
+ * `~/.liwencode/config.json` directly, so project policy and env overrides
  * are finally visible to the permission engine.
  */
 
-export const CLI_BASE_CONFIG: Partial<SyaoConfig> = { permissionMode: 'default' };
+export const CLI_BASE_CONFIG: Partial<LIWENConfig> = { permissionMode: 'default' };
 
 export function cliCwd(args: Pick<CliArgs, 'cwd'>): string {
   return path.resolve(args.cwd ?? process.cwd());
@@ -41,13 +41,13 @@ export interface CliPolicy {
   allowedTools: string[];
   disallowedTools: string[];
   rules: PermissionRule[];
-  limits: Partial<SyaoConfig['limits']>;
+  limits: Partial<LIWENConfig['limits']>;
 }
 
 export async function loadCliConfig(
   args: EffectiveConfigArgs,
   runtime: Runtime,
-): Promise<SyaoConfig> {
+): Promise<LIWENConfig> {
   const cwd = cliCwd(args);
   const policy = args.policy !== undefined ? await readPolicy(runtime, cwd, args.policy) : undefined;
   const hasTierFlag = args.permissionMode !== undefined || args.si || args.yao;
@@ -59,7 +59,7 @@ export async function loadCliConfig(
       }).mode
     : (policy?.permissionMode ?? undefined);
   const model = argsModelSpec(args);
-  const code: Partial<SyaoConfig> = {
+  const code: Partial<LIWENConfig> = {
     rules: [
       ...(policy?.rules ?? []),
       ...(policy?.allowedTools ?? []).map((tool) => ({ effect: 'allow' as const, tool, source: 'user' as const })),
@@ -72,7 +72,7 @@ export async function loadCliConfig(
   };
   const config = await loadConfig({
     userPath: userConfigPath(),
-    projectPath: path.join(cwd, '.syaocode', 'config.json'),
+    projectPath: path.join(cwd, '.liwencode', 'config.json'),
     env: process.env,
     base: CLI_BASE_CONFIG,
     code,
@@ -94,33 +94,33 @@ export async function loadCliConfig(
 async function readPolicy(runtime: Runtime, cwd: string, pathOrName: string): Promise<CliPolicy> {
   const file = pathOrName.startsWith('/') ? pathOrName : path.join(cwd, pathOrName);
   const text = await runtime.fs.readFile(file).catch((e: unknown) => {
-    throw new SyaoError({ code: 'SY-CFG-001', message: `Cannot read policy file ${file}`, details: { file }, cause: e });
+    throw new LIWENError({ code: 'SY-CFG-001', message: `Cannot read policy file ${file}`, details: { file }, cause: e });
   });
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch (e) {
-    throw new SyaoError({ code: 'SY-CFG-001', message: `Policy file is not valid JSON: ${file}`, details: { file }, cause: e });
+    throw new LIWENError({ code: 'SY-CFG-001', message: `Policy file is not valid JSON: ${file}`, details: { file }, cause: e });
   }
   const obj = raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : undefined;
   if (obj === undefined) {
-    throw new SyaoError({ code: 'SY-CFG-001', message: 'Policy must be a JSON object', details: { file } });
+    throw new LIWENError({ code: 'SY-CFG-001', message: 'Policy must be a JSON object', details: { file } });
   }
   const modes: PermissionMode[] = ['strict', 'default', 'acceptEdits', 'plan', 'bypass'];
   if (obj.permissionMode !== undefined && !modes.includes(obj.permissionMode as PermissionMode)) {
-    throw new SyaoError({ code: 'SY-CFG-001', message: `Invalid permissionMode in policy: ${String(obj.permissionMode)}`, details: { file } });
+    throw new LIWENError({ code: 'SY-CFG-001', message: `Invalid permissionMode in policy: ${String(obj.permissionMode)}`, details: { file } });
   }
   const strings = (value: unknown): string[] => {
     if (value === undefined) return [];
     if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
-      throw new SyaoError({ code: 'SY-CFG-001', message: 'Policy tool lists must be arrays of strings', details: { file } });
+      throw new LIWENError({ code: 'SY-CFG-001', message: 'Policy tool lists must be arrays of strings', details: { file } });
     }
     return value as string[];
   };
   const rules: PermissionRule[] = [];
   if (obj.rules !== undefined) {
     if (!Array.isArray(obj.rules)) {
-      throw new SyaoError({ code: 'SY-CFG-001', message: 'Policy rules must be an array', details: { file } });
+      throw new LIWENError({ code: 'SY-CFG-001', message: 'Policy rules must be an array', details: { file } });
     }
     for (const item of obj.rules) {
       const rule = item !== null && typeof item === 'object' ? (item as Record<string, unknown>) : undefined;
@@ -130,7 +130,7 @@ async function readPolicy(runtime: Runtime, cwd: string, pathOrName: string): Pr
         typeof rule.tool !== 'string' ||
         (rule.source !== undefined && !['user', 'project', 'plugin', 'code'].includes(String(rule.source)))
       ) {
-        throw new SyaoError({ code: 'SY-CFG-001', message: 'Invalid rule in policy file', details: { file, rule: item } });
+        throw new LIWENError({ code: 'SY-CFG-001', message: 'Invalid rule in policy file', details: { file, rule: item } });
       }
       const match = rule.match !== null && typeof rule.match === 'object' ? (rule.match as Record<string, unknown>) : undefined;
       rules.push({
@@ -150,12 +150,12 @@ async function readPolicy(runtime: Runtime, cwd: string, pathOrName: string): Pr
     }
   }
   const limitsRaw = obj.limits !== null && typeof obj.limits === 'object' ? (obj.limits as Record<string, unknown>) : {};
-  const limits: Partial<SyaoConfig['limits']> = {};
+  const limits: Partial<LIWENConfig['limits']> = {};
   for (const key of ['maxTurns', 'maxBudgetUsd', 'maxTotalTokens', 'maxWallClockMs', 'timeoutMs'] as const) {
     const value = limitsRaw[key];
     if (value === undefined) continue;
     if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-      throw new SyaoError({ code: 'SY-CFG-001', message: `Invalid limits.${key} in policy`, details: { file } });
+      throw new LIWENError({ code: 'SY-CFG-001', message: `Invalid limits.${key} in policy`, details: { file } });
     }
     limits[key] = value as never;
   }
@@ -171,7 +171,7 @@ async function readPolicy(runtime: Runtime, cwd: string, pathOrName: string): Pr
 /** The model flag, else the layered config's model, else offline mock. */
 export function cliModelSpec(
   args: Pick<CliArgs, 'model'>,
-  config: Pick<SyaoConfig, 'model'>,
+  config: Pick<LIWENConfig, 'model'>,
 ): ProviderSpec {  if (args.model !== undefined && args.model !== '') {
     return parseModelFlag(args.model, config.model);
   }
@@ -181,7 +181,7 @@ export function cliModelSpec(
   return { provider: 'mock', model: 'default' };
 }
 
-function parseModelFlag(raw: string, configured: SyaoConfig['model']): ProviderSpec {
+function parseModelFlag(raw: string, configured: LIWENConfig['model']): ProviderSpec {
   if (raw.startsWith('@')) {
     const profile = getProfile(raw.slice(1));
     return { provider: raw, model: profile?.model ?? 'default' };
@@ -194,13 +194,13 @@ function parseModelFlag(raw: string, configured: SyaoConfig['model']): ProviderS
 
 function argsModelSpec(
   args: Pick<CliArgs, 'model'>,
-): SyaoConfig['model'] | undefined {
+): LIWENConfig['model'] | undefined {
   if (args.model === undefined || args.model === '') return undefined;
   const spec = parseModelFlag(args.model, undefined);
   return { provider: spec.provider, name: spec.model };
 }
 
-/** Redactor with every known secret value registered (env + ~/.syaocode/env). */
+/** Redactor with every known secret value registered (env + ~/.liwencode/env). */
 export function createCliRedactor(): Redactor {
   const redactor = new Redactor();
   const names = /(?:^|_)(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD)$/i;
@@ -210,7 +210,7 @@ export function createCliRedactor(): Redactor {
     }
   }
   try {
-    const entries = parseEnvFile(readFileSync(envFilePath(syaoHome()), 'utf8'));
+    const entries = parseEnvFile(readFileSync(envFilePath(), 'utf8'));
     for (const [name, value] of Object.entries(entries)) {
       if (value !== '') redactor.register(value, name.toLowerCase());
     }

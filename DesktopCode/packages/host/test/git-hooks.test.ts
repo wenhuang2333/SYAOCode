@@ -36,7 +36,7 @@ function git(cwd: string, args: readonly string[]): string {
 }
 
 async function makeRepo(): Promise<string> {
-  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'syao-hook-')));
+  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'liwen-hook-')));
   git(dir, ['init', '-q']);
   git(dir, ['config', 'user.email', 'test@example.com']);
   git(dir, ['config', 'user.name', 'Test']);
@@ -86,7 +86,7 @@ describe.skipIf(!hasGit)('提交钩子', () => {
     const root = await makeRepo();
     try {
       // 把钩子放到仓库外的自定义目录。
-      const custom = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'syao-hookdir-')));
+      const custom = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'liwen-hookdir-')));
       await fs.writeFile(path.join(custom, 'pre-commit'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
       await fs.chmod(path.join(custom, 'pre-commit'), 0o755);
       git(root, ['config', 'core.hooksPath', custom]);

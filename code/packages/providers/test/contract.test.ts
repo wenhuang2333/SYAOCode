@@ -1,7 +1,7 @@
 import { afterAll } from 'vitest';
-import { type Message, type Provider } from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
-import { defineProviderContract } from '@syaocode/testing/contract';
+import { type Message, type Provider } from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
+import { defineProviderContract } from '@liwencode/testing/contract';
 import { createAnthropicProvider } from '../src/anthropic';
 import { createOpenAICompatibleProvider } from '../src/openai-compatible';
 import { startSseMock, type MockServer } from './helpers';
@@ -9,7 +9,7 @@ import { startSseMock, type MockServer } from './helpers';
 /**
  * G2: the SAME contract suite over all three providers. Here: the two real
  * adapters against a local SSE mock. (MockProvider's run lives in
- * @syaocode/testing.)
+ * @liwencode/testing.)
  */
 
 const runtime = nodeRuntime();

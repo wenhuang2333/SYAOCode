@@ -3,7 +3,7 @@
  *
  * 布局（自上而下）：
  *   ── 流式输出区（自然滚动，text.delta 直接追加）
- *   ┌─ syao (provider:model) · 档位 ────┐  ← 输入框（边框）
+ *   ┌─ liwen (provider:model) · 档位 ────┐  ← 输入框（边框）
  *   │ ❯ 输入…                             │
  *   └─────────────────────────────────────┘
  *    模型 …  上下文 …  轮次 N:M  速度 …  缓存 …  总token …
@@ -24,7 +24,7 @@ import {
   createAgent,
   estimateMessagesTokens,
   FileSessionStore,
-  SyaoError,
+  LIWENError,
   projectHashOf,
   Redactor,
   rulesFromConfig,
@@ -36,10 +36,10 @@ import {
   type PermissionRequest,
   type PermissionRule,
   type Provider,
-} from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
-import { createFileReceiptStore } from '@syaocode/node';
-import { createBuiltinTools } from '@syaocode/tools';
+} from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
+import { createFileReceiptStore } from '@liwencode/node';
+import { createBuiltinTools } from '@liwencode/tools';
 import type { CliArgs } from '../args.js';
 import { resolvePermissionTier } from '../args.js';
 import { buildProvider, type ProviderSpec } from '../provider-select.js';
@@ -64,7 +64,7 @@ import {
   catalogEntry,
   envFilePath,
   keyStatusOf,
-  syaoHome,
+  liwenHome,
   maskKey,
   PROVIDER_CATALOG,
   modelSpecLabel,
@@ -240,13 +240,13 @@ export async function runTui(opts: TuiOptions): Promise<number> {
   const runtime = nodeRuntime();
   const config = await loadCliConfig(opts.args, runtime);
   const redactor = createCliRedactor();
-  const receipts = createFileReceiptStore(runtime, `${syaoHome()}/evidence`);
-  const sessionStore = new FileSessionStore(runtime, `${syaoHome()}/sessions`, String(projectHashOf(cwd)));
+  const receipts = createFileReceiptStore(runtime, `${liwenHome()}/evidence`);
+  const sessionStore = new FileSessionStore(runtime, `${liwenHome()}/sessions`, String(projectHashOf(cwd)));
   const builtins = createBuiltinTools();
   // FR-051/FR-083：工作目录 + AGENTS.md/CLAUDE.md 项目指令；模型身份随 spec 变化
-  const HARNESS = 'SYAOCode v0.2.0-dev';
+  const HARNESS = 'LIWENCode v0.2.0-dev';
   const usageTotals: UsageTotals = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, requests: 0 };
-  // 当前工作区的跨会话累计账本（~/.syaocode/usage/<hash>.json），/cost 的数据源
+  // 当前工作区的跨会话累计账本（~/.liwencode/usage/<hash>.json），/cost 的数据源
   let workspaceUsage: WorkspaceUsage = readWorkspaceUsage(cwd);
   let usagePersistWarned = false;
 
@@ -271,7 +271,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
     runtime,
     redactor,
     ...(config.limits.maxBudgetUsd !== undefined ? { maxBudgetUsd: config.limits.maxBudgetUsd } : {}),
-    taskLabel: 'syao tui session',
+    taskLabel: 'liwen tui session',
   });
 
   input.setRawMode(true);
@@ -441,7 +441,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
     const tier = permissionModeShort(agent.engine.mode);
     const busyTag = busy ? ANSI.magenta(t('box.busy', { secs: busySince !== null ? Math.floor((Date.now() - busySince) / 1000) : 0 })) : '';
     const queued = queuedInputs.length > 0 ? ANSI.dim(t('box.queued', { n: queuedInputs.length })) : '';
-    return `${ANSI.cyan(`syao (${model})`)}${busyTag}${queued} ${ANSI.dim(`· ${tier}`)}`;
+    return `${ANSI.cyan(`liwen (${model})`)}${busyTag}${queued} ${ANSI.dim(`· ${tier}`)}`;
   }
 
   /** 联想弹层每页行数：一页 6 条，向下移动时窗口滑动（新的进来、旧的移出）。
@@ -894,7 +894,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
     wizard = null;
     editor.setNavCapture(false);
     const existing = listProfiles()[name];
-    const apiKeyEnv = `SYAO_KEY_${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
+    const apiKeyEnv = `LIWEN_KEY_${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
     const profile: ModelProfile = {
       model: a.model ?? '',
       baseUrl: a.baseUrl ?? '',
@@ -1226,7 +1226,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
       }
     } catch (e) {
       printAbove('');
-      printAbove(`${ANSI.red(t('error.withCode', { code: SyaoError.is(e) ? e.code : '-', message: userErrorMessage(e) }))}\n`);
+      printAbove(`${ANSI.red(t('error.withCode', { code: LIWENError.is(e) ? e.code : '-', message: userErrorMessage(e) }))}\n`);
     } finally {
       closeStreamLines();
       busy = false;
@@ -1640,7 +1640,7 @@ export async function runTui(opts: TuiOptions): Promise<number> {
         existing[entry.apiKeyEnv] = keyAnswer;
         writeEnvFile(existing);
         process.env[entry.apiKeyEnv] = keyAnswer;
-        printAbove(`${ANSI.green(`密钥已保存到 ~/.syaocode/env（${maskKey(keyAnswer)}）。绝不进入会话文件与日志。`)}\n`);
+        printAbove(`${ANSI.green(`密钥已保存到 ~/.liwencode/env（${maskKey(keyAnswer)}）。绝不进入会话文件与日志。`)}\n`);
       }
     }
     switchModel(entry.id, model);

@@ -13,7 +13,7 @@ import {
   type Runtime,
   type Shell,
   type ShellSpawnOptions,
-} from '@syaocode/core';
+} from '@liwencode/core';
 
 /**
  * Fully in-memory Runtime for tests and evals: no fs, no real processes,

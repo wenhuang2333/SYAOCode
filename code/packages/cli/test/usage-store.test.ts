@@ -7,7 +7,7 @@ import { emptyUsage, readWorkspaceUsage, recordUsage, usageFilePath } from '../s
 
 /**
  * 工作区维度用量账本：/cost 输出的是该工作区**跨会话**累计（按 provider:model
- * 分模型），不再是本次会话。账本位于 ~/.syaocode/usage/<hash>.json，以工作区
+ * 分模型），不再是本次会话。账本位于 ~/.liwencode/usage/<hash>.json，以工作区
  * 绝对路径为索引；损坏按空账本处理。
  */
 
@@ -19,7 +19,7 @@ describe('工作区用量账本', () => {
   let wsB: string;
 
   beforeEach(() => {
-    home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-usage-'));
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-usage-'));
     wsA = path.join(home, 'project-a');
     wsB = path.join(home, 'project-b');
   });

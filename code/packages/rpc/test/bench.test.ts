@@ -8,7 +8,7 @@
  *
  * The audit (05 §10.1) noted that this file asserted `p95 < 50ms` against a 5ms
  * SLO — the SLO lived only in a comment. It is now asserted for real, with one
- * escape hatch: `SYAO_BENCH_SLO_MS` lets a slow shared runner state its own
+ * escape hatch: `LIWEN_BENCH_SLO_MS` lets a slow shared runner state its own
  * ceiling explicitly, so the number can be relaxed deliberately instead of
  * silently.
  */
@@ -95,7 +95,7 @@ describe('governance overhead (02 §15)', () => {
     );
 
     // The SLO from 02 §15, asserted rather than described.
-    const sloMs = Number(process.env.SYAO_BENCH_SLO_MS ?? 5);
+    const sloMs = Number(process.env.LIWEN_BENCH_SLO_MS ?? 5);
     expect(Number.isFinite(sloMs) && sloMs > 0).toBe(true);
     expect(p50).toBeLessThan(sloMs);
     expect(p95).toBeLessThan(sloMs);
@@ -125,7 +125,7 @@ describe('governance overhead (02 §15)', () => {
     const replayP95 = percentile(replaySamples, 95);
     console.log(`[bench] idempotent replay: cold=${coldMs.toFixed(3)}ms p95=${replayP95.toFixed(3)}ms`);
     // A replay must not re-run the pipeline; 1ms is a generous ceiling for that.
-    expect(replayP95).toBeLessThan(Number(process.env.SYAO_BENCH_REPLAY_SLO_MS ?? 1));
+    expect(replayP95).toBeLessThan(Number(process.env.LIWEN_BENCH_REPLAY_SLO_MS ?? 1));
   });
 
   it('decides policy from cache on the hot path', async () => {
@@ -147,7 +147,7 @@ describe('governance overhead (02 §15)', () => {
     console.log(`[bench] policy explain p95=${p95.toFixed(3)}ms`);
     // 02 §15: policy decision p95 <= 2ms when cached, 20ms cold. This loop is
     // the cached path.
-    const cachedSloMs = Number(process.env.SYAO_BENCH_CACHED_SLO_MS ?? 2);
+    const cachedSloMs = Number(process.env.LIWEN_BENCH_CACHED_SLO_MS ?? 2);
     expect(p95).toBeLessThan(cachedSloMs);
   });
 });

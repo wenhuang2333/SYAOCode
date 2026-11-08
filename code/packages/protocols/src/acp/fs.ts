@@ -14,7 +14,7 @@
  *      dispatcher) decides; only an `allowed` decision reaches the wire.
  */
 
-import { acpCapabilityId, CanonicalError } from '@syaocode/rpc';
+import { acpCapabilityId, CanonicalError } from '@liwencode/rpc';
 import type { ReverseInvokeGateway } from '../shared/gateway.js';
 import { ACP_LOSSY } from './content.js';
 

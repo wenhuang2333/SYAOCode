@@ -8,7 +8,7 @@ import { buildCliContext, instructionFileNames, readInstructionFile } from '../s
 
 const dirs: string[] = [];
 function tmpDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-ctx-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-ctx-'));
   dirs.push(dir);
   return dir;
 }
@@ -35,9 +35,9 @@ describe('buildCliContext', () => {
       home: '/home/u',
       env: { HOME: '/home/u' },
       model: '@zionlin (deepseek-v4.1-flash)',
-      harness: 'SYAOCode v0.1.0',
+      harness: 'LIWENCode v0.1.0',
     });
-    expect(ctx.environmentInfo).toContain('Harness: SYAOCode v0.1.0');
+    expect(ctx.environmentInfo).toContain('Harness: LIWENCode v0.1.0');
     expect(ctx.environmentInfo).toContain('Model: @zionlin (deepseek-v4.1-flash)');
     expect(ctx.environmentInfo).toContain('Working directory: /work/repo');
   });
@@ -45,8 +45,8 @@ describe('buildCliContext', () => {
   it('reads repo-root AGENTS.md and user-level instructions', () => {
     const home = tmpDir();
     const repo = tmpDir();
-    fs.mkdirSync(path.join(home, '.syaocode'), { recursive: true });
-    fs.writeFileSync(path.join(home, '.syaocode', 'AGENTS.md'), 'user rule');
+    fs.mkdirSync(path.join(home, '.liwencode'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.liwencode', 'AGENTS.md'), 'user rule');
     fs.writeFileSync(path.join(repo, 'AGENTS.md'), 'repo rule');
     const ctx = buildCliContext(repo, { home, env: { HOME: home } });
     expect(ctx.projectInstructions).toContain('user rule');
@@ -54,7 +54,7 @@ describe('buildCliContext', () => {
     expect(ctx.projectInstructions).toContain('Project instructions');
   });
 
-  it('falls back to CLAUDE.md and honors SYAO_INSTRUCTION_FILES', () => {
+  it('falls back to CLAUDE.md and honors LIWEN_INSTRUCTION_FILES', () => {
     const home = tmpDir();
     const repo = tmpDir();
     fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'claude rule');
@@ -62,9 +62,9 @@ describe('buildCliContext', () => {
     expect(fallback.projectInstructions).toContain('claude rule');
 
     fs.writeFileSync(path.join(repo, 'CUSTOM.md'), 'custom rule');
-    const custom = buildCliContext(repo, { home, env: { HOME: home, SYAO_INSTRUCTION_FILES: 'CUSTOM.md' } });
+    const custom = buildCliContext(repo, { home, env: { HOME: home, LIWEN_INSTRUCTION_FILES: 'CUSTOM.md' } });
     expect(custom.projectInstructions).toContain('custom rule');
-    expect(instructionFileNames({ SYAO_INSTRUCTION_FILES: 'A.md, B.md' })).toEqual(['A.md', 'B.md']);
+    expect(instructionFileNames({ LIWEN_INSTRUCTION_FILES: 'A.md, B.md' })).toEqual(['A.md', 'B.md']);
   });
 
   it('never throws when files are missing or directories', () => {

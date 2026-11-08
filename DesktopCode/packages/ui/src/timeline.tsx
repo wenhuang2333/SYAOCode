@@ -6,7 +6,7 @@ import type * as React from 'react';
  * 新增行类型会在这里编译失败——这是有意的，避免"新事件悄悄不显示"。
  */
 
-import type { ProjectionRow } from '@syaocode/dhp';
+import type { ProjectionRow } from '@liwencode/dhp';
 import type { Messages } from './i18n.ts';
 import { Markdown } from './markdown.tsx';
 

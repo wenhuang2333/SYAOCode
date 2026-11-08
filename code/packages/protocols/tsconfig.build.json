@@ -9,8 +9,8 @@
     "declarationMap": false,
     "rewriteRelativeImportExtensions": true,
     "paths": {
-      "@syaocode/core": ["../core/dist/index.d.ts"],
-      "@syaocode/rpc": ["../rpc/dist/index.d.ts"]
+      "@liwencode/core": ["../core/dist/index.d.ts"],
+      "@liwencode/rpc": ["../rpc/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"]

@@ -1,11 +1,11 @@
 /**
- * `@syaocode/protocols` — protocol edges for the ARF governance kernel.
+ * `@liwencode/protocols` — protocol edges for the ARF governance kernel.
  *
  * Subpath exports keep adapters independent:
- *   - `@syaocode/protocols/mcp`
- *   - `@syaocode/protocols/a2a`
- *   - `@syaocode/protocols/acp`
- *   - `@syaocode/protocols/shared`
+ *   - `@liwencode/protocols/mcp`
+ *   - `@liwencode/protocols/a2a`
+ *   - `@liwencode/protocols/acp`
+ *   - `@liwencode/protocols/shared`
  *
  * Design references: `document/Agent-RPC/01-协议基线与统一模型.md` (§2, §4.7.4,
  * §5, §6) and `03-工程实现与落地路线.md` (§3.3, §5, §7).

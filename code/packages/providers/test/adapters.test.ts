@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { SyaoError, userText } from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
+import { LIWENError, userText } from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
 import { createAnthropicProvider } from '../src/anthropic';
 import { createOpenAICompatibleProvider } from '../src/openai-compatible';
 import { startSseMock, type MockServer } from './helpers';
@@ -117,14 +117,14 @@ describe('openai-compatible adapter (FR-012)', () => {
     const provider = createOpenAICompatibleProvider({ runtime, baseUrl: server.url, apiKey: 'sk-bad' });
     await expect(
       drain(provider.stream({ model: 'm', messages: [userText('x', 'u1')] }, { signal: new AbortController().signal })),
-    ).rejects.toSatisfy((e) => SyaoError.is(e) && e.code === 'SY-PRV-001' && e.retryable === false);
+    ).rejects.toSatisfy((e) => LIWENError.is(e) && e.code === 'SY-PRV-001' && e.retryable === false);
 
     const server429 = await startSseMock(() => ({ status: 429, text: '{"error":"slow down"}' }));
     servers.push(server429);
     const provider429 = createOpenAICompatibleProvider({ runtime, baseUrl: server429.url, apiKey: 'sk-x' });
     await expect(
       drain(provider429.stream({ model: 'm', messages: [userText('x', 'u1')] }, { signal: new AbortController().signal })),
-    ).rejects.toSatisfy((e) => SyaoError.is(e) && e.code === 'SY-PRV-002' && e.retryable === true);
+    ).rejects.toSatisfy((e) => LIWENError.is(e) && e.code === 'SY-PRV-002' && e.retryable === true);
   });
 });
 
@@ -209,7 +209,7 @@ describe('anthropic adapter (FR-011)', () => {
     const provider = createAnthropicProvider({ runtime, apiKey: 'k', baseUrl: server.url });
     await expect(
       drain(provider.stream({ model: 'm', messages: [userText('x', 'u')] }, { signal: new AbortController().signal })),
-    ).rejects.toSatisfy((e) => SyaoError.is(e) && e.code === 'SY-PRV-009' && e.retryable === true);
+    ).rejects.toSatisfy((e) => LIWENError.is(e) && e.code === 'SY-PRV-009' && e.retryable === true);
   });
 });
 

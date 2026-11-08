@@ -37,7 +37,7 @@ import { credentialEntry, remoteHost, type CredentialMethod } from './credential
 /**
  * Host 入口。
  *
- * 开发态：`packages/host/dist/main.cjs`（先跑 `pnpm --filter @syaocode/host build`）
+ * 开发态：`packages/host/dist/main.cjs`（先跑 `pnpm --filter @liwencode/host build`）
  * 打包态：`process.resourcesPath/host/main.cjs`（见 electron-builder.yml 的 extraResources）
  */
 const HOST_ENTRY = app.isPackaged
@@ -187,7 +187,7 @@ function startHost(cwd: string): void {
         }
         case 'generate-ssh': {
           if (typeof request.entry !== 'string') throw new Error('missing entry');
-          const generated = generateEd25519(request.comment ?? 'syaocode');
+          const generated = generateEd25519(request.comment ?? 'liwencode');
           keychain.set(request.entry, generated.privateKeyPem);
           keychain.setPublicKey(request.entry, generated.publicKey);
           respond(true, {
@@ -485,7 +485,7 @@ function registerIpc(): void {
     const request = payload as { remoteUrl?: string; comment?: string };
     const host_ = remoteHost(String(request.remoteUrl ?? '')) || 'local';
     const entry = credentialEntry(host_, 'ssh-key');
-    const generated = generateEd25519(request.comment ?? 'syaocode');
+    const generated = generateEd25519(request.comment ?? 'liwencode');
     keychain.set(entry, generated.privateKeyPem);
     keychain.setPublicKey(entry, generated.publicKey);
     // 只回公开值：私钥永远不离开主进程。
@@ -623,7 +623,7 @@ app.on('before-quit', () => {
   materializedKeys.clear();
 });
 
-// 深链接：`syaocode://run?prompt=...`
+// 深链接：`liwencode://run?prompt=...`
 app.on('open-url', (event, url) => {
   event.preventDefault();
   mainWindow?.webContents.send('app:deeplink', url);

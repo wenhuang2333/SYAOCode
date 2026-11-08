@@ -54,13 +54,13 @@ const { createRequire } = await import('node:module');
 const hostRequire = createRequire(path.join(ROOT, 'packages/host/package.json'));
 const WS = hostRequire('ws');
 
-const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'syao-real-')));
+const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liwen-real-')));
 let host;
 try {
   host = await createHostFn({
     workspaceRoot: root,
     // 密钥只进进程环境，不进状态文件、不进日志。
-    env: { SYAOCODE_HOME: root, OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE },
+    env: { LIWENCODE_HOME: root, OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE },
     logger: () => {},
   });
 

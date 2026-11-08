@@ -6,8 +6,8 @@ import type {
   ModelStreamEvent,
   Provider,
   Usage,
-} from '@syaocode/core';
-import { ProviderError, toolCallsOf } from '@syaocode/core';
+} from '@liwencode/core';
+import { ProviderError, toolCallsOf } from '@liwencode/core';
 
 /**
  * Scripted MockProvider (FR-142 / NFR-20): deterministic, no network.

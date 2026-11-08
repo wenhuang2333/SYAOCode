@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
-import type { ChannelConfig, ChannelInfo, UsageQuery } from '@syaocode/dhp';
+import type { ChannelConfig, ChannelInfo, UsageQuery } from '@liwencode/dhp';
 import { UsagePage, presetUsageQuery, type UsagePageProps } from '../src/renderer/usage-page.tsx';
 import { SettingsPage, type SettingsPageProps } from '../src/renderer/settings-page.tsx';
 

@@ -19,7 +19,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { MCP_ERROR_CODES } from '@syaocode/rpc';
+import { MCP_ERROR_CODES } from '@liwencode/rpc';
 import { MCP_METHODS, MCP_NOTIFICATIONS } from '../src/mcp/client.js';
 import { MCP_SERVER_METHODS } from '../src/mcp/server.js';
 import { MCP_RESULT_TYPES, MCP_PROTOCOL_VERSION } from '../src/mcp/mapping.js';

@@ -1,8 +1,8 @@
 {
-  "name": "syaocode-monorepo",
+  "name": "liwencode-monorepo",
   "private": true,
   "version": "0.2.0-dev",
-  "description": "SYAOCode — TypeScript coding-agent harness library + reference CLI (v0.1 internal, M0+M1)",
+  "description": "LIWENCode — TypeScript coding-agent harness library + reference CLI (v0.1 internal, M0+M1)",
   "type": "module",
   "license": "Apache-2.0",
   "packageManager": "pnpm@12.11.2",
@@ -17,7 +17,7 @@
   "scripts": {
     "start": "tsx packages/cli/src/main.ts",
     "cli": "tsx packages/cli/src/main.ts",
-    "build": "pnpm --filter @syaocode/core run build && pnpm --filter @syaocode/node run build && pnpm --filter @syaocode/rpc run build && pnpm --filter @syaocode/protocols run build && pnpm --filter \"@syaocode/providers\" --filter \"@syaocode/tools\" --filter \"@syaocode/testing\" run build && pnpm --filter syaocode run build",
+    "build": "pnpm --filter @liwencode/core run build && pnpm --filter @liwencode/node run build && pnpm --filter @liwencode/rpc run build && pnpm --filter @liwencode/protocols run build && pnpm --filter \"@liwencode/providers\" --filter \"@liwencode/tools\" --filter \"@liwencode/testing\" run build && pnpm --filter liwencode run build",
     "typecheck": "pnpm -r --workspace-concurrency=2 --filter './packages/*' run typecheck",
     "test": "pnpm -r --workspace-concurrency=2 --filter './packages/*' run test",
     "test:evals": "pnpm exec tsx evals/run-eval.ts",
@@ -27,18 +27,18 @@
     "lint": "pnpm run lint:registry && pnpm run lint:core && pnpm run lint:rpc && pnpm run lint:dhp && pnpm run lint:docs",
     "fixtures:gen": "pnpm exec tsx scripts/gen-wire-fixture.ts",
     "build:check": "pnpm exec tsx scripts/check-build-artifact.ts",
-    "test:coverage": "pnpm --filter @syaocode/rpc run test:coverage",
-    "test:multiprocess": "pnpm --filter @syaocode/rpc run test:multiprocess",
+    "test:coverage": "pnpm --filter @liwencode/rpc run test:coverage",
+    "test:multiprocess": "pnpm --filter @liwencode/rpc run test:multiprocess",
     "lint:docs": "pnpm exec tsx scripts/check-docs.ts",
     "lint:dhp": "node scripts/check-dhp-code-tables.mjs"
   },
   "devDependencies": {
-    "@syaocode/core": "workspace:*",
-    "@syaocode/node": "workspace:*",
-    "@syaocode/protocols": "workspace:*",
-    "@syaocode/rpc": "workspace:*",
-    "@syaocode/testing": "workspace:*",
-    "@syaocode/tools": "workspace:*",
+    "@liwencode/core": "workspace:*",
+    "@liwencode/node": "workspace:*",
+    "@liwencode/protocols": "workspace:*",
+    "@liwencode/rpc": "workspace:*",
+    "@liwencode/testing": "workspace:*",
+    "@liwencode/tools": "workspace:*",
     "@vitest/coverage-v8": "3.2.7",
     "tsx": "^4.19.0"
   }

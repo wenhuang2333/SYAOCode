@@ -9,16 +9,16 @@
     "declarationMap": false,
     "rewriteRelativeImportExtensions": true,
     "paths": {
-      "@syaocode/core": [
+      "@liwencode/core": [
         "../core/dist/index.d.ts"
       ],
-      "@syaocode/providers": [
+      "@liwencode/providers": [
         "../providers/dist/index.d.ts"
       ],
-      "@syaocode/tools": [
+      "@liwencode/tools": [
         "../tools/dist/index.d.ts"
       ],
-      "@syaocode/testing": [
+      "@liwencode/testing": [
         "../testing/dist/index.d.ts"
       ]
     }

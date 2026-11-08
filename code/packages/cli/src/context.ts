@@ -1,13 +1,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ContextConfig } from '@syaocode/core';
+import type { ContextConfig } from '@liwencode/core';
 import { t } from './i18n/index.js';
+import { liwenHome, resolveDataHome } from './model-config.js';
 
 /**
  * 系统提示上下文装配（FR-051 / FR-083 / DD-6）：
  * - environmentInfo：工作目录、平台、日期 — 模型必须知道相对路径的基准。
  * - projectInstructions：用户级 + 仓库根的项目指令文件，默认 AGENTS.md，
- *   兼容 CLAUDE.md；可用 SYAO_INSTRUCTION_FILES=a.md,b.md 覆盖文件名列表。
+ *   兼容 CLAUDE.md；可用 LIWEN_INSTRUCTION_FILES=a.md,b.md 覆盖文件名列表。
  *
  * 子目录指令惰性加载（DD-6）留待 M2；这里只做启动时的用户级与仓库根。
  * 读取失败/文件过大都不阻塞启动：截断并继续。
@@ -17,7 +18,7 @@ const DEFAULT_INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md'];
 const MAX_INSTRUCTION_BYTES = 32 * 1024;
 
 export function instructionFileNames(env: NodeJS.ProcessEnv = process.env): string[] {
-  const raw = env.SYAO_INSTRUCTION_FILES;
+  const raw = env.LIWEN_INSTRUCTION_FILES;
   if (raw === undefined || raw.trim() === '') return DEFAULT_INSTRUCTION_FILES;
   const names = raw
     .split(',')
@@ -64,12 +65,19 @@ export interface CliContextOptions {
 /** 构建 createAgent 的 context 配置（纯读，无副作用；失败静默降级）。 */
 export function buildCliContext(cwd: string, opts: CliContextOptions = {}): ContextConfig {
   const env = opts.env ?? process.env;
-  const home = opts.home ?? env.HOME ?? '.';
+  // 用户级指令文件跟随数据目录：显式 home（测试/嵌入）→ <home>/.liwencode；
+  // 注入 env 但无 home → 按该 env 解析；否则用进程级数据目录（LIWENCODE_HOME 生效）。
+  const userDir =
+    opts.home !== undefined
+      ? liwenHome(opts.home)
+      : opts.env !== undefined
+        ? resolveDataHome({ env: opts.env }).dataDir
+        : liwenHome();
   const now = opts.now ?? new Date();
   const names = instructionFileNames(env);
 
   const segments: string[] = [];
-  const userFile = readInstructionFile(path.join(home, '.syaocode'), names);
+  const userFile = readInstructionFile(userDir, names);
   if (userFile !== undefined) {
     segments.push(`${t('context.userInstructions', { file: path.basename(userFile.file) })}\n\n${userFile.text}`);
   }

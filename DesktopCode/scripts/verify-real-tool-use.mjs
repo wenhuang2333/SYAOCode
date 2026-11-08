@@ -49,8 +49,8 @@ const { createHost } = await import(path.join(ROOT, 'packages/host/src/host.ts')
 const { DhpConnection } = await import(path.join(ROOT, 'packages/client/src/index.ts'));
 const WS = createRequire(path.join(ROOT, 'packages/host/package.json'))('ws');
 
-const workspace = await realpath(await mkdtemp(path.join(os.tmpdir(), 'syao-tool-')));
-const home = await mkdtemp(path.join(os.tmpdir(), 'syao-tool-home-'));
+const workspace = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liwen-tool-')));
+const home = await mkdtemp(path.join(os.tmpdir(), 'liwen-tool-home-'));
 await writeFile(path.join(workspace, 'secret.txt'), `The code is ${MARKER}.\n`);
 
 let host;
@@ -58,7 +58,7 @@ let conn;
 try {
   host = await createHost({
     workspaceRoot: workspace,
-    env: { SYAOCODE_HOME: home, OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE },
+    env: { LIWENCODE_HOME: home, OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE },
     logger: () => {},
   });
   conn = new DhpConnection({

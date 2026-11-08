@@ -2,7 +2,7 @@ import type { Runtime } from './runtime/index.js';
 import type { SandboxLevel, ToolGovernor, ToolRegistry, ToolResultMeta, TrustLevel } from './tool.js';
 import type { PermissionEngine } from './permissions.js';
 import type { ToolCall, ToolResultBlock, ToolResultContent } from './types.js';
-import { SyaoError, ToolError } from './errors/syao-error.js';
+import { LIWENError, ToolError } from './errors/liwen-error.js';
 import { redactToolResultContent, type Redactor } from './redact.js';
 import {
   parseTestStats,
@@ -255,7 +255,7 @@ export async function executeToolCall(
     };
     output = await Promise.race([runIt(), guard]);
   } catch (e) {
-    const err = SyaoError.is(e) ? e : new ToolError({ code: 'SY-TOOL-003', message: String(e), cause: e, toolName: call.name });
+    const err = LIWENError.is(e) ? e : new ToolError({ code: 'SY-TOOL-003', message: String(e), cause: e, toolName: call.name });
     return finish(call.name, sanitize([{ type: 'text', text: err.modelMessage ?? err.message }]), true);
   } finally {
     clearTimeout(timeoutHandle);

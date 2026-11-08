@@ -3,9 +3,9 @@
  *
  * 层级（低 → 高优先级）：
  *   1. 默认值（代码内）
- *   2. 用户配置 `~/.syaocode/config.json`
- *   3. 项目配置 `<workspace>/.syaocode/config.json`
- *   4. 环境变量（`SYAO_MODEL` / `SYAO_PERMISSION_MODE`）
+ *   2. 用户配置 `~/.liwencode/config.json`
+ *   3. 项目配置 `<workspace>/.liwencode/config.json`
+ *   4. 环境变量（`LIWEN_MODEL` / `LIWEN_PERMISSION_MODE`）
  *
  * 与 CLI 的**关键差异**：写回只写用户配置，且用 `tmp + rename` 原子替换。
  * 非原子写会在与 CLI 并行运行时产生"半写文件"，那是静默数据损坏。
@@ -13,7 +13,7 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { SyaoPaths } from './paths.ts';
+import type { LIWENPaths } from './paths.ts';
 
 export type Language = 'en' | 'zh';
 
@@ -43,7 +43,7 @@ const VALID_MODES = new Set(['strict', 'default', 'acceptEdits', 'plan', 'bypass
 
 export class ConfigService {
   constructor(
-    private readonly paths: SyaoPaths,
+    private readonly paths: LIWENPaths,
     private readonly workspaceRoot: string,
     private readonly env: Record<string, string | undefined> = process.env,
   ) {}
@@ -51,11 +51,11 @@ export class ConfigService {
   /** 计算生效配置（不写盘）。 */
   async effective(): Promise<EffectiveConfig> {
     const user = await this.readJson(this.paths.configFile);
-    const project = await this.readJson(path.join(this.workspaceRoot, '.syaocode', 'config.json'));
+    const project = await this.readJson(path.join(this.workspaceRoot, '.liwencode', 'config.json'));
 
     const sources: Record<string, string> = {};
     const pick = (key: 'model' | 'permissionMode' | 'language'): unknown => {
-      const envKey = key === 'model' ? 'SYAO_MODEL' : key === 'permissionMode' ? 'SYAO_PERMISSION_MODE' : undefined;
+      const envKey = key === 'model' ? 'LIWEN_MODEL' : key === 'permissionMode' ? 'LIWEN_PERMISSION_MODE' : undefined;
       const envVal = envKey === undefined ? undefined : this.env[envKey];
       if (envVal !== undefined && envVal !== '') {
         sources[key] = 'env';

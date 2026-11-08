@@ -11,7 +11,7 @@ import * as path from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { TreeNode } from '@syaocode/dhp';
+import type { TreeNode } from '@liwencode/dhp';
 import { t } from '../src/renderer/i18n.ts';
 import {
   COMMANDS, ComposerPalette, FILE_LIMIT, HELP_TEXT, SHELL_HINT,

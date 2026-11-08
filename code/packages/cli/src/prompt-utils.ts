@@ -4,7 +4,7 @@
  * - summarizeInput：工具入参的一行摘要
  */
 
-import type { Runtime } from '@syaocode/core';
+import type { Runtime } from '@liwencode/core';
 import { t } from './i18n/index.js';
 
 /** @path 展开：把 @引用的文件内容附加到提示词（最多 8 个文件，每个截断 500 行） */

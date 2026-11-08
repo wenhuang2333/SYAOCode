@@ -1,5 +1,5 @@
 /**
- * `@syaocode/protocols/acp` — the ACP v1 edge.
+ * `@liwencode/protocols/acp` — the ACP v1 edge.
  *
  * One channel, two faces (01 §2.3 "ACP 是双向协议"):
  *   - {@link AcpServer} — the *agent* face: `initialize`, `session/*`,
@@ -79,8 +79,8 @@ export type {
   AcpTurnResult,
 } from './server.js';
 
-import type { Logger, Runtime } from '@syaocode/core';
-import { acpCapabilityId, CanonicalError, type AdapterCapabilities, type AdapterContext, type AuthorizedInvocation, type DiscoveredCapability, type InvokeResultPayload } from '@syaocode/rpc';
+import type { Logger, Runtime } from '@liwencode/core';
+import { acpCapabilityId, CanonicalError, type AdapterCapabilities, type AdapterContext, type AuthorizedInvocation, type DiscoveredCapability, type InvokeResultPayload } from '@liwencode/rpc';
 import { AdapterBase, appendEdgeEvent, mergeLossy, remainingMs, timeoutOutcome, wireError } from '../shared/index.js';
 import { JsonRpcAbortedError, JsonRpcConnection, JsonRpcTimeoutError, type JsonRpcId } from '../shared/jsonrpc.js';
 import { ACP_LOSSY } from './content.js';

@@ -1,8 +1,8 @@
 /**
- * @syaocode/rpc — the ARF (Agent RPC Fabric) governance kernel.
+ * @liwencode/rpc — the ARF (Agent RPC Fabric) governance kernel.
  *
- * Public API, grouped the same way as @syaocode/core. Host-agnostic: the only
- * imports are `zod` and `@syaocode/core`; all IO arrives through `Runtime`.
+ * Public API, grouped the same way as @liwencode/core. Host-agnostic: the only
+ * imports are `zod` and `@liwencode/core`; all IO arrives through `Runtime`.
  *
  * Design references (document/Agent-RPC/):
  *   01 §4   Canonical IR, state machines

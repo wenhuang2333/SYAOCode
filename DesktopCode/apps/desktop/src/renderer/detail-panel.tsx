@@ -22,7 +22,7 @@ import {
   type SessionSnapshot,
   type SourceRef,
   type WorkspaceReadFileResult,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 import { Icon } from './icons';
 import { t, type Lang } from './i18n';
 import { formatBytes, formatClock, formatDuration, formatMoney, formatNumber } from './format';

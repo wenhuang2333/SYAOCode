@@ -10,7 +10,7 @@
  * carries: the server recomputes them and compares.
  */
 
-import { MCP_ERROR_CODES } from '@syaocode/rpc';
+import { MCP_ERROR_CODES } from '@liwencode/rpc';
 import { MCP_PROTOCOL_VERSION } from './mapping.js';
 
 export const MCP_HEADER_PROTOCOL_VERSION = 'MCP-Protocol-Version';

@@ -23,16 +23,16 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@syaocode/client':
+      '@liwencode/client':
         specifier: workspace:*
         version: link:../../packages/client
-      '@syaocode/dhp':
+      '@liwencode/dhp':
         specifier: workspace:*
         version: link:../../packages/dhp
-      '@syaocode/host':
+      '@liwencode/host':
         specifier: workspace:*
         version: link:../../packages/host
-      '@syaocode/ui':
+      '@liwencode/ui':
         specifier: workspace:*
         version: link:../../packages/ui
     devDependencies:
@@ -75,7 +75,7 @@ importers:
 
   packages/client:
     dependencies:
-      '@syaocode/dhp':
+      '@liwencode/dhp':
         specifier: workspace:*
         version: link:../dhp
     devDependencies:
@@ -107,25 +107,25 @@ importers:
 
   packages/host:
     dependencies:
-      '@syaocode/core':
+      '@liwencode/core':
         specifier: link:../../../code/packages/core
         version: link:../../../code/packages/core
-      '@syaocode/dhp':
+      '@liwencode/dhp':
         specifier: workspace:*
         version: link:../dhp
-      '@syaocode/node':
+      '@liwencode/node':
         specifier: link:../../../code/packages/node
         version: link:../../../code/packages/node
-      '@syaocode/protocols':
+      '@liwencode/protocols':
         specifier: link:../../../code/packages/protocols
         version: link:../../../code/packages/protocols
-      '@syaocode/providers':
+      '@liwencode/providers':
         specifier: link:../../../code/packages/providers
         version: link:../../../code/packages/providers
-      '@syaocode/testing':
+      '@liwencode/testing':
         specifier: link:../../../code/packages/testing
         version: link:../../../code/packages/testing
-      '@syaocode/tools':
+      '@liwencode/tools':
         specifier: link:../../../code/packages/tools
         version: link:../../../code/packages/tools
       ws:
@@ -150,7 +150,7 @@ importers:
 
   packages/ui:
     dependencies:
-      '@syaocode/dhp':
+      '@liwencode/dhp':
         specifier: workspace:*
         version: link:../dhp
     devDependencies:

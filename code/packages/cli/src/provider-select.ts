@@ -1,15 +1,15 @@
-import { SyaoError, type Provider } from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
-import { createAnthropicProvider, createOpenAICompatibleProvider } from '@syaocode/providers';
-import { MockProvider } from '@syaocode/testing';
-import type { Message } from '@syaocode/core';
+import { LIWENError, type Provider } from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
+import { createAnthropicProvider, createOpenAICompatibleProvider } from '@liwencode/providers';
+import { MockProvider } from '@liwencode/testing';
+import type { Message } from '@liwencode/core';
 import type { CliArgs } from './args.js';
 import { catalogEntry, getProfile, resolveDefaultModel } from './model-config.js';
 import { t } from './i18n/index.js';
 
 /**
  * Provider resolution for the CLI. `mock:` runs fully offline; real providers
- * need their key in process env (secrets from ~/.syaocode/env are merged at
+ * need their key in process env (secrets from ~/.liwencode/env are merged at
  * startup — see model-config.loadSecretsIntoEnv).
  * `@<profile>` 引用 /setup 创建的自定义模型档案。
  */
@@ -20,7 +20,7 @@ export interface ProviderSpec {
 }
 
 export function parseModelSpec(spec: string | undefined): ProviderSpec {
-  const raw = spec ?? process.env.SYAO_MODEL ?? 'mock:default';
+  const raw = spec ?? process.env.LIWEN_MODEL ?? 'mock:default';
   const idx = raw.indexOf(':');
   if (idx <= 0) {
     throw new Error(t('args.modelSpec', { value: raw }));
@@ -93,7 +93,7 @@ function buildProfileProvider(profileName: string, modelOverride: string): Provi
     }
     case 'openai-responses':
     case 'gemini':
-      throw new SyaoError({
+      throw new LIWENError({
         code: 'SY-PRV-010',
         message: t('provider.protocolNotImplemented', { name: profileName, protocol: profile.protocol }),
       });
@@ -110,7 +110,7 @@ export function resolveProvider(
   overrides?: { spec?: ProviderSpec },
 ): Provider & { model: string } {
   if (overrides?.spec !== undefined) return buildProvider(overrides.spec);
-  // 与交互模式同源：--model > SYAO_MODEL > ~/.syaocode/config.json > mock。
+  // 与交互模式同源：--model > LIWEN_MODEL > ~/.liwencode/config.json > mock。
   // （此前 -p/exec 直接 parseModelSpec，会忽略已保存的模型而退回 mock。）
   const resolved = resolveDefaultModel(args.model);
   const spec: ProviderSpec = { provider: resolved.provider, model: resolved.name };
@@ -136,7 +136,7 @@ function defaultMockScript(): Message[] {
 }
 
 function mockScriptFromEnv(): Message[] {
-  const raw = process.env.SYAO_MOCK_SCRIPT;
+  const raw = process.env.LIWEN_MOCK_SCRIPT;
   if (raw === undefined || raw === '') return [];
   try {
     const parsed = JSON.parse(raw) as Message[];

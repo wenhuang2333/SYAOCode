@@ -20,7 +20,7 @@ import { AcpAdapter } from '../src/acp/index.js';
 import { AcpServer } from '../src/acp/server.js';
 import { ACP_LOSSY, ACP_PROTOCOL_VERSION } from '../src/acp/index.js';
 import type { AcpPermissionOutcome, AcpPermissionRequest } from '../src/acp/permissions.js';
-import type { InvokeResultPayload } from '@syaocode/rpc';
+import type { InvokeResultPayload } from '@liwencode/rpc';
 import { createLoopbackPair } from '../src/shared/transport.js';
 import { JsonRpcConnection } from '../src/shared/jsonrpc.js';
 import { createFakeRuntime } from './helpers/fake-runtime.js';
@@ -79,7 +79,7 @@ async function rig(options?: {
     channel: pair.b,
     clientId: CLIENT_ID,
     gateway: gw,
-    agentInfo: { name: 'syaocode', version: '0.3.0-dev' },
+    agentInfo: { name: 'liwencode', version: '0.3.0-dev' },
     ...(options?.runTurn !== undefined ? { runTurn: options.runTurn } : {}),
   });
   // The editor side: it OWNS fs/terminal and answers permission requests.
@@ -146,7 +146,7 @@ async function initialize(client: JsonRpcConnection, capabilities: Record<string
 }
 
 /** A minimal authorized reverse invocation for the ACP edge. */
-function authorizedInvocation(capabilityId: string, input: Record<string, unknown>): import('@syaocode/rpc').AuthorizedInvocation {
+function authorizedInvocation(capabilityId: string, input: Record<string, unknown>): import('@liwencode/rpc').AuthorizedInvocation {
   return {
     invocationId: 'inv_1',
     taskId: 'task_1',
@@ -180,7 +180,7 @@ describe('acp server · initialize and sessions', () => {
     const r = await rig();
     const result = await initialize(r.client);
     expect(result['protocolVersion']).toBe(ACP_PROTOCOL_VERSION);
-    expect(result['agentInfo']).toMatchObject({ name: 'syaocode' });
+    expect(result['agentInfo']).toMatchObject({ name: 'liwencode' });
     expect((result['agentCapabilities'] as { loadSession: boolean }).loadSession).toBe(true);
     await r.dispose();
   });
@@ -465,7 +465,7 @@ describe('acp server · reverse fs is governed (P-H7)', () => {
     const pair = createLoopbackPair({ labels: ['editor', 'agent'] });
     const runtime = createFakeRuntime({ seed: { '/repo/a.txt': 'inside', '/repo-evil/secret.txt': 'outside' } });
     const gw = gateway();
-    const server = new AcpServer({ runtime, channel: pair.b, clientId: CLIENT_ID, gateway: gw, agentInfo: { name: 'syaocode', version: '1' } });
+    const server = new AcpServer({ runtime, channel: pair.b, clientId: CLIENT_ID, gateway: gw, agentInfo: { name: 'liwencode', version: '1' } });
     const client = new JsonRpcConnection({
       channel: pair.a,
       requestTimeoutMs: 1_000,

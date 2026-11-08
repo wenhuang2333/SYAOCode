@@ -2,7 +2,7 @@
  * Shared adapter helpers.
  *
  * Every edge (MCP / A2A / ACP) implements the same frozen `ProtocolAdapter`
- * contract from `@syaocode/rpc`. This module holds the pieces that are
+ * contract from `@liwencode/rpc`. This module holds the pieces that are
  * protocol-independent: deadline arithmetic, health, closure bookkeeping and
  * the "convert a wire failure into a CanonicalError" plumbing.
  *
@@ -13,7 +13,7 @@
  * fail the invocation it describes.
  */
 
-import type { Logger, Runtime } from '@syaocode/core';
+import type { Logger, Runtime } from '@liwencode/core';
 import {
   CanonicalError,
   canonicalFromJsonRpcError,
@@ -25,7 +25,7 @@ import {
   type CanonicalEventType,
   type HealthStatus,
   type Protocol,
-} from '@syaocode/rpc';
+} from '@liwencode/rpc';
 import {
   JsonRpcAbortedError,
   JsonRpcProtocolError,

@@ -1,7 +1,7 @@
 /**
  * The CLI's ARF (Agent RPC Fabric) instance.
  *
- * `createCliFabric()` assembles a `@syaocode/rpc` fabric out of the CLI's own
+ * `createCliFabric()` assembles a `@liwencode/rpc` fabric out of the CLI's own
  * runtime and configuration:
  *
  *   - `nodeRuntime()` supplies the host primitives (fs / clock / ids / env);
@@ -28,9 +28,9 @@ import {
   type PolicyVerdict,
   type Runtime,
   type ToolRisk,
-} from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
-import { createBuiltinTools, FileStateTracker } from '@syaocode/tools';
+} from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
+import { createBuiltinTools, FileStateTracker } from '@liwencode/tools';
 import {
   CanonicalError,
   RulePolicyEngine,
@@ -49,7 +49,7 @@ import {
   type Principal,
   type SecretRedactor,
   type Session,
-} from '@syaocode/rpc';
+} from '@liwencode/rpc';
 import { createCliRedactor } from './effective-config.js';
 import { mountPeerEdge } from './edges.js';
 import { listPeers, type PeerConfig } from './peers.js';
@@ -120,10 +120,10 @@ export interface CliFabricOptions {
   fileState?: FileStateTracker;
   /**
    * Persist governance records (tasks, receipts, audit chain, budget,
-   * approvals, idempotency, events) under `~/.syaocode/arf/`.
+   * approvals, idempotency, events) under `~/.liwencode/arf/`.
    *
-   * Defaults to ON for the real CLI so `syao rpc audit` can see what a previous
-   * `syao -p` run did (audit C-4). Tests pass `false` to stay hermetic.
+   * Defaults to ON for the real CLI so `liwen rpc audit` can see what a previous
+   * `liwen -p` run did (audit C-4). Tests pass `false` to stay hermetic.
    */
   persist?: boolean;
 }
@@ -150,7 +150,7 @@ export interface CliFabric {
    * The tenant directory the governance records live in, or `undefined` when
    * this process runs on in-memory stores (`persist: false`).
    *
-   * `syao rpc store` reports it so an operator can see WHICH directory two
+   * `liwen rpc store` reports it so an operator can see WHICH directory two
    * processes are contending for — "no lease" and "not persistent" must not
    * look the same.
    */
@@ -183,7 +183,7 @@ export interface CliFabric {
   /**
    * Mount every peer in the user's edge registry (once per process).
    *
-   * `/peer add`, `syao mcp add` and `/call` all funnel through here, so a peer
+   * `/peer add`, `liwen mcp add` and `/call` all funnel through here, so a peer
    * registered seconds ago is reachable without restarting the CLI.
    */
   mountRegisteredPeers(): Promise<MountReport[]>;
@@ -271,7 +271,7 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
   const runtime = opts.runtime ?? nodeRuntime();
   const cwd = opts.cwd ?? process.cwd();
   const workspaceRoots = [cwd, ...(opts.extraDirs ?? [])].filter((r) => r !== '');
-  const tenantId = opts.tenantId ?? 'syaocode-local';
+  const tenantId = opts.tenantId ?? 'liwencode-local';
   const permissionMode = opts.permissionMode ?? 'default';
   const rules = opts.rules ?? [];
 
@@ -331,7 +331,7 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
    * receipts, approvals and audit chain collected so far.
    */
   const hasher = { sha256: sha256Hex };
-  const bundleFor = (mode: PermissionMode): import('@syaocode/rpc').PolicyBundle => {
+  const bundleFor = (mode: PermissionMode): import('@liwencode/rpc').PolicyBundle => {
     const base = emptyBundle(hasher, tenantId, tierDefaultEffect(mode));
     const tier = opts.mirrorTierRules === false ? [] : tierPolicyRules(mode, rules);
     if (tier.length === 0) return base;
@@ -360,12 +360,12 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
         })());
 
   // ── durable stores (audit C-4) ────────────────────────────────────────
-  // Governance records outlive the process: without this, every `syao -p`
-  // run's receipts and audit chain vanished on exit and `syao rpc audit`
+  // Governance records outlive the process: without this, every `liwen -p`
+  // run's receipts and audit chain vanished on exit and `liwen rpc audit`
   // reported "0 checked" forever.
   const persist = opts.persist !== false;
   const arfHome = opts.home ?? runtime.env.get('HOME') ?? '';
-  const storeDir = `${arfHome}/.syaocode/arf/${tenantId}`;
+  const storeDir = `${arfHome}/.liwencode/arf/${tenantId}`;
   const fileStores = persist
     ? createFileStores({
         runtime,
@@ -420,7 +420,7 @@ export function createCliFabric(opts: CliFabricOptions = {}): CliFabric {
     ...(opts.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: opts.approvalTimeoutMs } : {}),
     ...(opts.onStep !== undefined ? { onStep: opts.onStep } : {}),
     // Durability: by default every record lives under
-    // ~/.syaocode/arf/<tenant>/ as JSONL, so a later process (and `syao rpc
+    // ~/.liwencode/arf/<tenant>/ as JSONL, so a later process (and `liwen rpc
     // audit`) reads the same chain. `opts.stores` still wins when a host wants
     // a different backend; `persist: false` keeps tests hermetic.
     ...(opts.stores !== undefined
@@ -609,7 +609,7 @@ export function getCliFabric(opts: CliFabricOptions = {}): CliFabric {
   return singleton;
 }
 
-/** Tear the singleton down (tests, `/exit`, `syao serve` shutdown). */
+/** Tear the singleton down (tests, `/exit`, `liwen serve` shutdown). */
 export async function disposeCliFabric(): Promise<void> {
   const current = singleton;
   singleton = undefined;

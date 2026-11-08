@@ -11,8 +11,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { Tool, ToolContext, ToolOutput } from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
+import type { Tool, ToolContext, ToolOutput } from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
 import { McpService } from '../src/mcp-service.ts';
 
 /** 最小 MCP 服务：server/discover + tools/list + tools/call。 */

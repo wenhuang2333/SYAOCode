@@ -20,10 +20,10 @@ const REPO_ROOT = path.resolve(process.cwd());
 
 /**
  * DesktopDoc 在工作区根目录，而本脚本在 `code/scripts/` 下。
- * 从 `code/` 运行时向上找一层；也可显式用 `SYAOCODE_DOCS_DIR` 覆盖。
+ * 从 `code/` 运行时向上找一层；也可显式用 `LIWENCODE_DOCS_DIR` 覆盖。
  */
 function resolveDocDir(): string | undefined {
-  const fromEnv = process.env['SYAOCODE_DOCS_DIR'];
+  const fromEnv = process.env['LIWENCODE_DOCS_DIR'];
   if (fromEnv !== undefined && fromEnv !== '') {
     const abs = path.resolve(process.cwd(), fromEnv);
     return fs.existsSync(abs) ? abs : undefined;
@@ -38,7 +38,7 @@ function resolveDocDir(): string | undefined {
 const resolvedDocDir = resolveDocDir();
 if (resolvedDocDir === undefined) {
   process.stderr.write('docs: directory not found (looked in ./DesktopDoc and ../DesktopDoc)\n');
-  process.stderr.write('docs: set SYAOCODE_DOCS_DIR to point at the document directory\n');
+  process.stderr.write('docs: set LIWENCODE_DOCS_DIR to point at the document directory\n');
   process.exit(2);
 }
 const DOC_DIR_FINAL = resolvedDocDir;

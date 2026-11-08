@@ -43,13 +43,13 @@ const { createHost } = await import(path.join(ROOT, 'packages/host/src/host.ts')
 const { DhpConnection } = await import(path.join(ROOT, 'packages/client/src/index.ts'));
 const WS = createRequire(path.join(ROOT, 'packages/host/package.json'))('ws');
 
-const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'syao-usage-')));
+const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liwen-usage-')));
 let host;
 let conn;
 try {
   host = await createHost({
     workspaceRoot: root,
-    env: { SYAOCODE_HOME: root, OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE },
+    env: { LIWENCODE_HOME: root, OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE },
     logger: () => {},
   });
   conn = new DhpConnection({

@@ -7,13 +7,13 @@
  *  - `openai-compatible`  —— 任意兼容端点
  *  - `anthropic`          —— 原生 Messages
  *
- * 密钥**只**从环境变量读取（Host 启动时由 Shell 注入或从 `~/.syaocode/env` 合并）。
+ * 密钥**只**从环境变量读取（Host 启动时由 Shell 注入或从 `~/.liwencode/env` 合并）。
  * 本模块不读写密钥文件，也不把密钥放进任何返回值。
  */
 
 import {
   createAgent,
-  SyaoError,
+  LIWENError,
   type Agent,
   type PermissionHandler,
   type PermissionMode,
@@ -23,13 +23,13 @@ import {
   type ToolContext,
   type ToolOutput,
   type ToolProgress,
-} from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
-import { createAnthropicProvider, createOpenAICompatibleProvider } from '@syaocode/providers';
-import { createBuiltinTools } from '@syaocode/tools';
-import { MockProvider, mockText, mockToolUse } from '@syaocode/testing';
-import type { ChannelConfig, ChannelModel, ContextInfo, UsageRecord } from '@syaocode/dhp';
-import type { Message } from '@syaocode/core';
+} from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
+import { createAnthropicProvider, createOpenAICompatibleProvider } from '@liwencode/providers';
+import { createBuiltinTools } from '@liwencode/tools';
+import { MockProvider, mockText, mockToolUse } from '@liwencode/testing';
+import type { ChannelConfig, ChannelModel, ContextInfo, UsageRecord } from '@liwencode/dhp';
+import type { Message } from '@liwencode/core';
 import { observeProvider } from './usage.ts';
 import { wireUsageRuntime } from './provider-usage.ts';
 import { channelSchema } from './workbench-validation.ts';
@@ -204,7 +204,7 @@ export function createDesktopAgent(opts: CreateDesktopAgentOptions): CreateAgent
       try { yield* built.provider.stream(req, args); }
       catch (e) {
         // Upstream error bodies may contain credentials/URLs. Keep only typed code.
-        throw new SyaoError({ code: SyaoError.is(e) ? e.code : 'SY-PRV-008', message: 'Provider request failed; check channel credentials and endpoint.' });
+        throw new LIWENError({ code: LIWENError.is(e) ? e.code : 'SY-PRV-008', message: 'Provider request failed; check channel credentials and endpoint.' });
       }
     },
   };

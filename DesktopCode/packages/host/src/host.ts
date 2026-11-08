@@ -44,8 +44,8 @@ import {
   workspaceRootSchema,
   z,
 } from './workbench-validation.ts';
-import { FeatureMethod, FeatureNotification, WorkbenchMethod } from '@syaocode/dhp';
-import type { Message } from '@syaocode/core';
+import { FeatureMethod, FeatureNotification, WorkbenchMethod } from '@liwencode/dhp';
+import type { Message } from '@liwencode/core';
 import { randomUUID } from 'node:crypto';
 import {
   Method,
@@ -70,8 +70,8 @@ import {
   type WorkspaceDiffResult,
   type WorkspaceReadFileResult,
   type WorkspaceTreeResult,
-} from '@syaocode/dhp';
-import type { Agent } from '@syaocode/core';
+} from '@liwencode/dhp';
+import type { Agent } from '@liwencode/core';
 import { buildChannelProvider, buildProvider, createDesktopAgent, parseModelSpec } from './agent-factory.ts';
 import { AgentsService, AgentsServiceError } from './agents-service.ts';
 import { CommitMessageService } from './commit-message.ts';
@@ -86,12 +86,31 @@ import { GitWriteService } from './git-write.ts';
 import { GitError, assertSafeRemoteUrl, runGit, sanitizeRemoteUrl } from './git-run.ts';
 import { McpService, McpServiceError } from './mcp-service.ts';
 import { ConfigService } from './config-service.ts';
-import { nodeRuntime } from '@syaocode/node';
-import { DhpProtocolError, startDhpServer, type DhpServerHandle } from './dhp-server.ts';
+import { nodeRuntime } from '@liwencode/node';
+import { DhpProtocolError, HOST_VERSION, startDhpServer, type DhpServerHandle } from './dhp-server.ts';
 import { InteractionBroker } from './interaction-broker.ts';
-import { syaoPaths, type SyaoPaths } from './paths.ts';
+import { liwenPaths, resolveHomePlan, type LIWENPaths } from './paths.ts';
+import {
+  migrateLegacyHome,
+  type HomeMigrationResult,
+  type MigrationFs,
+} from './home-migration.ts';
 import { SessionRegistry, pumpAgentEvents, toSessionEvents, type SessionState } from './session-registry.ts';
 import { WorkspaceService } from './workspace.ts';
+
+/**
+ * 数据目录迁移的可注入依赖（**仅测试与嵌入式用法**）。
+ *
+ * 生产环境留空：家目录取 `os.homedir()`，文件系统取真实 `node:fs/promises`。
+ */
+export interface HomeMigrationOverride {
+  /** 家目录基址（默认 `os.homedir()`）。 */
+  readonly homedir?: string | undefined;
+  /** 文件系统适配（默认真实 fs）。 */
+  readonly fs?: MigrationFs | undefined;
+  /** 时钟（默认 `Date.now`）。 */
+  readonly now?: (() => number) | undefined;
+}
 
 export interface HostOptions {
   readonly workspaceRoot?: string;
@@ -113,6 +132,13 @@ export interface HostOptions {
    * 由 Electron 主进程落到 OS 钥匙串。给了它意味着调用方自己承担保管责任。
    */
   readonly credentials?: CredentialProvider;
+  /**
+   * 数据目录迁移的依赖覆盖（**仅测试与嵌入式用法**）。
+   *
+   * 迁移本身**总是**执行（改名后旧目录里的数据必须被看见），这里只替换
+   * 家目录基址 / 文件系统 / 时钟，方便测试构造假旧目录与失败分支。
+   */
+  readonly homeMigration?: HomeMigrationOverride;
 }
 
 interface SessionRuntime {
@@ -127,8 +153,10 @@ interface SessionRuntime {
 
 export interface RunningHost {
   readonly server: DhpServerHandle;
-  readonly paths: SyaoPaths;
+  readonly paths: LIWENPaths;
   readonly workspace: WorkspaceService;
+  /** 本次启动的数据目录迁移结果（含回退与告警，供壳 / 诊断读取）。 */
+  readonly migration: HomeMigrationResult;
   close(): Promise<void>;
 }
 
@@ -145,12 +173,27 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
   const workspace = new WorkspaceService({ root: requestedRoot });
   const workspaceRoot = workspace.workspaceRoot;
 
-  let paths: SyaoPaths;
+  let paths: LIWENPaths;
+  let migration: HomeMigrationResult;
   try {
-    paths = syaoPaths(env);
+    // 数据目录迁移必须发生在**任何**数据读取之前：`DesktopStateStore.open` 一旦
+    // 先跑，新目录就已经被创建，迁移再也不会发生（旧会话/凭据元信息/Git 元数据
+    // 会"凭空消失"）。所以这里是 createHost 的第一件事。
+    const plan = resolveHomePlan(
+      env,
+      opts.homeMigration?.homedir !== undefined ? { homedir: opts.homeMigration.homedir } : {},
+    );
+    migration = await migrateLegacyHome({
+      plan,
+      ...(opts.homeMigration?.fs !== undefined ? { fs: opts.homeMigration.fs } : {}),
+      ...(opts.homeMigration?.now !== undefined ? { now: opts.homeMigration.now } : {}),
+      toolVersion: HOST_VERSION,
+    });
+    for (const warning of migration.warnings) log(warning.level, warning.message, warning.detail);
+    paths = liwenPaths(env, { home: migration.home });
   } catch (err) {
     // 数据目录解析失败是**致命**的：不启动，而不是把数据写到 cwd。
-    log('error', 'fatal: cannot resolve SYAOCODE_HOME', { message: (err as Error).message });
+    log('error', 'fatal: cannot resolve LIWENCODE_HOME', { message: (err as Error).message });
     throw err;
   }
 
@@ -1706,7 +1749,7 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
 
   register(Method.DoctorRun, async () => {
     const checks: DoctorRunResult['checks'][number][] = [];
-    checks.push({ name: 'syaoHome', status: 'ok', detail: paths.home });
+    checks.push({ name: 'liwenHome', status: 'ok', detail: paths.home });
     checks.push({
       name: 'node',
       status: 'ok',
@@ -1764,7 +1807,7 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
     setImmediate(() => { void close().then(() => { if (opts.exitOnShutdown) process.exit(0); }).catch(() => log('error', 'Host shutdown persistence failed')); });
     return { ok: true };
   });
-  return { server, paths, workspace, close };
+  return { server, paths, workspace, migration, close };
 }
 
 /** 供 `toSessionEvents` 的单事件调试用。 */

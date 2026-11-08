@@ -137,7 +137,7 @@ async function mockServer(opts: MockServerOptions): Promise<MockAuthServer> {
 
 /** 在 PATH 前面放一个假 `ssh-add`，跑完恢复。 */
 async function withFakeSshAdd(script: string, run: () => Promise<void>): Promise<void> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'syao-fake-ssh-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'liwen-fake-ssh-'));
   tempDirs.push(dir);
   await fs.writeFile(path.join(dir, 'ssh-add'), script, { mode: 0o755 });
   const original = process.env['PATH'];
@@ -393,11 +393,11 @@ describe('生成 SSH 密钥（方式 D / TC-N-045）', () => {
   it('只返回公钥与指纹，私钥进钥匙串', async () => {
     const credentials = new MemoryCredentialProvider();
     const service = new GitAuthService({ credentials });
-    const result = await service.generateSshKey({ workspaceRoot: '/w', remote: 'origin', comment: 'syaocode-test' });
+    const result = await service.generateSshKey({ workspaceRoot: '/w', remote: 'origin', comment: 'liwencode-test' });
 
     expect(result.keyType).toBe('ed25519');
     expect(result.publicKey.startsWith('ssh-ed25519 ')).toBe(true);
-    expect(result.publicKey.endsWith(' syaocode-test')).toBe(true);
+    expect(result.publicKey.endsWith(' liwencode-test')).toBe(true);
     expect(result.fingerprint).toBe(fingerprintOf(result.publicKey));
     expect(Object.keys(result).sort()).toEqual(['fingerprint', 'keyType', 'publicKey']);
     expect(JSON.stringify(result)).not.toContain('PRIVATE KEY');

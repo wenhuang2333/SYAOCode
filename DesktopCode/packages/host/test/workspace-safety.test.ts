@@ -6,7 +6,7 @@ import { WorkspaceService } from '../src/workspace.ts';
 
 const roots: string[] = [];
 async function temporary() {
-  const root = await mkdtemp(join(tmpdir(), 'syao-fence-'));
+  const root = await mkdtemp(join(tmpdir(), 'liwen-fence-'));
   roots.push(root);
   return root;
 }

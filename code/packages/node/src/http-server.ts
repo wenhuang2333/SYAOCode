@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { Runtime } from '@syaocode/core';
+import type { Runtime } from '@liwencode/core';
 
 /**
  * Minimal HTTP server + SSE helper (03 §3.5).

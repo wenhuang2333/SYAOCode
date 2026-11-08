@@ -63,12 +63,12 @@ describe('tui/terminal 终端健壮层', () => {
 
   it('toAscii：默认不转换；开启降级后 BoxDrawing/半块 → ASCII', () => {
     expect(toAscii('╭─╮│▀')).toBe('╭─╮│▀');
-    process.env.SYAO_TUI_ASCII = '1';
+    process.env.LIWEN_TUI_ASCII = '1';
     try {
       expect(toAscii('╭─╮│▀▄█')).toBe('+ - + | ###'.replace(/ /g, ''));
       expect(toAscii('❯ /help')).toBe('> /help');
     } finally {
-      delete process.env.SYAO_TUI_ASCII;
+      delete process.env.LIWEN_TUI_ASCII;
     }
   });
 });

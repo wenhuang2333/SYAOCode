@@ -62,7 +62,7 @@ describe('views 信息面板', () => {
     const text = costPanel({
       workspace: '/tmp/ws',
       since: 1_700_000_000_000,
-      file: '/home/u/.syaocode/usage/123.json',
+      file: '/home/u/.liwencode/usage/123.json',
       totals: { requests: 5, inputTokens: 1000, outputTokens: 500, cacheReadTokens: 2000, cacheWriteTokens: 0, costUsd: 0.0123 },
       models: [
         {

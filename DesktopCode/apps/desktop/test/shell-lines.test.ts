@@ -11,7 +11,7 @@ import * as path from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { SessionRunCommandResult } from '@syaocode/dhp';
+import type { SessionRunCommandResult } from '@liwencode/dhp';
 import { SHELL_HINT } from '../src/renderer/composer-palette.tsx';
 import {
   ShellResultBlock,

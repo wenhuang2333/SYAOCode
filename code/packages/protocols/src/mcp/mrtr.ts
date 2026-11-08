@@ -21,7 +21,7 @@
  *     silently drop the answers (G1).
  */
 
-import { CanonicalError, type ApprovalOption, type ApprovalSubject } from '@syaocode/rpc';
+import { CanonicalError, type ApprovalOption, type ApprovalSubject } from '@liwencode/rpc';
 import { mcpRequestStateInvalid } from './errors.js';
 import type { McpInputRequest } from './mapping.js';
 

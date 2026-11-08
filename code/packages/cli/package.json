@@ -1,12 +1,12 @@
 {
-  "name": "syaocode",
+  "name": "liwencode",
   "version": "0.2.0-dev",
-  "description": "SYAOCode reference CLI (syao). v0.1: non-interactive -p/exec, doctor, config.",
+  "description": "LIWENCode reference CLI (liwen). v0.1: non-interactive -p/exec, doctor, config.",
   "type": "module",
   "license": "Apache-2.0",
   "bin": {
-    "syaocode": "./dist/main.js",
-    "syao": "./dist/main.js"
+    "liwencode": "./dist/main.js",
+    "liwen": "./dist/main.js"
   },
   "sideEffects": false,
   "scripts": {
@@ -16,13 +16,13 @@
     "prepublishOnly": "pnpm run typecheck && pnpm run build"
   },
   "dependencies": {
-    "@syaocode/core": "workspace:*",
-    "@syaocode/node": "workspace:*",
-    "@syaocode/protocols": "workspace:*",
-    "@syaocode/providers": "workspace:*",
-    "@syaocode/rpc": "workspace:*",
-    "@syaocode/testing": "workspace:*",
-    "@syaocode/tools": "workspace:*",
+    "@liwencode/core": "workspace:*",
+    "@liwencode/node": "workspace:*",
+    "@liwencode/protocols": "workspace:*",
+    "@liwencode/providers": "workspace:*",
+    "@liwencode/rpc": "workspace:*",
+    "@liwencode/testing": "workspace:*",
+    "@liwencode/tools": "workspace:*",
     "zod": "^3.24.0"
   },
   "devDependencies": {
@@ -36,7 +36,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wenhuang2333/SYAOCode.git"
+    "url": "git+https://github.com/wenhuang2333/LIWENCode.git"
   },
   "files": [
     "dist",

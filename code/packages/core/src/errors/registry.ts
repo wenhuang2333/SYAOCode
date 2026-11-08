@@ -1,5 +1,5 @@
 /**
- * SYAOCode error code registry (09-错误体系专项设计 §9.5).
+ * LIWENCode error code registry (09-错误体系专项设计 §9.5).
  *
  * Format: SY-<domain>-<3-digit sequence>. Sequences are never reused; a
  * deprecated entry stays in the registry marked `deprecated`. SY-DEC-007
@@ -126,7 +126,7 @@ const TABLE: readonly Row[] = [
   { code: 'SY-ACP-002', name: 'AcpInvalidRequest', severity: 'error', retryable: false, recovery: 'none', description: 'Invalid JSON-RPC params; protocol-level error returned.' },
   // ── SY-PLG 插件 ──────────────────────────────────────────────
   { code: 'SY-PLG-001', name: 'PluginManifestInvalid', severity: 'error', retryable: false, recovery: 'reconfigure', description: 'Manifest validation failed.' },
-  { code: 'SY-PLG-002', name: 'PluginEngineIncompatible', severity: 'error', retryable: false, recovery: 'reconfigure', description: 'engines.syaocode not satisfied (BR-020).' },
+  { code: 'SY-PLG-002', name: 'PluginEngineIncompatible', severity: 'error', retryable: false, recovery: 'reconfigure', description: 'engines.liwencode not satisfied (BR-020).' },
   { code: 'SY-PLG-003', name: 'PluginLoadFailed', severity: 'error', retryable: false, recovery: 'reconfigure', description: 'Import failed or setup timed out.' },
   { code: 'SY-PLG-004', name: 'PluginPermissionNotGranted', severity: 'error', retryable: false, recovery: 'ask_user', description: 'Requested capability not approved (BR-019).' },
   { code: 'SY-PLG-005', name: 'PluginRuntimeError', severity: 'error', retryable: false, recovery: 'none', description: 'Caught by the error boundary; 3 consecutive failures auto-disable.' },

@@ -8,7 +8,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { AgentsListResult, McpServerInfo } from '@syaocode/dhp';
+import type { AgentsListResult, McpServerInfo } from '@liwencode/dhp';
 import {
   AGENT_EXECUTION_ROLE, AGENT_ROLE_LABELS, AgentsPage, agentRoleLabel, agentsSummary, createAgentDraft, modelBindingLabel, validateAgentDraft,
 } from '../src/renderer/agents-page.tsx';

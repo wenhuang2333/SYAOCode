@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FsError, type Tool, type ToolContext, type ToolOutput } from '@syaocode/core';
+import { FsError, type Tool, type ToolContext, type ToolOutput } from '@liwencode/core';
 import type { FileStateTracker } from './file-state.js';
 
 const MAX_READ_LINES = 2000;

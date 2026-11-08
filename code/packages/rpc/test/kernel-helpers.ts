@@ -5,8 +5,8 @@
  * two suites can evolve independently while sharing one FakeRuntime.
  */
 
-import { PermissionEngine, type Runtime, type Tool } from '@syaocode/core';
-import { sha256Hex } from '@syaocode/core';
+import { PermissionEngine, type Runtime, type Tool } from '@liwencode/core';
+import { sha256Hex } from '@liwencode/core';
 import type {
   ApprovalStore,
   AuditStore,
@@ -478,7 +478,7 @@ export function makeStores(overrides: Partial<FabricStores> = {}): FabricStores 
 }
 
 /** A permission engine wired to a fake runtime, for the local preset bridge. */
-export function makePermissionEngine(runtime: FakeRuntime, mode: import('@syaocode/core').PermissionMode = 'default'): PermissionEngine {
+export function makePermissionEngine(runtime: FakeRuntime, mode: import('@liwencode/core').PermissionMode = 'default'): PermissionEngine {
   return new PermissionEngine({
     mode,
     rules: [],

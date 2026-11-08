@@ -5,7 +5,7 @@
  * (ADR-R11) applies to `packages/rpc/src`, not to the test suite.
  */
 
-import { noopLogger, sha256Hex, type IdGenerator, type Logger, type Runtime } from '@syaocode/core';
+import { noopLogger, sha256Hex, type IdGenerator, type Logger, type Runtime } from '@liwencode/core';
 import type { FabricStores, Hasher, KernelContext } from '../src/governance/contracts.js';
 import { deterministicIds } from '../src/ir/ids.js';
 import { createMemoryStores } from '../src/runtime/stores.js';

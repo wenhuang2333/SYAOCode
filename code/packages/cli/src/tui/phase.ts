@@ -10,7 +10,7 @@
  * - 网络重试回调 = 红色 + 重试文案；成功事件（delta/usage/tool.result）清除
  */
 
-import type { AgentEventBody } from '@syaocode/core';
+import type { AgentEventBody } from '@liwencode/core';
 import { t, type MsgKey } from '../i18n/index.js';
 import { spinnerFrame } from './flight.js';
 import { asciiMode } from './terminal.js';

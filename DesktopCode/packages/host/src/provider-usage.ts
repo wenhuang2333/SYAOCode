@@ -1,5 +1,5 @@
-import type { Runtime } from '@syaocode/core';
-import type { ChannelProtocol } from '@syaocode/dhp';
+import type { Runtime } from '@liwencode/core';
+import type { ChannelProtocol } from '@liwencode/dhp';
 import type { ObservedUsage } from './usage.ts';
 
 /** Observe only usage fields; never store wire bodies, headers, keys or URLs. */

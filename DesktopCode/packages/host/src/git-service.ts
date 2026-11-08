@@ -2,7 +2,7 @@
  * Git 只读服务（`27` §10.1–§10.4）。
  *
  * 定位：**唯一执行点**。渲染层不执行 git、不解析 git 输出；
- * 本文件把 git 的各种输出格式翻译成 `@syaocode/dhp` 的稳定类型。
+ * 本文件把 git 的各种输出格式翻译成 `@liwencode/dhp` 的稳定类型。
  *
  * 口径纪律（`27` §7.1）：
  *  - 本文件只产出**工作区口径**（工作区当前相对 HEAD 的未提交变化）；
@@ -50,7 +50,7 @@ import type {
   GitRemoteInfo,
   GitRemotesResult,
   GitStatusResult,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 import {
   assertRelativePath,
   GitError,

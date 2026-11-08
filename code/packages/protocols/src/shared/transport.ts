@@ -2,7 +2,7 @@
  * Duplex transports for the protocol edges.
  *
  * HARD RULE (03 §7.3, purity): this package never imports `node:`. Every
- * transport is built on the injected `@syaocode/core` Runtime:
+ * transport is built on the injected `@liwencode/core` Runtime:
  *   - stdio  → `Runtime.shell.spawn` (child process stdout/stderr/stdin)
  *   - HTTP   → `Runtime.http.fetch` (Streamable HTTP + SSE)
  *   - tests  → {@link createLoopbackPair}, a pure in-process duplex pair
@@ -14,9 +14,9 @@
  * silently degrading to a read-only channel.
  */
 
-import { decodeChunkStream } from '@syaocode/core';
-import type { HttpClient, Logger, ProcessHandle, Runtime, ShellSpawnOptions } from '@syaocode/core';
-import { CanonicalError } from '@syaocode/rpc';
+import { decodeChunkStream } from '@liwencode/core';
+import type { HttpClient, Logger, ProcessHandle, Runtime, ShellSpawnOptions } from '@liwencode/core';
+import { CanonicalError } from '@liwencode/rpc';
 import type { Framing } from './jsonrpc.js';
 
 /** How long a stdio frame may be before we treat the peer as broken. */
@@ -38,7 +38,7 @@ export interface DuplexChannel {
   describe(): string;
 }
 
-// ── in-process loopback (tests, embedding, `syao call --in-process`) ──────
+// ── in-process loopback (tests, embedding, `liwen call --in-process`) ──────
 
 class QueueChannel implements DuplexChannel {
   private queue: string[] = [];
@@ -167,7 +167,7 @@ export function createLoopbackPair(opts?: { framing?: Framing; labels?: [string,
  *
  * Derived rather than imported so it can never drift from the core contract —
  * and because core's `ProcessStdin` is not (yet) re-exported from
- * `@syaocode/core`'s public index.
+ * `@liwencode/core`'s public index.
  */
 export type StdinWriter = NonNullable<ProcessHandle['stdin']>;
 

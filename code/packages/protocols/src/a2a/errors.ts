@@ -2,7 +2,7 @@
  * A2A error codes ↔ CanonicalError (01 §5.3 / G10).
  */
 
-import { A2A_ERROR_CODES, CanonicalError, canonicalFromJsonRpcError, type CanonicalErrorShape } from '@syaocode/rpc';
+import { A2A_ERROR_CODES, CanonicalError, canonicalFromJsonRpcError, type CanonicalErrorShape } from '@liwencode/rpc';
 import type { ReservedMetadataConflict } from './metadata.js';
 
 export { A2A_ERROR_CODES };

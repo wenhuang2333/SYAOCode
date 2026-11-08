@@ -1,4 +1,4 @@
-import type { ProcessChunkStream, Runtime } from '@syaocode/core';
+import type { ProcessChunkStream, Runtime } from '@liwencode/core';
 
 /**
  * stdio duplex transport (03 §3.5).
@@ -88,7 +88,7 @@ export function createStdioTransport(opts: StdioTransportOptions): StdioTranspor
         throw new StdioTransportError(
           'SY-SRV-004',
           `Child '${opts.command}' exposes no ProcessHandle.stdoutChunks, so 'content-length' framing cannot be honoured. ` +
-            'Use a host runtime that provides raw chunk streams (e.g. @syaocode/node nodeRuntime()).',
+            'Use a host runtime that provides raw chunk streams (e.g. @liwencode/node nodeRuntime()).',
         );
       }
       if (framing === 'json-lines') return lineFrames(handle.stdout);

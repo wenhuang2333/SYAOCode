@@ -13,7 +13,7 @@
  *       survive normalization
  */
 
-import type { IdGenerator } from '@syaocode/core';
+import type { IdGenerator } from '@liwencode/core';
 import type { ApprovalOption, ApprovalRecord, Effect } from '../ir/types.js';
 import type { ApprovalBroker, ApprovalOutcome, ApprovalRequest, ApprovalStore } from './contracts.js';
 

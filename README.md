@@ -1,4 +1,4 @@
-# SYAOCode
+# LIWENCode
 
 TypeScript 原生、模型中立、可嵌入、可审计的 coding-agent harness 库 + 参考 CLI。
 
@@ -10,7 +10,7 @@ TypeScript 原生、模型中立、可嵌入、可审计的 coding-agent harness
 | --- | --- |
 | [`code/`](code/) | 源码 monorepo（pnpm workspace，五包：core / providers / tools / testing / cli），独立可运行 |
 | [`code/README.md`](code/README.md) | 源码总览、命令、发布就绪度与设计不变量 |
-| [`code/docs/COMMANDS.md`](code/docs/COMMANDS.md) | `syao` 命令与 TUI 交互完整手册 |
+| [`code/docs/COMMANDS.md`](code/docs/COMMANDS.md) | `liwen` 命令与 TUI 交互完整手册 |
 | [`code/docs/TEST-REPORT-v0.1.md`](code/docs/TEST-REPORT-v0.1.md) | v0.1 测试报告 |
 | [`DesktopCode/`](DesktopCode/) | 桌面端（Electron）客户端源码 |
 
@@ -33,17 +33,17 @@ corepack pnpm start          # 启动参考 CLI（TUI）
 
 | 包 | 内容 |
 | --- | --- |
-| `@syaocode/core` | 内核：消息模型、Runtime 抽象、事件流、agent 循环、权限引擎、79 码错误注册表、配置分层、会话存储、脱敏 |
-| `@syaocode/providers` | OpenAI Chat Completions 适配器 + Anthropic Messages 原生适配器（SSE 流式） |
-| `@syaocode/tools` | read / write / edit / glob / grep / bash（先读后写围栏、唯一匹配编辑、.gitignore 感知检索） |
-| `@syaocode/testing` | MemoryRuntime、MockProvider、provider 合约套件 |
-| `syaocode`（CLI） | 参考命令行：权限三档、斜杠命令、纯 ANSI TUI（启动动画 + 常驻界面 + 指令联想） |
+| `@liwencode/core` | 内核：消息模型、Runtime 抽象、事件流、agent 循环、权限引擎、79 码错误注册表、配置分层、会话存储、脱敏 |
+| `@liwencode/providers` | OpenAI Chat Completions 适配器 + Anthropic Messages 原生适配器（SSE 流式） |
+| `@liwencode/tools` | read / write / edit / glob / grep / bash（先读后写围栏、唯一匹配编辑、.gitignore 感知检索） |
+| `@liwencode/testing` | MemoryRuntime、MockProvider、provider 合约套件 |
+| `liwencode`（CLI） | 参考命令行：权限三档、斜杠命令、纯 ANSI TUI（启动动画 + 常驻界面 + 指令联想） |
 
 ## 设计不变量（不可破坏）
 
 - Deny > ask > allow；**任何模型输出都不能把 deny 提升为 allow**。
 - 每个 `tool_use` 恰好对应一个 `tool_result`，中断时亦如此。
-- 跨包边界只抛 `SyaoError`，用 `SyaoError.is()` 判定，不用 `instanceof`。
+- 跨包边界只抛 `LIWENError`，用 `LIWENError.is()` 判定，不用 `instanceof`。
 - 错误码格式 `SY-<domain>-<seq>`。
 
 ## 许可

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type { ModelRequest, Provider, Usage } from '@syaocode/core';
-import { EMPTY_USAGE, type ChannelModel, type ContextInfo, type UsageGroup, type UsageQuery, type UsageRecord, type UsageReport, type UsageTotals } from '@syaocode/dhp';
+import type { ModelRequest, Provider, Usage } from '@liwencode/core';
+import { EMPTY_USAGE, type ChannelModel, type ContextInfo, type UsageGroup, type UsageQuery, type UsageRecord, type UsageReport, type UsageTotals } from '@liwencode/dhp';
 
 export const UNKNOWN_CONTEXT: ContextInfo = { usedTokens: null, capacity: null, capacitySource: 'unknown', source: 'unknown', segments: [], capturedAt: null, compression: 'unsupported' };
 export function dayKey(at: number): string {

@@ -20,7 +20,7 @@ import {
   type CompletionRequest,
 } from '../src/commit-message.ts';
 
-const WORKSPACE = '/tmp/syaocode-commit-message';
+const WORKSPACE = '/tmp/liwencode-commit-message';
 
 const CONVENTIONAL = /^(feat|fix|refactor|perf|test|docs|build|chore|ci|style|revert)(\([^)]*\))?!?: .+$/u;
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AgentEvent, AgentEventBody } from '@syaocode/core';
+import type { AgentEvent, AgentEventBody } from '@liwencode/core';
 import { setLanguage } from '../src/i18n/index';
 import { PhaseTracker, activityText, phaseLine } from '../src/tui/phase';
 import {

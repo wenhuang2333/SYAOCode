@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `syao host` —— 独立启动 DHP Host。
+ * `liwen host` —— 独立启动 DHP Host。
  *
  * 这是 Host 进程的**唯一**入口。两个调用方：
  *  1. Electron 壳（`utilityProcess` 拉起，`ELECTRON_RUN_AS_NODE=1`）
@@ -12,7 +12,7 @@
  * 启动失败必须**大声失败**：stderr 尾部会被壳采集并展示给用户。
  */
 
-import { createHost } from '@syaocode/host';
+import { createHost } from '@liwencode/host';
 
 interface HostArgs {
   readonly port: number;
@@ -51,7 +51,7 @@ function parseArgs(argv: readonly string[]): HostArgs {
       case '--help':
       case '-h':
         process.stdout.write(
-          'Usage: syao-host [--host 127.0.0.1] [--port 0] [--cwd <dir>] [--token <hex>]\n',
+          'Usage: liwen-host [--host 127.0.0.1] [--port 0] [--cwd <dir>] [--token <hex>]\n',
         );
         process.exit(0);
         break;

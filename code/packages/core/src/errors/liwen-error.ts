@@ -19,15 +19,15 @@ export interface ErrorInit {
 }
 
 /** Cross-copy-safe brand: `is()` must never rely on instanceof or .name. */
-const SYAO_BRAND = Symbol.for('syaocode.error');
+const LIWEN_BRAND = Symbol.for('liwencode.error');
 
 /**
  * The only error type that may cross a package boundary (BR-025).
- * Identify with `SyaoError.is(e)` — never `instanceof`, which breaks when
+ * Identify with `LIWENError.is(e)` — never `instanceof`, which breaks when
  * multiple copies of the package are loaded.
  */
-export class SyaoError extends Error {
-  override readonly name: string = 'SyaoError';
+export class LIWENError extends Error {
+  override readonly name: string = 'LIWENError';
   readonly code: string;
   readonly category: ErrorCategory;
   readonly severity: Severity;
@@ -50,7 +50,7 @@ export class SyaoError extends Error {
     if (init.modelMessage !== undefined) this.modelMessage = init.modelMessage;
     if (init.details !== undefined) this.details = init.details;
     this.rawCause = init.cause;
-    Object.defineProperty(this, SYAO_BRAND, { value: true, enumerable: false });
+    Object.defineProperty(this, LIWEN_BRAND, { value: true, enumerable: false });
   }
 
   toJSON(): SerializedError {
@@ -71,19 +71,19 @@ export class SyaoError extends Error {
     return this.severity === 'fatal';
   }
 
-  static is(e: unknown): e is SyaoError {
+  static is(e: unknown): e is LIWENError {
     return (
       typeof e === 'object' &&
       e !== null &&
-      (e as Record<symbol, unknown>)[SYAO_BRAND] === true
+      (e as Record<symbol, unknown>)[LIWEN_BRAND] === true
     );
   }
 
-  /** Wrap a non-SyaoError throw into SY-INT-001; pass SyaoError through. */
-  static wrap(e: unknown, defaults: Partial<ErrorInit> = {}): SyaoError {
-    if (SyaoError.is(e)) return e;
+  /** Wrap a non-LIWENError throw into SY-INT-001; pass LIWENError through. */
+  static wrap(e: unknown, defaults: Partial<ErrorInit> = {}): LIWENError {
+    if (LIWENError.is(e)) return e;
     const message = e instanceof Error ? e.message : String(e);
-    return new SyaoError({
+    return new LIWENError({
       code: 'SY-INT-001',
       message: defaults.message ?? message,
       ...(defaults.modelMessage !== undefined ? { modelMessage: defaults.modelMessage } : {}),
@@ -93,7 +93,7 @@ export class SyaoError extends Error {
   }
 }
 
-export class ProviderError extends SyaoError {
+export class ProviderError extends LIWENError {
   override readonly name = 'ProviderError';
   readonly status?: number;
   readonly requestId?: string;
@@ -106,7 +106,7 @@ export class ProviderError extends SyaoError {
   }
 }
 
-export class ToolError extends SyaoError {
+export class ToolError extends LIWENError {
   override readonly name = 'ToolError';
   readonly toolName?: string;
   readonly callId?: string;
@@ -117,35 +117,35 @@ export class ToolError extends SyaoError {
   }
 }
 
-export class PermissionError extends SyaoError {
+export class PermissionError extends LIWENError {
   override readonly name = 'PermissionError';
   constructor(init: ErrorInit) {
     super(init);
   }
 }
 
-export class FsError extends SyaoError {
+export class FsError extends LIWENError {
   override readonly name = 'FsError';
   constructor(init: ErrorInit) {
     super(init);
   }
 }
 
-export class ContextError extends SyaoError {
+export class ContextError extends LIWENError {
   override readonly name = 'ContextError';
   constructor(init: ErrorInit) {
     super(init);
   }
 }
 
-export class SessionError extends SyaoError {
+export class SessionError extends LIWENError {
   override readonly name = 'SessionError';
   constructor(init: ErrorInit) {
     super(init);
   }
 }
 
-export class InternalError extends SyaoError {
+export class InternalError extends LIWENError {
   override readonly name = 'InternalError';
   constructor(init: ErrorInit) {
     super(init);

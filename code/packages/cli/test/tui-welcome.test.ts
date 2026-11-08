@@ -6,8 +6,8 @@ const COLS = 100;
 const PANEL_H = 20;
 
 describe('tui/welcome 欢迎面板', () => {
-  it('miniPoints：SYAOCode 点阵边界与宽度', () => {
-    const { points, width } = miniPoints('SYAOCode', 0);
+  it('miniPoints：LIWENCode 点阵边界与宽度', () => {
+    const { points, width } = miniPoints('LIWENCode', 0);
     expect(points.length).toBeGreaterThan(50);
     for (const p of points) {
       expect(p.row).toBeGreaterThanOrEqual(0);
@@ -21,7 +21,7 @@ describe('tui/welcome 欢迎面板', () => {
   it('artPixels：黑白阴影（主题色主字 + 阴影）且横向铺满宽度', () => {
     const W = 80;
     const theme = { main: 255, shadow: 234 };
-    const px = artPixels(W, 'SYAOCode', theme);
+    const px = artPixels(W, 'LIWENCode', theme);
     const colors = new Set(px.values());
     expect(colors.has(theme.main)).toBe(true); // 主字
     expect(colors.has(theme.shadow)).toBe(true); // 阴影
@@ -49,7 +49,7 @@ describe('tui/welcome 欢迎面板', () => {
     for (const l of plain) expect(l.length).toBe(w0);
     // 英文欢迎语与提示
     const joined = plain.join('\n');
-    expect(joined).toContain('Welcome to SYAOCode');
+    expect(joined).toContain('Welcome to LIWENCode');
     expect(joined).toContain('mock:default');
     expect(joined).toContain('/help');
     expect(joined).toContain('Type / for command palette');

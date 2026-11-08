@@ -3,7 +3,7 @@
  *
  * The edge used to be mounted without `runTurn`, so it could `initialize` and
  * open sessions but every prompt failed with `-32603 "this agent has no prompt
- * handler"` — the documented `syao acp` scenario was unusable and nothing
+ * handler"` — the documented `liwen acp` scenario was unusable and nothing
  * caught it because the ACP server had no wire test in the CLI either.
  *
  * These tests drive `mountServerEdge('acp', …)` over the in-process channel the
@@ -11,14 +11,14 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { createFabric, type Fabric, type Principal } from '@syaocode/rpc';
-import { MemoryRuntime } from '@syaocode/testing';
+import { createFabric, type Fabric, type Principal } from '@liwencode/rpc';
+import { MemoryRuntime } from '@liwencode/testing';
 import { mountServerEdge, type ServeFabricContext } from '../src/serve';
 
 const PRINCIPAL: Principal = {
   id: 'user:local',
   kind: 'user',
-  tenantId: 'syaocode-local',
+  tenantId: 'liwencode-local',
   scopes: [],
   trustTier: 'first_party',
 };
@@ -28,7 +28,7 @@ function ctxWith(runTurn?: ServeFabricContext['runTurn']): ServeFabricContext {
   // for its ids/clock, and reverse calls must have somewhere to go.
   const fabric: Fabric = createFabric({
     runtime: new MemoryRuntime(),
-    tenantId: 'syaocode-local',
+    tenantId: 'liwencode-local',
     workspaceRoots: ['/work'],
     policy: { defaultEffect: 'deny', rules: [] },
   });
@@ -37,7 +37,7 @@ function ctxWith(runTurn?: ServeFabricContext['runTurn']): ServeFabricContext {
     principal: PRINCIPAL,
     cwd: '/work',
     workspaceRoots: ['/work'],
-    tenantId: 'syaocode-local',
+    tenantId: 'liwencode-local',
     ensureSession: async () => ({ id: 'ses_1', budgetId: 'default' }),
     ...(runTurn !== undefined ? { runTurn } : {}),
   };

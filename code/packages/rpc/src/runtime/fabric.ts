@@ -25,7 +25,7 @@ import {
   type Tool,
   type ToolOutput,
   type ToolRegistry,
-} from '@syaocode/core';
+} from '@liwencode/core';
 import { CanonicalError } from '../ir/errors.js';
 import { newId } from '../ir/ids.js';
 import type {

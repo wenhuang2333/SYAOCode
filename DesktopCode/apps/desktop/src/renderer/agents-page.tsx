@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { AGENT_ROLES, type AgentGroup, type AgentRole, type AgentsListResult, type AgentsSaveParams, type ChannelInfo } from '@syaocode/dhp';
+import { AGENT_ROLES, type AgentGroup, type AgentRole, type AgentsListResult, type AgentsSaveParams, type ChannelInfo } from '@liwencode/dhp';
 import type { Lang } from './i18n';
 import { ta } from './i18n-agents';
 

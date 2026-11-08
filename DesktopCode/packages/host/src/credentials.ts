@@ -18,10 +18,10 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 
-/** 钥匙串条目标识名：`syaocode.git.<host>.<method>`。 */
+/** 钥匙串条目标识名：`liwencode.git.<host>.<method>`。 */
 export function keychainEntryFor(host: string, method: string): string {
   const safeHost = host.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120) || 'unknown';
-  return `syaocode.git.${safeHost}.${method}`;
+  return `liwencode.git.${safeHost}.${method}`;
 }
 
 /**

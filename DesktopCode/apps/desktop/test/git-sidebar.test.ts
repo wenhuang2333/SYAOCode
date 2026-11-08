@@ -12,7 +12,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type {
   GitAuthInfo, GitAuthStatusResult, GitBranchesResult, GitCommitNode, GitDiffResult, GitFileEntry, GitOauthProvider, GitPreflightResult, GitRemoteInfo, GitRemotesResult, GitStatusResult,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 import {
   GIT_TABS, GitDiffPanel, GitSidebar, INITIAL_SIDEBAR_STATE, LARGE_FILE_THRESHOLD_BYTES, OAUTH_MAX_DELAY_MS, OAUTH_MIN_DELAY_MS, OAUTH_POLL_LIMIT, SIGNING_FAILED_CODE,
   aheadBehindText, authMethodLabel, authStatusLabel, authStatusTone, branchLabel, commitHooksText, executableHooks,

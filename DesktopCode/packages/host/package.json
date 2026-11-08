@@ -1,7 +1,7 @@
 {
-  "name": "@syaocode/host",
+  "name": "@liwencode/host",
   "version": "0.1.0",
-  "description": "SYAOCode Desktop Host: DHP server, session/agent manager, services",
+  "description": "LIWENCode Desktop Host: DHP server, session/agent manager, services",
   "type": "module",
   "license": "Apache-2.0",
   "sideEffects": false,
@@ -14,13 +14,13 @@
     "build": "node build.mjs"
   },
   "dependencies": {
-    "@syaocode/core": "link:../../../code/packages/core",
-    "@syaocode/dhp": "workspace:*",
-    "@syaocode/node": "link:../../../code/packages/node",
-    "@syaocode/protocols": "link:../../../code/packages/protocols",
-    "@syaocode/providers": "link:../../../code/packages/providers",
-    "@syaocode/testing": "link:../../../code/packages/testing",
-    "@syaocode/tools": "link:../../../code/packages/tools",
+    "@liwencode/core": "link:../../../code/packages/core",
+    "@liwencode/dhp": "workspace:*",
+    "@liwencode/node": "link:../../../code/packages/node",
+    "@liwencode/protocols": "link:../../../code/packages/protocols",
+    "@liwencode/providers": "link:../../../code/packages/providers",
+    "@liwencode/testing": "link:../../../code/packages/testing",
+    "@liwencode/tools": "link:../../../code/packages/tools",
     "ws": "^8.18.0",
     "zod": "^3.24.1"
   },
@@ -31,6 +31,6 @@
     "esbuild": "^0.25.0"
   },
   "bin": {
-    "syao-host": "./src/main.ts"
+    "liwen-host": "./src/main.ts"
   }
 }

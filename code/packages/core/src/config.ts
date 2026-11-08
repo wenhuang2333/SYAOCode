@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Runtime } from './runtime/index.js';
 import type { PermissionMode } from './events.js';
 import type { PermissionRule } from './permissions.js';
-import { SyaoError } from './errors/syao-error.js';
+import { LIWENError } from './errors/liwen-error.js';
 
 /**
  * Layered configuration (FR-120, BR-024). Precedence:
@@ -146,7 +146,7 @@ export const configSchema = z.object({
   rpc: rpcConfigSchema,
 });
 
-export type SyaoConfig = z.infer<typeof configSchema>;
+export type LIWENConfig = z.infer<typeof configSchema>;
 
 /**
  * Layer schema: the same shape with every default removed.
@@ -162,14 +162,14 @@ export interface LoadConfigOptions {
   projectPath?: string;
   env?: Record<string, string | undefined>;
   /** Lowest layer above built-in defaults (e.g. the CLI's `default` mode). */
-  base?: Partial<SyaoConfig>;
-  code?: Partial<SyaoConfig>;
+  base?: Partial<LIWENConfig>;
+  code?: Partial<LIWENConfig>;
   runtime: Runtime;
 }
 
-const DEFAULTS: SyaoConfig = configSchema.parse({});
+const DEFAULTS: LIWENConfig = configSchema.parse({});
 
-function mergeLayer(base: SyaoConfig, layer: Partial<SyaoConfig>): SyaoConfig {
+function mergeLayer(base: LIWENConfig, layer: Partial<LIWENConfig>): LIWENConfig {
   const baseRpc = base.rpc;
   const layerRpc = layer.rpc;
   return {
@@ -243,7 +243,7 @@ async function readJsonIfExists(path: string, runtime: Runtime): Promise<Record<
   try {
     return JSON.parse(await runtime.fs.readFile(path)) as Record<string, unknown>;
   } catch (e) {
-    throw new SyaoError({
+    throw new LIWENError({
       code: 'SY-CFG-001',
       message: `Failed to parse config file ${path}`,
       details: { path },
@@ -252,15 +252,15 @@ async function readJsonIfExists(path: string, runtime: Runtime): Promise<Record<
   }
 }
 
-export async function loadConfig(opts: LoadConfigOptions): Promise<SyaoConfig> {
+export async function loadConfig(opts: LoadConfigOptions): Promise<LIWENConfig> {
   const errors: { path: string; message: string }[] = [];
   const warn = (msg: string) => opts.runtime.logger.log('warn', 'config', { msg });
-  let config: SyaoConfig = opts.base !== undefined ? mergeLayer(DEFAULTS, opts.base) : DEFAULTS;
+  let config: LIWENConfig = opts.base !== undefined ? mergeLayer(DEFAULTS, opts.base) : DEFAULTS;
 
-  const userRaw = await readJsonIfExists(opts.userPath ?? `${opts.runtime.env.get('HOME') ?? ''}/.syaocode/config.json`, opts.runtime);
+  const userRaw = await readJsonIfExists(opts.userPath ?? `${opts.runtime.env.get('HOME') ?? ''}/.liwencode/config.json`, opts.runtime);
   if (userRaw !== undefined) config = mergeLayer(config, validateLayer(userRaw, 'user', errors));
 
-  const projectRaw = await readJsonIfExists(opts.projectPath ?? '.syaocode/config.json', opts.runtime);
+  const projectRaw = await readJsonIfExists(opts.projectPath ?? '.liwencode/config.json', opts.runtime);
   if (projectRaw !== undefined) {
     const project = validateLayer(projectRaw, 'project', errors);
     // BR-002: project-level config may not enable bypass.
@@ -295,14 +295,14 @@ export async function loadConfig(opts: LoadConfigOptions): Promise<SyaoConfig> {
 
   const env = opts.env ?? {};
   const envRaw: Record<string, unknown> = {};
-  if (env.SYAO_MODEL !== undefined && env.SYAO_MODEL !== '') {
-    const idx = env.SYAO_MODEL.indexOf(':');
+  if (env.LIWEN_MODEL !== undefined && env.LIWEN_MODEL !== '') {
+    const idx = env.LIWEN_MODEL.indexOf(':');
     if (idx > 0) {
-      envRaw.model = { provider: env.SYAO_MODEL.slice(0, idx), name: env.SYAO_MODEL.slice(idx + 1) };
+      envRaw.model = { provider: env.LIWEN_MODEL.slice(0, idx), name: env.LIWEN_MODEL.slice(idx + 1) };
     }
   }
-  if (env.SYAO_PERMISSION_MODE !== undefined && env.SYAO_PERMISSION_MODE !== '') {
-    envRaw.permissionMode = env.SYAO_PERMISSION_MODE as PermissionMode;
+  if (env.LIWEN_PERMISSION_MODE !== undefined && env.LIWEN_PERMISSION_MODE !== '') {
+    envRaw.permissionMode = env.LIWEN_PERMISSION_MODE as PermissionMode;
   }
   if (Object.keys(envRaw).length > 0) {
     config = mergeLayer(config, validateLayer(envRaw, 'env', errors));
@@ -311,7 +311,7 @@ export async function loadConfig(opts: LoadConfigOptions): Promise<SyaoConfig> {
   if (opts.code !== undefined) config = mergeLayer(config, opts.code);
 
   if (errors.length > 0) {
-    throw new SyaoError({
+    throw new LIWENError({
       code: 'SY-CFG-001',
       message: 'Configuration validation failed',
       details: { issues: errors },
@@ -320,7 +320,7 @@ export async function loadConfig(opts: LoadConfigOptions): Promise<SyaoConfig> {
   return config;
 }
 
-function validateLayer(raw: unknown, layer: string, errors: { path: string; message: string }[]): Partial<SyaoConfig> {
+function validateLayer(raw: unknown, layer: string, errors: { path: string; message: string }[]): Partial<LIWENConfig> {
   const parsed = layerSchema.safeParse(raw);
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
@@ -330,7 +330,7 @@ function validateLayer(raw: unknown, layer: string, errors: { path: string; mess
   }
   // Zod materializes optional keys as `undefined`; spreading those would
   // override a lower layer with nothing.
-  return stripUndefined(parsed.data) as Partial<SyaoConfig>;
+  return stripUndefined(parsed.data) as Partial<LIWENConfig>;
 }
 
 /** Recursively drop keys whose value is `undefined`. */
@@ -347,7 +347,7 @@ function stripUndefined(value: unknown): unknown {
   return value;
 }
 
-export function rulesFromConfig(config: SyaoConfig): PermissionRule[] {
+export function rulesFromConfig(config: LIWENConfig): PermissionRule[] {
   return config.rules.map((r) => ({
     effect: r.effect,
     tool: r.tool,

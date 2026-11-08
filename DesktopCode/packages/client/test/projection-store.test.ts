@@ -7,7 +7,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { ProjectionStore, type ResubscribeRequest } from '../src/projection-store.ts';
-import { emptySnapshot, type SessionSnapshot } from '@syaocode/dhp';
+import { emptySnapshot, type SessionSnapshot } from '@liwencode/dhp';
 
 const META = {
   sessionId: 's1',

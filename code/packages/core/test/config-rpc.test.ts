@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { configSchema, loadConfig, resolveServerToken, type SyaoConfig } from '../src';
+import { configSchema, loadConfig, resolveServerToken, type LIWENConfig } from '../src';
 import { fakeRuntime } from './helpers';
 
 /**
@@ -28,7 +28,7 @@ describe('C9 · rpc config section', () => {
 
   it('accepts the documented shape and merges across layers', async () => {
     const runtime = runtimeWith({
-      '/home/u/.syaocode/config.json': JSON.stringify({
+      '/home/u/.liwencode/config.json': JSON.stringify({
         rpc: {
           policy: { bundle: 'org.json', mode: 'default' },
           budget: { limitUsd: 5 },
@@ -37,14 +37,14 @@ describe('C9 · rpc config section', () => {
           registry: [{ id: 'gh', protocol: 'mcp', endpoint: 'stdio:npx' }],
         },
       }),
-      '/ws/.syaocode/config.json': projectConfig({
+      '/ws/.liwencode/config.json': projectConfig({
         budget: { limitTokens: 1000 },
         registry: [{ id: 'local', protocol: 'local', endpoint: 'inproc' }],
       }),
     });
     const config = await loadConfig({
-      userPath: '/home/u/.syaocode/config.json',
-      projectPath: '/ws/.syaocode/config.json',
+      userPath: '/home/u/.liwencode/config.json',
+      projectPath: '/ws/.liwencode/config.json',
       runtime,
     });
     expect(config.rpc.policy.bundle).toBe('org.json');
@@ -57,19 +57,19 @@ describe('C9 · rpc config section', () => {
 
   it('BR-002: a project cannot enable bypass through rpc.policy.mode', async () => {
     const runtime = runtimeWith({
-      '/ws/.syaocode/config.json': projectConfig({ policy: { mode: 'bypass' } }),
+      '/ws/.liwencode/config.json': projectConfig({ policy: { mode: 'bypass' } }),
     });
-    const config = await loadConfig({ projectPath: '/ws/.syaocode/config.json', runtime });
+    const config = await loadConfig({ projectPath: '/ws/.liwencode/config.json', runtime });
     expect(config.rpc.policy.mode).toBe('default');
     expect(config.permissionMode).not.toBe('bypass');
   });
 
   it('BR-024: a project rule cannot relax a user-level deny in the rpc layer', async () => {
     const runtime = runtimeWith({
-      '/home/u/.syaocode/config.json': JSON.stringify({
+      '/home/u/.liwencode/config.json': JSON.stringify({
         rpc: { policy: { rules: [{ effect: 'deny', tool: 'bash', source: 'user' }] } },
       }),
-      '/ws/.syaocode/config.json': projectConfig({
+      '/ws/.liwencode/config.json': projectConfig({
         policy: {
           rules: [
             { effect: 'allow', tool: 'bash', source: 'project' },
@@ -79,8 +79,8 @@ describe('C9 · rpc config section', () => {
       }),
     });
     const config = await loadConfig({
-      userPath: '/home/u/.syaocode/config.json',
-      projectPath: '/ws/.syaocode/config.json',
+      userPath: '/home/u/.liwencode/config.json',
+      projectPath: '/ws/.liwencode/config.json',
       runtime,
     });
     const bash = config.rpc.policy.rules.find((r) => r.tool === 'bash');
@@ -92,18 +92,18 @@ describe('C9 · rpc config section', () => {
 
   it('rejects a malformed rpc section with SY-CFG-001 field paths', async () => {
     const runtime = runtimeWith({
-      '/ws/.syaocode/config.json': projectConfig({ server: { port: 99_999 } }),
+      '/ws/.liwencode/config.json': projectConfig({ server: { port: 99_999 } }),
     });
     await expect(
-      loadConfig({ projectPath: '/ws/.syaocode/config.json', runtime }),
+      loadConfig({ projectPath: '/ws/.liwencode/config.json', runtime }),
     ).rejects.toMatchObject({ code: 'SY-CFG-001' });
   });
 });
 
 describe('C9 · server token is an environment reference, never a literal', () => {
   it('resolves env:NAME, ${NAME}, $NAME and a bare variable name', () => {
-    const env = { get: (n: string) => (n === 'SYAO_TOKEN' ? 's3cret' : undefined) };
-    for (const ref of ['env:SYAO_TOKEN', '${SYAO_TOKEN}', '$SYAO_TOKEN', 'SYAO_TOKEN']) {
+    const env = { get: (n: string) => (n === 'LIWEN_TOKEN' ? 's3cret' : undefined) };
+    for (const ref of ['env:LIWEN_TOKEN', '${LIWEN_TOKEN}', '$LIWEN_TOKEN', 'LIWEN_TOKEN']) {
       expect(resolveServerToken(ref, env), ref).toBe('s3cret');
     }
   });
@@ -123,10 +123,10 @@ describe('C9 · server token is an environment reference, never a literal', () =
 describe('C9 · rpc config stays inside the layered precedence', () => {
   it('code layer wins over project for the same field', async () => {
     const runtime = runtimeWith({
-      '/ws/.syaocode/config.json': projectConfig({ budget: { limitUsd: 1 } }),
+      '/ws/.liwencode/config.json': projectConfig({ budget: { limitUsd: 1 } }),
     });
-    const code: Partial<SyaoConfig> = { rpc: { ...configSchema.parse({}).rpc, budget: { limitUsd: 9 } } };
-    const config = await loadConfig({ projectPath: '/ws/.syaocode/config.json', runtime, code });
+    const code: Partial<LIWENConfig> = { rpc: { ...configSchema.parse({}).rpc, budget: { limitUsd: 9 } } };
+    const config = await loadConfig({ projectPath: '/ws/.liwencode/config.json', runtime, code });
     expect(config.rpc.budget.limitUsd).toBe(9);
   });
 });

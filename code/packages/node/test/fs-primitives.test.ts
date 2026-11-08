@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { nodeRuntime } from '../src/index';
 
 function tempDir(): string {
-  return mkdtempSync(join(tmpdir(), 'syao-fs-'));
+  return mkdtempSync(join(tmpdir(), 'liwen-fs-'));
 }
 
 describe('NodeFileSystem.rename', () => {

@@ -28,8 +28,8 @@
  *   .write/metrics.jsonl         wait/hold/takeover observations (W12)
  */
 
-import { SyaoError } from '@syaocode/core';
-import type { IdGenerator, Runtime } from '@syaocode/core';
+import { LIWENError } from '@liwencode/core';
+import type { IdGenerator, Runtime } from '@liwencode/core';
 
 /** What kind of work a write is (06 §5.1). */
 export type WorkKind = 'safety' | 'evidence' | 'governance' | 'execution' | 'telemetry' | 'maintenance';
@@ -131,14 +131,14 @@ export interface WriteLease {
 }
 
 /** Raised when the wait exceeded the timeout — the write was NOT applied (W8). */
-export class StoreLockedError extends SyaoError {
+export class StoreLockedError extends LIWENError {
   constructor(init: { message: string; waitedMs: number; ticketId: string }) {
     super({ code: 'SY-SRV-005', message: init.message, details: { waitedMs: init.waitedMs, ticketId: init.ticketId } });
   }
 }
 
 /** Raised when the epoch moved on: this writer was taken over (W6). */
-export class LeaseLostError extends SyaoError {
+export class LeaseLostError extends LIWENError {
   constructor(init: { message: string; expected: number; actual: number }) {
     super({ code: 'SY-SRV-007', message: init.message, details: { expected: init.expected, actual: init.actual } });
   }

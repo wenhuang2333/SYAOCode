@@ -9,7 +9,7 @@
  * - 转义序列分片缓冲：ESC 与后续字节分两个 chunk 到达时仍正确解析。
  * - 极小终端（<40 列或 <8 行）：调用方切换为无边框最小界面。
  * - 主题探测（OSC 11）：浅色终端上欢迎面板艺术字使用深色系，避免白底白字。
- * - ASCII 降级（SYAO_TUI_ASCII=1）：BoxDrawing/半块字符替换为等价 ASCII，
+ * - ASCII 降级（LIWEN_TUI_ASCII=1）：BoxDrawing/半块字符替换为等价 ASCII，
  *   兼容字体缺失或非 UTF-8 会话。
  */
 
@@ -29,7 +29,7 @@ export function isTinyTerminal(cols: number, rows: number): boolean {
 
 /** ASCII 降级模式（环境变量显式开启；默认使用 BoxDrawing 与半块字符） */
 export function asciiMode(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.SYAO_TUI_ASCII === '1';
+  return env.LIWEN_TUI_ASCII === '1';
 }
 
 const ASCII_MAP: Record<string, string> = {

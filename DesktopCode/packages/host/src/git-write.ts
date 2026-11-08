@@ -34,7 +34,7 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { codeForKind, type GitAckResult, type GitStatusResult } from '@syaocode/dhp';
+import { codeForKind, type GitAckResult, type GitStatusResult } from '@liwencode/dhp';
 import { type CredentialProvider, redactSecret } from './credentials.ts';
 import { GitError, assertRelativePath, redact, requireRepository, runGit } from './git-run.ts';
 
@@ -507,7 +507,7 @@ export class GitWriteService {
       args.push('-m', message);
       return { args, dispose: async () => { /* 无临时文件 */ } };
     }
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'syaocode-git-msg-'));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'liwencode-git-msg-'));
     await fs.chmod(dir, 0o700);
     const file = path.join(dir, 'message.txt');
     await fs.writeFile(file, message, { encoding: 'utf8', mode: 0o600 });

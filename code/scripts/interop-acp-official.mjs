@@ -1,6 +1,6 @@
 /**
  * Real interop probe: the OFFICIAL @agentclientprotocol/sdk client against
- * SYAOCode's ACP edge.
+ * LIWENCode's ACP edge.
  *
  * Not a unit test — it needs the official SDK and a spawned server — so it runs
  * on demand or in a CI job with network access.
@@ -42,7 +42,7 @@ const child = spawn('./node_modules/.bin/tsx', ['packages/cli/src/main.ts', 'ser
   env: {
     ...process.env,
     HOME: '/tmp/acp-interop-home',
-    SYAO_MOCK_SCRIPT: JSON.stringify([
+    LIWEN_MOCK_SCRIPT: JSON.stringify([
       { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'read', input: { path: 'package.json' } }] },
       { role: 'assistant', content: [{ type: 'text', text: 'official client turn done' }] },
     ]),
@@ -70,7 +70,7 @@ try {
       clientInfo: { name: 'official-acp-probe', version: '1.0.0' },
     });
     check('initialize negotiates the ACP version', init.protocolVersion === 1, `protocolVersion=${init.protocolVersion}`);
-    check('the agent reports its info', init.agentInfo?.name === 'syaocode', `name=${init.agentInfo?.name}`);
+    check('the agent reports its info', init.agentInfo?.name === 'liwencode', `name=${init.agentInfo?.name}`);
 
     const session = await ctx.request(methods.agent.session.new, {
       cwd: '/Users/zhanshishan/Desktop/SIYAO/SYCODE/code',

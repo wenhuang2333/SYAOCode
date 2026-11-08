@@ -24,7 +24,7 @@ import { assembleSystemPrompt, estimateMessagesTokens } from './context.js';
 import type { SessionStore } from './session/index.js';
 import type { ContentBlock, Message, ToolCall, ToolResultBlock, Usage } from './types.js';
 import { toolCallsOf } from './types.js';
-import { SyaoError } from './errors/syao-error.js';
+import { LIWENError } from './errors/liwen-error.js';
 import { RedactingLogger, RedactingSessionStore, type Redactor } from './redact.js';
 import {
   type ReceiptStore,
@@ -371,7 +371,7 @@ export function createAgent(config: AgentConfig): Agent {
           ? config.verification.commands.map((command) => ({ command, source: 'config' as const, scope: 'full' as const }))
           : await discoverVerification(runtime, cwd);
       // Repository-controlled discovery is not executable until a human pins
-      // it with `syao verify init` (source=config) or the embedder opts in.
+      // it with `liwen verify init` (source=config) or the embedder opts in.
       const eligible = discovered.filter(
         (c) => c.source === 'config' || config.verification?.allowDiscovered === true,
       );
@@ -381,7 +381,7 @@ export function createAgent(config: AgentConfig): Agent {
       if (dangerous.length > 0) {
         verificationNote = `verification refused dangerous command(s): ${dangerous.map((c) => c.command).join('; ')}`;
       } else if (verificationCommands.length === 0 && discovered.length > 0) {
-        verificationNote = 'verification not run: repository-discovered commands are untrusted; run `syao verify init` to confirm them once';
+        verificationNote = 'verification not run: repository-discovered commands are untrusted; run `liwen verify init` to confirm them once';
       }
       if (config.verification.baseline === true && verificationCommands.length > 0) {
         baselineResults = [];
@@ -511,7 +511,7 @@ export function createAgent(config: AgentConfig): Agent {
             }
           }
         } catch (e) {
-          const le = SyaoError.is(e) ? e : SyaoError.wrap(e);
+          const le = LIWENError.is(e) ? e : LIWENError.wrap(e);
           if (signal.aborted) {
             endReason = 'aborted';
             yield out({ type: 'error', error: err('SY-LOOP-003', 'run aborted by user'), fatal: false });
@@ -763,7 +763,7 @@ function resultMessageOf(results: ToolResultBlock[], runtime: Runtime, _sessionI
 }
 
 function err(code: string, message: string) {
-  return new SyaoError({ code, message }).toJSON();
+  return new LIWENError({ code, message }).toJSON();
 }
 
 /** Batch plan (BR-008): consecutive read-only+concurrency-safe calls run in parallel; anything else serial. */

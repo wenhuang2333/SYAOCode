@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { keychainEntryFor } from '@syaocode/host';
+import { keychainEntryFor } from '@liwencode/host';
 import { credentialEntry, remoteHost } from '../src/main/credential-entries.ts';
 
 describe('凭据条目命名', () => {
@@ -38,6 +38,6 @@ describe('凭据条目命名', () => {
     const entry = credentialEntry('git@host:2222', 'token');
     expect(entry).not.toContain('/');
     expect(entry).not.toContain(':');
-    expect(entry.startsWith('syaocode.git.')).toBe(true);
+    expect(entry.startsWith('liwencode.git.')).toBe(true);
   });
 });

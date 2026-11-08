@@ -11,7 +11,7 @@
 export type ThemePreference = 'system' | 'light' | 'dark';
 export type ResolvedTheme = 'light' | 'dark';
 
-export const THEME_STORAGE_KEY = 'syao:theme';
+export const THEME_STORAGE_KEY = 'liwen:theme';
 
 /**
  * 三档偏好的**顺序**（循环切换用）。

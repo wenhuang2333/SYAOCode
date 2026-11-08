@@ -1,12 +1,12 @@
-import { sha256Hex, type Runtime } from '@syaocode/core';
+import { sha256Hex, type Runtime } from '@liwencode/core';
 
 /**
  * File-backed governance stores for the Agent RPC kernel (03 §3.5).
  *
- * The store interfaces themselves live in `@syaocode/rpc`; the host owns the
+ * The store interfaces themselves live in `@liwencode/rpc`; the host owns the
  * *durability*. These implementations are written against the same record
- * shapes but stay structurally typed so `@syaocode/node` keeps a single
- * dependency (`@syaocode/core`) and the governance kernel keeps ownership of
+ * shapes but stay structurally typed so `@liwencode/node` keeps a single
+ * dependency (`@liwencode/core`) and the governance kernel keeps ownership of
  * its own contracts.
  *
  * Every store goes through `Runtime.fs`, so a host can swap the filesystem

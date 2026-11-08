@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_ERROR_CODES, DOMAIN_CATEGORY, ERROR_DOMAINS, ERROR_REGISTRY, SyaoError, MESSAGES_ZH_CN } from '../src';
+import { ALL_ERROR_CODES, DOMAIN_CATEGORY, ERROR_DOMAINS, ERROR_REGISTRY, LIWENError, MESSAGES_ZH_CN } from '../src';
 
 describe('error registry governance (09 §9.10)', () => {
   it('has unique, well-formed codes', () => {
@@ -61,8 +61,8 @@ describe('error registry governance (09 §9.10)', () => {
     });
     for (const code of ['SY-SRV-005', 'SY-SRV-006', 'SY-SRV-007']) {
       expect(MESSAGES_ZH_CN[code], code).toBeDefined();
-      // Constructing a SyaoError proves the code is registered end to end.
-      expect(new SyaoError({ code }).code).toBe(code);
+      // Constructing a LIWENError proves the code is registered end to end.
+      expect(new LIWENError({ code }).code).toBe(code);
     }
   });
 
@@ -100,9 +100,9 @@ describe('error registry governance (09 §9.10)', () => {
   });
 });
 
-describe('SyaoError', () => {
+describe('LIWENError', () => {
   it('serializes to the fixed 7-field shape', () => {
-    const e = new SyaoError({ code: 'SY-FS-003', modelMessage: 'match twice' });
+    const e = new LIWENError({ code: 'SY-FS-003', modelMessage: 'match twice' });
     const json = e.toJSON();
     expect(json.code).toBe('SY-FS-003');
     expect(json.category).toBe('fs');
@@ -113,23 +113,23 @@ describe('SyaoError', () => {
     expect(Object.keys(json).sort()).toEqual(['category', 'code', 'message', 'recovery', 'retryable', 'severity']);
   });
 
-  it('is identified by SyaoError.is, not instanceof (cross-copy safety)', () => {
-    const e = new SyaoError({ code: 'SY-INT-001' });
-    expect(SyaoError.is(e)).toBe(true);
-    expect(SyaoError.is(new Error('plain'))).toBe(false);
-    expect(SyaoError.is('string')).toBe(false);
-    expect(SyaoError.is(null)).toBe(false);
+  it('is identified by LIWENError.is, not instanceof (cross-copy safety)', () => {
+    const e = new LIWENError({ code: 'SY-INT-001' });
+    expect(LIWENError.is(e)).toBe(true);
+    expect(LIWENError.is(new Error('plain'))).toBe(false);
+    expect(LIWENError.is('string')).toBe(false);
+    expect(LIWENError.is(null)).toBe(false);
   });
 
-  it('wrap passes SyaoError through and boxes everything else as SY-INT-001', () => {
-    const le = new SyaoError({ code: 'SY-PRV-002' });
-    expect(SyaoError.wrap(le)).toBe(le);
-    const wrapped = SyaoError.wrap(new Error('boom'));
+  it('wrap passes LIWENError through and boxes everything else as SY-INT-001', () => {
+    const le = new LIWENError({ code: 'SY-PRV-002' });
+    expect(LIWENError.wrap(le)).toBe(le);
+    const wrapped = LIWENError.wrap(new Error('boom'));
     expect(wrapped.code).toBe('SY-INT-001');
     expect(wrapped.fatal).toBe(true);
   });
 
   it('rejects unregistered codes at construction', () => {
-    expect(() => new SyaoError({ code: 'SY-XXX-999' })).toThrow(/not in registry/);
+    expect(() => new LIWENError({ code: 'SY-XXX-999' })).toThrow(/not in registry/);
   });
 });

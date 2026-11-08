@@ -1,6 +1,6 @@
-# SYAOCode 指令集手册（v0.3-dev）
+# LIWENCode 指令集手册（v0.3-dev）
 
-`syao` 终端命令与交互模式完整参考。对应需求：FR-130/134/135/137/173/174。
+`liwen` 终端命令与交互模式完整参考。对应需求：FR-130/134/135/137/173/174。
 
 ---
 
@@ -8,22 +8,22 @@
 
 | 命令 | 说明 |
 | --- | --- |
-| `syao` | TTY 终端：播放启动动画后进入 **TUI 常驻界面**（见第 3 节）；管道/非 TTY：进入 readline REPL |
-| `syao "解释这个项目"` | 进入交互模式并把该文本作为首轮输入立即执行 |
-| `syao --no-boot` | 跳过启动动画直接进入 TUI |
-| `syao -p "prompt"` / `syao exec "prompt"` | 非交互：执行一次、打印结果、退出（无 TTY 场景/脚本/管道） |
-| `syao doctor` | 环境与配置诊断（无需任何密钥） |
-| `syao config list \| get <key> \| path` | 查看生效配置 / 单项 / 配置文件路径 |
-| `syao verify init [--force]` | 自动发现验证命令并写入 `.syaocode/verify.json`（已存在需 `--force`） |
-| `syao rpc <...>` | **治理运维**：任务 / 审批 / 预算 / 审计 / 策略解释 / 总览（见第 5 节治理底座） |
-| `syao call <capabilityId>` | 发起一次受治理调用并打印回执 |
-| `syao serve --mcp\|--acp\|--a2a [--stdio\|--http]` | 把 SYAOCode 作为协议服务暴露给外部客户端 |
-| `syao mcp list\|add\|remove` | MCP server 配置管理（`/peer` 的子命令形态） |
-| `syao --version` / `syao --help` | 版本 / 帮助 |
+| `liwen` | TTY 终端：播放启动动画后进入 **TUI 常驻界面**（见第 3 节）；管道/非 TTY：进入 readline REPL |
+| `liwen "解释这个项目"` | 进入交互模式并把该文本作为首轮输入立即执行 |
+| `liwen --no-boot` | 跳过启动动画直接进入 TUI |
+| `liwen -p "prompt"` / `liwen exec "prompt"` | 非交互：执行一次、打印结果、退出（无 TTY 场景/脚本/管道） |
+| `liwen doctor` | 环境与配置诊断（无需任何密钥） |
+| `liwen config list \| get <key> \| path` | 查看生效配置 / 单项 / 配置文件路径 |
+| `liwen verify init [--force]` | 自动发现验证命令并写入 `.liwencode/verify.json`（已存在需 `--force`） |
+| `liwen rpc <...>` | **治理运维**：任务 / 审批 / 预算 / 审计 / 策略解释 / 总览（见第 5 节治理底座） |
+| `liwen call <capabilityId>` | 发起一次受治理调用并打印回执 |
+| `liwen serve --mcp\|--acp\|--a2a [--stdio\|--http]` | 把 LIWENCode 作为协议服务暴露给外部客户端 |
+| `liwen mcp list\|add\|remove` | MCP server 配置管理（`/peer` 的子命令形态） |
+| `liwen --version` / `liwen --help` | 版本 / 帮助 |
 
-当前目录即工作区（可用 `--cwd` 覆盖）。首次使用建议先跑 `syao doctor`，再用 `/model config` 配置模型。
+当前目录即工作区（可用 `--cwd` 覆盖）。首次使用建议先跑 `liwen doctor`，再用 `/model config` 配置模型。
 
-> **开发期运行形态（v0.1 未发布 npm）**：上述 `syao` 均为 `cd code && corepack pnpm start`（或 `corepack pnpm exec tsx packages/cli/src/main.ts`）。**必须在 `code/` 目录内运行**——在上层目录运行 pnpm 会命中其他 package.json（如家目录里的无关项目），报 `Command "tsx" not found`。
+> **开发期运行形态（v0.1 未发布 npm）**：上述 `liwen` 均为 `cd code && corepack pnpm start`（或 `corepack pnpm exec tsx packages/cli/src/main.ts`）。**必须在 `code/` 目录内运行**——在上层目录运行 pnpm 会命中其他 package.json（如家目录里的无关项目），报 `Command "tsx" not found`。
 
 ## 2. 全局参数（交互与非交互通用）
 
@@ -31,22 +31,22 @@
 
 | 启动方式 | 档位 | 行为 |
 | --- | --- | --- |
-| `syao`（无参数） | **默认档（部分权限）** | 读取类操作（read/glob/grep、`ls` 等只读命令）免确认；写、删、执行仍需确认（规范 FR-041 的 default；降低上手打断） |
-| `syao --yao` | **部分权限（显式写法）** | 与默认档相同 |
-| `syao --permission-mode strict` | **严格档** | 一切操作（含读取）都需逐条确认；非交互管道下按拒绝处理 |
-| `syao --si` | **完全权限** | 文件增、删、改、查、读全部免确认，不询问用户（危险命令库仍拒绝，见下） |
+| `liwen`（无参数） | **默认档（部分权限）** | 读取类操作（read/glob/grep、`ls` 等只读命令）免确认；写、删、执行仍需确认（规范 FR-041 的 default；降低上手打断） |
+| `liwen --yao` | **部分权限（显式写法）** | 与默认档相同 |
+| `liwen --permission-mode strict` | **严格档** | 一切操作（含读取）都需逐条确认；非交互管道下按拒绝处理 |
+| `liwen --si` | **完全权限** | 文件增、删、改、查、读全部免确认，不询问用户（危险命令库仍拒绝，见下） |
 
 - 三档互斥：`--si --yao` 同用报 `SY-CLI-001`
-- 优先级：`--permission-mode` > 档位参数 > 环境变量（`SYAO_PERMISSION_MODE`）> 用户配置（`~/.syaocode/config.json`）> 项目配置（`<cwd>/.syaocode/config.json`）> **默认档（读免确认，写/删/执行审批）**
+- 优先级：`--permission-mode` > 档位参数 > 环境变量（`LIWEN_PERMISSION_MODE`）> 用户配置（`~/.liwencode/config.json`）> 项目配置（`<cwd>/.liwencode/config.json`）> **默认档（读免确认，写/删/执行审批）**
 - **安全底线不随档位放宽**：`rm -rf /`、`mkfs`、`git push --force`、格式化磁盘等危险命令在**任何档位（含 --si）都默认拒绝**（BR-006）。只有 `source: "user"` 且 `match.command` 与命令**完全相等**的 allow 规则可放行；project/plugin 来源规则、用户通配 allow 一律拒绝。`deny` 永远不能被模型提升为 `allow`
-- **读路径围栏**：工作区外的 `read`/`glob`/`grep` 与只读 bash 路径参数在 default/acceptEdits/plan 下都会 ask；`~/.ssh`、`~/.aws`、`~/.syaocode/env`、工作区 `.env*` 在所有档位（含 --si）都 ask，且不可“本会话允许”
+- **读路径围栏**：工作区外的 `read`/`glob`/`grep` 与只读 bash 路径参数在 default/acceptEdits/plan 下都会 ask；`~/.ssh`、`~/.aws`、`~/.liwencode/env`、工作区 `.env*` 在所有档位（含 --si）都 ask，且不可“本会话允许”
 - 档位只是免确认范围的变化；**会话内可直接用 `/permission <档位>` 切换**（如 `/permission yao` 升档、`/permission strict` 降档，仅本次会话生效），或用 `/permissions mode <m>` 精确设置
 
 ### 其他参数
 
 | 参数 | 取值 | 说明 |
 | --- | --- | --- |
-| `-m, --model` | `<provider>:<model>` | 指定模型，如 `mock:default`、`deepseek:deepseek-chat`、`anthropic:claude-sonnet-4`；省略时按 `SYAO_MODEL` > `~/.syaocode/config.json` 的 `model` > mock 解析（`-p`/`exec` 与交互模式一致） |
+| `-m, --model` | `<provider>:<model>` | 指定模型，如 `mock:default`、`deepseek:deepseek-chat`、`anthropic:claude-sonnet-4`；省略时按 `LIWEN_MODEL` > `~/.liwencode/config.json` 的 `model` > mock 解析（`-p`/`exec` 与交互模式一致） |
 | `--permission-mode` | `strict` / `default` / `acceptEdits` / `plan` / `bypass` | 精确指定模式（`default` 即 yao 行为、`bypass` 即 si 行为；不指定时默认 `default`） |
 | `--allowed-tools` | 工具名/通配符（空格分隔） | 预授权，如 `--allowed-tools read grep`；在严格档下可放行读取 |
 | `--disallowed-tools` | 工具名/通配符 | 显式拒绝；不可放宽内置硬拒绝 |
@@ -54,7 +54,7 @@
 | `--max-budget-usd` | 金额 | 费用上限，触发出码 4（仅当 provider/网关上报费用或存在定价时生效） |
 | `--max-total-tokens` | 正整数 | 不依赖定价的 token 硬上限（输入+输出+缓存），触发出码 4 |
 | `--max-wall-clock-ms` | 正整数 | 不依赖定价的墙钟硬上限，触发出码 4 |
-| `--verify` / `--no-verify` | — | 是否在完成后自动运行验证命令（`-p`/`exec` 默认开启；交互模式默认关闭）。只有 `.syaocode/verify.json` 固化（`syao verify init`）或 embedder 显式允许的命令会执行；危险命令始终拒绝 |
+| `--verify` / `--no-verify` | — | 是否在完成后自动运行验证命令（`-p`/`exec` 默认开启；交互模式默认关闭）。只有 `.liwencode/verify.json` 固化（`liwen verify init`）或 embedder 显式允许的命令会执行；危险命令始终拒绝 |
 | `--policy` | 路径 | CI 策略文件：`permissionMode`、`allowedTools`、`disallowedTools`、`rules`、`limits`；命令行参数可覆盖。示例见下方 |
 | `--cwd` | 路径 | 工作区目录 |
 | `--no-boot` | — | 跳过 TUI 启动动画（终端 < 40 列或 < 12 行时自动跳过） |
@@ -62,7 +62,7 @@
 | `--output-format` | `text` / `json` / `stream-json` | 仅 `-p` 模式：结果格式 |
 | `--verbose` | — | 诊断信息走 stderr |
 
-优先级：命令行参数 > 环境变量（`SYAO_MODEL`、`SYAO_PERMISSION_MODE`）> 用户配置 > 项目配置 > 内置默认（CLI 默认档）。项目级配置可收紧/放宽普通规则，但不能启用 bypass，也不能放宽用户级 deny（BR-002/BR-024）。`--policy` 属于 CLI 代码层：策略文件覆盖项目/用户/环境层，命令行参数再覆盖策略文件。
+优先级：命令行参数 > 环境变量（`LIWEN_MODEL`、`LIWEN_PERMISSION_MODE`）> 用户配置 > 项目配置 > 内置默认（CLI 默认档）。项目级配置可收紧/放宽普通规则，但不能启用 bypass，也不能放宽用户级 deny（BR-002/BR-024）。`--policy` 属于 CLI 代码层：策略文件覆盖项目/用户/环境层，命令行参数再覆盖策略文件。
 
 CI 策略文件示例：
 
@@ -80,13 +80,13 @@ CI 策略文件示例：
 
 ## 3. TUI 常驻界面（TTY 终端）
 
-TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/React）。**所有交互式入口统一先播启动动画**——无论是否带权限档位（`--si` / `--yao` / `--permission-mode`）、是否附带首轮 prompt；仅非交互（`-p`/`exec`）与管道输入跳过。
+TTY 下 `liwen` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/React）。**所有交互式入口统一先播启动动画**——无论是否带权限档位（`--si` / `--yao` / `--permission-mode`）、是否附带首轮 prompt；仅非交互（`-p`/`exec`）与管道输入跳过。
 
 ### 启动动画（约 6.4 秒，任意键跳过 / `--no-boot`）
 
 1. **城市天际线**（2.0s）：散落粒子聚合为楼群轮廓，暖色窗灯随机闪烁，天空有星星与月亮
 2. **蝴蝶**（2.4s）：粒子变形为参数曲线蝴蝶，**扇动两下**后收翅悬停
-3. **SYAO CODE 艺术字**（1.0s + 1.0s hold）：粒子汇成 5x7 点阵放大字样，**纵向三层色：蓝（上）/ 绿（中）/ 紫（下）**，保持期间同层色彩轻微脉动
+3. **LIWEN CODE 艺术字**（1.0s + 1.0s hold）：粒子汇成 5x7 点阵放大字样，**纵向三层色：蓝（上）/ 绿（中）/ 紫（下）**，保持期间同层色彩轻微脉动
 
 动画**在备用缓冲区播放**，结束自动清屏进入主界面；`ESC[?25l` 隐藏光标避免闪烁。
 **播放期间按任意键立即跳过**（该按键被丢弃，不会进入输入框）；`--no-boot` 或非 TTY 完全不播放。
@@ -100,7 +100,7 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
   - **右上角是一轮满月**（完整圆盘 + 几处月海）
   - 侧视蝴蝶（蓝/紫/绿三层）当前**暂时关闭**，代码保留在 `tui/flight.ts` 备用；恢复时取消 `flightScenePixels` 中的注释即可
   - 150ms 刷新，**用户敲任意键后场景立即冻结**（面板保持静态直至首次输出，防频繁重绘）；右侧为当前语言的欢迎语、版本、当前模型与权限档位、常用指令速览（`/help` `/model` `/status` `/exit`）、输入提示（`@file` / `!cmd` / `Ctrl+C`）与 `Type / for command palette` 引导
-- **底部**：**黑白阴影画风的 `SYAOCode` 艺术字横向铺满整个面板宽度**（纯白主字 + 右下深灰投影，按宽度自动缩放与均匀字距）
+- **底部**：**黑白阴影画风的 `LIWENCode` 艺术字横向铺满整个面板宽度**（纯白主字 + 右下深灰投影，按宽度自动缩放与均匀字距）
 
 ### 指令联想（Command Palette）
 
@@ -119,7 +119,7 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 
 ```
   （流式输出区：回复文本、工具调用 ⚙/✔/✖ 行，自然向上滚动）
-┌─ syao (deepseek:deepseek-chat) · 部分权限：读免确认 ──────┐
+┌─ liwen (deepseek:deepseek-chat) · 部分权限：读免确认 ──────┐
 │ ❯ 输入内容（CJK 宽度感知，超宽横向滚动，↑↓ 历史）      ▮
 └────────────────────────────────────────────────────────────┘
  ❯ /help         显示全部命令或某条命令的详细用法
@@ -143,7 +143,7 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 - **粘贴**：多行文本粘贴不会触发多次提交（括号粘贴启用；粘贴内换行自动转为空格）
 - **极小终端**：< 40 列或 < 8 行自动切换为无边框最小界面，放大即恢复
 - **崩溃/信号**：异常或 SIGTERM/SIGHUP 退出会恢复终端（raw 模式/光标/粘贴模式）；SIGKILL 无法拦截，必要时 `reset` 或 `stty sane`
-- **浅色终端**：自动探测背景亮度，欢迎面板艺术字改用深色系；字体缺 BoxDrawing 时设 `SYAO_TUI_ASCII=1` 使用 ASCII 边框
+- **浅色终端**：自动探测背景亮度，欢迎面板艺术字改用深色系；字体缺 BoxDrawing 时设 `LIWEN_TUI_ASCII=1` 使用 ASCII 边框
 
 ### 运行阶段行（Claude Code 风格，单行）
 
@@ -155,7 +155,7 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 
 - **左侧**：**单字符旋转动画**（Claude Code 同款帧 `· ✢ ✳ ✶ ✻ ✽`，约 120ms 换一帧）；单宽字符只占 1 列
   - 纯 ANSI 终端无法嵌入位图，像素蝴蝶即使做到 6×6 也会占 3 行、显得笨重；单字符旋转是这类 TUI 的标准做法
-  - `SYAO_TUI_ASCII=1` 时自动降级为 `. o O * + x`
+  - `LIWEN_TUI_ASCII=1` 时自动降级为 `. o O * + x`
 - **右侧**：阶段 + 当前动作
 - **四个阶段**（启发式推进）：`Explore`（探查：读文件/搜索/只读命令）→ `Plan`（规划：探查后模型开始思考/输出）→ `Implement`（实施：首次 write/edit）→ `Validate & Cleanup`（验证与收尾：写文件后的执行/读取/回复）
 - **正常态**：整行蓝色；**网络拥塞/失效**：provider 重试或 `SY-PRV-*` 错误时整行变红，动作显示「网络拥塞/失效——重试中（第 N 次，Xs）…」，下一次成功事件自动恢复
@@ -208,9 +208,9 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 | `/help [命令]` | 全部命令一览，或单条详细用法 |
 | `/permission` | 权限档位速查与切换（三档快捷命令，见「权限管理」节） |
 | `/status` | 会话 ID、当前模型、权限模式、轮次、上下文 token 占用百分比 |
-| `/cost` | **当前工作区累计**（跨会话持久化，以工作区路径为索引）+ **按模型拆分** + 本次会话：请求次数、输入/输出/缓存读/缓存写 token、费用（优先使用 provider 上报的费用，如网关返回的 `usage.cost`；否则用本地价目表；两者都无则标注无定价）。账本存于 `~/.syaocode/usage/<工作区路径哈希>.json`，只含数字与模型名（无密钥、无对话内容） |
+| `/cost` | **当前工作区累计**（跨会话持久化，以工作区路径为索引）+ **按模型拆分** + 本次会话：请求次数、输入/输出/缓存读/缓存写 token、费用（优先使用 provider 上报的费用，如网关返回的 `usage.cost`；否则用本地价目表；两者都无则标注无定价）。账本存于 `~/.liwencode/usage/<工作区路径哈希>.json`，只含数字与模型名（无密钥、无对话内容） |
 | `/tools` | 已注册工具及风险级别（read/write/exec）、是否只读、并发安全 |
-| `/doctor` | 与 `syao doctor` 相同的 12 项诊断 |
+| `/doctor` | 与 `liwen doctor` 相同的 12 项诊断 |
 | `/setup` | **模型配置向导**（TUI）：进度线引导逐步填写模型名称→请求地址→API Key→API 协议→认证字段→档案名，最后保存（见下节） |
 | `/set-agents` | **agent 群配置向导**（TUI）：新建群或修改已有群，为 hyaki（总结）/ sota（思考）/ common（执行）三角色各选一个模型（见下节） |
 | `/setting` | 快速修改**当前激活 agent 群**的三角色配置（等价编辑当前群） |
@@ -243,7 +243,7 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 
 - `/setting`：等价于编辑当前激活的群（三角色配置预填，回车沿用）
 - `/model use @群名`：随时切换群（与 `@档案名` 同名时档案优先）
-- `syao --agents <群名>`：启动时直接激活
+- `liwen --agents <群名>`：启动时直接激活
 - `/agents`：M3 工作模式入口，当前展示群清单（● 标记激活群）与配置引导
 - `/model` 面板中 agent 群以 `hyaki / sota / common` 三列展示，可一眼看清差异化配置
 
@@ -257,7 +257,7 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 | --- | --- | --- |
 | 1 | model name | 模型名称，如 `deepseek-chat`、`claude-sonnet-4` |
 | 2 | request url | 请求地址（须 http/https 开头） |
-| 3 | api key | 密钥（**输入时掩码显示**；保存到 `~/.syaocode/env`，权限 0600，绝不入 config.json/日志/会话） |
+| 3 | api key | 密钥（**输入时掩码显示**；保存到 `~/.liwencode/env`，权限 0600，绝不入 config.json/日志/会话） |
 | 4 | api protocol | **四种协议**：Anthropic Messages / OpenAI ChatCompletion / OpenAI Responses API（适配器规划 M2）/ Gemini Native GenerateContent（适配器规划 M2） |
 | 5 | auth field | 认证字段：`Authorization: Bearer` / `x-api-key` / `x-goog-api-key` / `?key=` 查询参数（选项随协议自动收窄，选错协议时自动回退默认） |
 | 6 | profile name | 档案名（请求名称），之后以 `@名称` 引用；保存前校验命名与重名 |
@@ -269,7 +269,7 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 - `e` 编辑：重跑向导并预填现值；文本步**直接回车 = 沿用当前值**，API Key 留空 = 不变更
 - `d` 删除：二次确认后移除档案（当前默认模型指向它时自动回退 mock；env 文件中的密钥字段保留，可手动清理）
 
-档案存储于 `~/.syaocode/config.json` 的 `models` 字段（非机密）；引用的密钥以 `SYAO_KEY_<档案名大写>` 存于 `~/.syaocode/env`。管道/REPL 下 `/setup`、`/manage` 提示需 TUI（手动编辑 config.json 的 `models` 字段亦可）。
+档案存储于 `~/.liwencode/config.json` 的 `models` 字段（非机密）；引用的密钥以 `LIWEN_KEY_<档案名大写>` 存于 `~/.liwencode/env`。管道/REPL 下 `/setup`、`/manage` 提示需 TUI（手动编辑 config.json 的 `models` 字段亦可）。
 
 ### 语言：`/language`（TUI 与 REPL 通用）
 
@@ -279,8 +279,8 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 /language zh         # 直接切到中文
 ```
 
-- **默认语言为英语**；语言状态保存在 `~/.syaocode/config.json` 的 `language` 字段
-- 选择后会先打印警告：**切换后当前 CLI 立即退出，新语言在下次启动 syao 时生效**；确认（`y`）后写入配置并退出，取消（`n`/回车）则语言不变
+- **默认语言为英语**；语言状态保存在 `~/.liwencode/config.json` 的 `language` 字段
+- 选择后会先打印警告：**切换后当前 CLI 立即退出，新语言在下次启动 liwen 时生效**；确认（`y`）后写入配置并退出，取消（`n`/回车）则语言不变
 - 两种语言**互不混杂**：界面文案、面板标签、状态栏、向导、提示、错误提示、CLI `--help` 用法全部按当前语言输出；仅保留 logo、命令名、协议名、模型名与工具/模型返回的数据
 - 非法语言码（如 `/language fr`）会被拒绝并提示可用取值
 - 错误提示：中文模式下 `SY-*` 错误显示错误码对应的中文说明（09 §9.10 表）；英语模式显示原始英文消息
@@ -292,13 +292,13 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 | `/model` 或 `/model show` | 当前模型、端点、密钥状态（只显示"已设置/未设置"，不显示值） |
 | `/model list` | Provider 目录：4 个 provider、推荐模型、密钥是否就绪 |
 | `/model use <provider:model>` | 切换模型（校验密钥就绪），**历史保留**，并保存为下次默认 |
-| `/model config [provider]` | **交互式配置向导**：选 provider → 填模型名（有默认）→ 可改 Base URL → 可录入 API Key（存入 `~/.syaocode/env`，权限 0600） |
+| `/model config [provider]` | **交互式配置向导**：选 provider → 填模型名（有默认）→ 可改 Base URL → 可录入 API Key（存入 `~/.liwencode/env`，权限 0600） |
 
 **Provider 目录（v0.1）**
 
 | Provider | 推荐模型 | 密钥环境变量 | 说明 |
 | --- | --- | --- | --- |
-| `mock` | `default` | 无 | 离线确定性测试；用 `SYAO_MOCK_SCRIPT` 注入剧本 |
+| `mock` | `default` | 无 | 离线确定性测试；用 `LIWEN_MOCK_SCRIPT` 注入剧本 |
 | `deepseek` | `deepseek-chat` / `deepseek-reasoner` | `DEEPSEEK_API_KEY` | OpenAI 兼容 |
 | `openai-compatible` | `gpt-4o` / `gpt-4o-mini` | `OPENAI_API_KEY` | OpenAI 及任何兼容端点（可用 `OPENAI_BASE_URL` 覆盖） |
 | `anthropic` | `claude-sonnet-4` / `claude-haiku-4` | `ANTHROPIC_API_KEY` | 原生 Messages 协议 |
@@ -391,12 +391,12 @@ TTY 下 `syao` 进入自研纯 ANSI TUI（零第三方依赖，不依赖 Ink/Rea
 **子命令等价形式**：
 
 ```bash
-syao rpc status --json            # 机读输出，便于脚本/CI
-syao rpc audit                    # 审计链校验
-syao rpc policy mcp://github/tool/get_issue
-syao call local://tools/read --input '{"path":"README.md"}'
-syao serve --mcp --stdio
-syao mcp list
+liwen rpc status --json            # 机读输出，便于脚本/CI
+liwen rpc audit                    # 审计链校验
+liwen rpc policy mcp://github/tool/get_issue
+liwen call local://tools/read --input '{"path":"README.md"}'
+liwen serve --mcp --stdio
+liwen mcp list
 ```
 
 > 治理语义不可绕过：策略先于派发（无决策不派发）、审批超时即拒绝（fail-closed）、预算先预留后派发、非幂等调用结果未知时标 `indeterminate` 且不自动重试、每个调用恰好一张回执。详见 `docs/AGENT-RPC.md`。
@@ -418,46 +418,46 @@ syao mcp list
 
 **退出码（BR-042）**：`0` 完成；`1` 一般错误；`2` 用法/配置错误；`3` 权限拒绝未完成（含 `-p` 下审批被拒绝）；`4` 轮次/预算/时长上限；`5` `unverified`（有声明缺回执/验证未通过但不属于失败）；`6` `verification_failed`（验证命令失败）；`130` 用户中断。
 
-`-p --output-format json` 的 `schemaVersion: 2` 额外输出：`verdict`（`verified`/`unverified`/`failed`/`not_run`）、`claims`、`unsupportedClaims`、`staleClaims`、`verification`（命令、退出码、输出引用、测试统计）。工具输出原文存放在 `~/.syaocode/evidence/<sha256>`，回执的 `outputRef` 可回查。
+`-p --output-format json` 的 `schemaVersion: 2` 额外输出：`verdict`（`verified`/`unverified`/`failed`/`not_run`）、`claims`、`unsupportedClaims`、`staleClaims`、`verification`（命令、退出码、输出引用、测试统计）。工具输出原文存放在 `~/.liwencode/evidence/<sha256>`，回执的 `outputRef` 可回查。
 
 ## 7. 配置与密钥文件
 
 | 文件 | 用途 | 权限 |
 | --- | --- | --- |
-| `~/.syaocode/config.json` | 默认模型、权限模式、语言（`language: en\|zh`）等**非机密**配置 | 普通 |
-| `~/.syaocode/env` | `KEY=VALUE` 密钥（`/model config` 写入），启动时合并进环境变量，**不覆盖**已有变量 | 0600 |
-| `~/.syaocode/sessions/` | JSONL 会话日志（追加式，BR-016） | 普通 |
-| `~/.syaocode/usage/` | **工作区用量账本**（`/cost` 数据源）：按工作区路径哈希分文件，桶内以绝对路径为索引，累计请求数/token/费用并按 `provider:model` 拆分；只含数字与模型名 | 普通 |
-| `<项目>/.syaocode/config.json` | 项目级配置；首次使用需信任确认（BR-043） | — |
-| `~/.syaocode/AGENTS.md` | 用户级项目指令（注入系统提示，FR-051/FR-083） | 普通 |
+| `~/.liwencode/config.json` | 默认模型、权限模式、语言（`language: en\|zh`）等**非机密**配置 | 普通 |
+| `~/.liwencode/env` | `KEY=VALUE` 密钥（`/model config` 写入），启动时合并进环境变量，**不覆盖**已有变量 | 0600 |
+| `~/.liwencode/sessions/` | JSONL 会话日志（追加式，BR-016） | 普通 |
+| `~/.liwencode/usage/` | **工作区用量账本**（`/cost` 数据源）：按工作区路径哈希分文件，桶内以绝对路径为索引，累计请求数/token/费用并按 `provider:model` 拆分；只含数字与模型名 | 普通 |
+| `<项目>/.liwencode/config.json` | 项目级配置；首次使用需信任确认（BR-043） | — |
+| `~/.liwencode/AGENTS.md` | 用户级项目指令（注入系统提示，FR-051/FR-083） | 普通 |
 | `<工作目录>/AGENTS.md` | 仓库根项目指令，缺失时回退 `CLAUDE.md` | 普通 |
 
 红线：密钥绝不进入会话文件、日志、错误信息与仓库（BR-023）；脱敏器在所有出口前生效。
 
-**系统提示注入**（启动时读取一次）：工作目录 / 平台 / 日期 / 运行载体（Harness）/ **当前模型身份**（`Model: …`，使模型能如实回答"你是什么模型"）+ 用户级与仓库根的项目指令文件；文件名列表可用 `SYAO_INSTRUCTION_FILES=a.md,b.md` 覆盖（默认 `AGENTS.md,CLAUDE.md`）；单个文件超过 32KB 截断。子目录级指令的惰性加载规划于 M2（DD-6）。
+**系统提示注入**（启动时读取一次）：工作目录 / 平台 / 日期 / 运行载体（Harness）/ **当前模型身份**（`Model: …`，使模型能如实回答"你是什么模型"）+ 用户级与仓库根的项目指令文件；文件名列表可用 `LIWEN_INSTRUCTION_FILES=a.md,b.md` 覆盖（默认 `AGENTS.md,CLAUDE.md`）；单个文件超过 32KB 截断。子目录级指令的惰性加载规划于 M2（DD-6）。
 
 ## 8. 常见示例
 
 ```bash
 # 严格档（默认）：每个操作都确认
-syao
+liwen
 
 # 部分权限：读免确认，写/删要确认
-syao --yao
-syao --yao -m deepseek:deepseek-chat "审查这个仓库"
+liwen --yao
+liwen --yao -m deepseek:deepseek-chat "审查这个仓库"
 
 # 完全权限：文件增删改查读都不问（危险命令仍拒绝）
-syao --si "跑一遍测试并修复失败项"
+liwen --si "跑一遍测试并修复失败项"
 
 # 只读审查（plan 模式：写/执行一律拒绝）
-syao --permission-mode plan "审查 src/agent.ts 的错误处理"
+liwen --permission-mode plan "审查 src/agent.ts 的错误处理"
 
 # 脚本化使用
-cat error.log | syao -p "分析报错原因" --output-format json --yao
-syao -p "跑测试并修复" --si --max-turns 20; echo "exit=$?"
+cat error.log | liwen -p "分析报错原因" --output-format json --yao
+liwen -p "跑测试并修复" --si --max-turns 20; echo "exit=$?"
 
 # 会话恢复
-syao                      # /resume → 选择历史会话 → 继续对话
+liwen                      # /resume → 选择历史会话 → 继续对话
 ```
 
 ---

@@ -11,7 +11,7 @@
  * the edge cannot widen its own authority (I1 / I4 / I13).
  */
 
-import type { InvokeResultPayload } from '@syaocode/rpc';
+import type { InvokeResultPayload } from '@liwencode/rpc';
 
 export interface ReverseInvokeRequest {
   /** Canonical capability id, e.g. `acp://editor/fs/write_text_file`. */

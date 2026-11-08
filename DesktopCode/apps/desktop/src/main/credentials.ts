@@ -129,7 +129,7 @@ function sshString(value: Buffer): Buffer {
 }
 
 /** 把 32 字节 raw 公钥编成 OpenSSH 公钥行（`ssh-ed25519 AAAA... comment`）。 */
-function openSshPublicKey(raw: Buffer, comment = 'syaocode'): string {
+function openSshPublicKey(raw: Buffer, comment = 'liwencode'): string {
   const type = Buffer.from(SSH_ED25519_WIRE_PREFIX, 'utf8');
   const blob = Buffer.concat([sshString(type), sshString(raw)]);
   return `${SSH_ED25519_WIRE_PREFIX} ${blob.toString('base64')} ${comment}`.trim();
@@ -208,7 +208,7 @@ function parseOpenSshPrivate(pem: string): Buffer {
 }
 
 /** 生成新的 ed25519 密钥对；私钥以 PKCS#8 PEM 返回（只交给 KeychainStore）。 */
-export function generateEd25519(comment = 'syaocode'): { publicKey: string; fingerprint: string; privateKeyPem: string } {
+export function generateEd25519(comment = 'liwencode'): { publicKey: string; fingerprint: string; privateKeyPem: string } {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
   const privateKeyPem = privateKey.export({ format: 'pem', type: 'pkcs8' }).toString();
   const jwk = publicKey.export({ format: 'jwk' }) as { x?: string };
@@ -224,7 +224,7 @@ export function generateEd25519(comment = 'syaocode'): { publicKey: string; fing
  * 用完必须 `disposeSshKeyFile`；Host 侧在 `finally` 里调用。
  */
 export function materializeSshKeyFile(privateKeyPem: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syaocode-ssh-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'liwencode-ssh-'));
   const file = path.join(dir, 'id_ed25519');
   fs.writeFileSync(file, privateKeyPem, { mode: 0o600 });
   return file;

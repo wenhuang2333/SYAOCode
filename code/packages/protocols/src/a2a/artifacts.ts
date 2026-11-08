@@ -16,7 +16,7 @@ import {
   type TaskInputBlock,
   type TaskState,
   type Visibility,
-} from '@syaocode/rpc';
+} from '@liwencode/rpc';
 
 // ── wire shapes ───────────────────────────────────────────────────────────
 

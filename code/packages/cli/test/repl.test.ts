@@ -24,12 +24,12 @@ function runRepl(
     language?: 'en' | 'zh';
   } = {},
 ): { stdout: string; code: number } {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-repl-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-repl-'));
   try {
     if (options.language !== undefined) {
-      fs.mkdirSync(path.join(home, '.syaocode'), { recursive: true });
+      fs.mkdirSync(path.join(home, '.liwencode'), { recursive: true });
       fs.writeFileSync(
-        path.join(home, '.syaocode', 'config.json'),
+        path.join(home, '.liwencode', 'config.json'),
         JSON.stringify({ language: options.language }),
       );
     }
@@ -41,7 +41,7 @@ function runRepl(
       env: {
         ...process.env,
         HOME: home,
-        SYAO_MODEL: 'mock:default',
+        LIWEN_MODEL: 'mock:default',
         ...options.env,
       },
     });
@@ -58,7 +58,7 @@ function runRepl(
 describe('interactive REPL (piped smoke, FR-130/137)', () => {
   it('banner + /help + /status + /exit', () => {
     const { stdout } = runRepl(['/help', '/status', '/exit']);
-    expect(stdout).toContain('SYAOCode v0.1 interactive mode');
+    expect(stdout).toContain('LIWENCode v0.1 interactive mode');
     expect(stdout).toContain('/model');
     expect(stdout).toContain('Session:');
     expect(stdout).toContain('mock:default');
@@ -69,7 +69,7 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
     const script = JSON.stringify([
       { id: 'a1', role: 'assistant', content: [{ type: 'text', text: '你好，来自 mock 的回复' }], meta: { createdAt: 0 } },
     ]);
-    const { stdout } = runRepl(['打个招呼', '/exit'], { env: { SYAO_MOCK_SCRIPT: script } });
+    const { stdout } = runRepl(['打个招呼', '/exit'], { env: { LIWEN_MOCK_SCRIPT: script } });
     expect(stdout).toContain('你好，来自 mock 的回复');
     expect(stdout).toContain('Goodbye.');
   }, 90_000);
@@ -79,7 +79,7 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
       { id: 'a1', role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'write', input: { path: 'x.txt', content: 'nope' } }], meta: { createdAt: 0 } },
       { id: 'a2', role: 'assistant', content: [{ type: 'text', text: '写入被拒' }], meta: { createdAt: 0 } },
     ]);
-    const { stdout } = runRepl(['写点东西', '/exit'], { env: { SYAO_MOCK_SCRIPT: script } });
+    const { stdout } = runRepl(['写点东西', '/exit'], { env: { LIWEN_MOCK_SCRIPT: script } });
     expect(stdout).toContain('headless mode auto-denies');
     expect(stdout).toContain('SY-CLI-002');
   }, 90_000);
@@ -122,8 +122,8 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
   }, 90_000);
 
   it('!command runs read-only shell through the gate; dangerous is refused', () => {
-    const { stdout } = runRepl(['!echo syao-shell-ok', '!rm -rf /', '/exit'], { argv: ['--yao'] });
-    expect(stdout).toContain('syao-shell-ok');
+    const { stdout } = runRepl(['!echo liwen-shell-ok', '!rm -rf /', '/exit'], { argv: ['--yao'] });
+    expect(stdout).toContain('liwen-shell-ok');
     expect(stdout).toContain('Denied');
     expect(stdout).toContain('SY-PERM-004');
   }, 90_000);
@@ -151,12 +151,12 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
   ]);
 
   it('bare launch (default tier): reads pass, no approval prompt in headless mode', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-tier-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-tier-'));
     try {
       fs.writeFileSync(path.join(dir, 'tier.txt'), 'default-tier-read-ok\n');
       const { stdout } = runRepl(['读一下 tier.txt', '/exit'], {
         argv: ['--cwd', dir],
-        env: { SYAO_MOCK_SCRIPT: readScript },
+        env: { LIWEN_MOCK_SCRIPT: readScript },
       });
       expect(stdout).toContain('default-tier-read-ok');
       expect(stdout).not.toContain('SY-CLI-002');
@@ -167,19 +167,19 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
   }, 90_000);
 
   it('--yao: reads pass without asking, writes still ask', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-tier-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-tier-'));
     try {
       fs.writeFileSync(path.join(dir, 'tier.txt'), 'yao-read-ok\n');
       const read = runRepl(['读一下 tier.txt', '/exit'], {
         argv: ['--yao', '--cwd', dir],
-        env: { SYAO_MOCK_SCRIPT: readScript },
+        env: { LIWEN_MOCK_SCRIPT: readScript },
       });
       expect(read.stdout).not.toContain('SY-CLI-002'); // reads never asked
       expect(read.stdout).toContain('yao-read-ok');
 
       const write = runRepl(['写入 tier-out.txt', '/exit'], {
         argv: ['--yao', '--cwd', dir],
-        env: { SYAO_MOCK_SCRIPT: writeScript },
+        env: { LIWEN_MOCK_SCRIPT: writeScript },
       });
       expect(write.stdout).toContain('SY-CLI-002'); // writes still ask → deny headless
       expect(fs.existsSync(path.join(dir, 'tier-out.txt'))).toBe(false);
@@ -189,11 +189,11 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
   }, 120_000);
 
   it('--si: writes execute without any asking', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-tier-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-tier-'));
     try {
       const write = runRepl(['写入 tier-out.txt', '/exit'], {
         argv: ['--si', '--cwd', dir],
-        env: { SYAO_MOCK_SCRIPT: writeScript },
+        env: { LIWEN_MOCK_SCRIPT: writeScript },
       });
       expect(write.stdout).not.toContain('SY-CLI-002'); // nothing asked under si
       expect(write.stdout).toContain('Wrote');
@@ -217,7 +217,7 @@ describe('interactive REPL (piped smoke, FR-130/137)', () => {
 
   it('persisted language=zh switches the whole REPL to Chinese (and back)', () => {
     const zh = runRepl(['/help', '/status', '/exit'], { language: 'zh' });
-    expect(zh.stdout).toContain('SYAOCode v0.1 交互模式');
+    expect(zh.stdout).toContain('LIWENCode v0.1 交互模式');
     expect(zh.stdout).toContain('可用命令');
     expect(zh.stdout).toContain('会话：');
     expect(zh.stdout).toContain('再见。');

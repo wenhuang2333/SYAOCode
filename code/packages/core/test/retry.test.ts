@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SyaoError, userText, withRetry, type Message, type ModelStreamEvent, type Provider } from '../src';
+import { LIWENError, userText, withRetry, type Message, type ModelStreamEvent, type Provider } from '../src';
 import { fakeRuntime } from './helpers';
 
 /** 重试可见性：withRetry 在每次退避前回调 onRetry（UI 用它显示网络拥塞/失效）。 */
@@ -22,7 +22,7 @@ function flakyProvider(failures: number, code = 'SY-PRV-003'): Provider & { call
     }),
     async *stream(): AsyncGenerator<ModelStreamEvent> {
       calls += 1;
-      if (calls <= failures) throw new SyaoError({ code });
+      if (calls <= failures) throw new LIWENError({ code });
       const message: Message = {
         id: 'm1',
         role: 'assistant',
@@ -58,13 +58,13 @@ describe('withRetry replay safety (report L2)', () => {
         calls += 1;
         yield { type: 'block_start', index: 0, block: { type: 'text', text: '' } };
         yield { type: 'block_delta', index: 0, delta: 'partial answer' };
-        throw new SyaoError({ code: 'SY-PRV-009' });
+        throw new LIWENError({ code: 'SY-PRV-009' });
       },
     };
     const wrapped = withRetry(provider, fakeRuntime(), { maxAttempts: 5, baseDelayMs: 1, maxDelayMs: 1 });
     await expect(
       drain(wrapped.stream({ model: 'm', messages: [userText('hi', 'u1')] }, { signal: new AbortController().signal })),
-    ).rejects.toSatisfy((e) => SyaoError.is(e) && e.code === 'SY-PRV-009');
+    ).rejects.toSatisfy((e) => LIWENError.is(e) && e.code === 'SY-PRV-009');
     expect(calls).toBe(1);
   });
 });
@@ -97,7 +97,7 @@ describe('withRetry onRetry hook', () => {
     });
     await expect(
       drain(wrapped.stream({ model: 'm', messages: [userText('hi', 'u1')] }, { signal: new AbortController().signal })),
-    ).rejects.toSatisfy((e) => SyaoError.is(e) && e.code === 'SY-PRV-001');
+    ).rejects.toSatisfy((e) => LIWENError.is(e) && e.code === 'SY-PRV-001');
     expect(provider.calls).toBe(1);
     expect(seen).toHaveLength(0);
   });

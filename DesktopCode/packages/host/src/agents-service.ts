@@ -17,7 +17,7 @@
  *  - 删除**不得**删掉当前激活的群（必须先切换激活项）。
  */
 
-import type { AgentGroup, AgentRole, AgentsListResult, AgentsSaveParams } from '@syaocode/dhp';
+import type { AgentGroup, AgentRole, AgentsListResult, AgentsSaveParams } from '@liwencode/dhp';
 
 /** 三角色的固定顺序（与 `27` §5.1 一致）。 */
 export const AGENT_ROLE_ORDER: readonly AgentRole[] = ['hyaki', 'sota', 'common'];

@@ -1,10 +1,10 @@
 /**
- * `@syaocode/protocols/a2a` — the A2A 1.0.0 edge.
+ * `@liwencode/protocols/a2a` — the A2A 1.0.0 edge.
  *
  * Two halves:
- *   - {@link createA2aAdapter} / {@link A2aAdapter}: SYAOCode as an A2A *client*
+ *   - {@link createA2aAdapter} / {@link A2aAdapter}: LIWENCode as an A2A *client*
  *     (PascalCase methods, opaque remote task mapping, cancel propagation);
- *   - {@link createA2aServer} / {@link A2aServer}: SYAOCode as an A2A *agent*
+ *   - {@link createA2aServer} / {@link A2aServer}: LIWENCode as an A2A *agent*
  *     (AgentCard, tenant filtering on every read, cursor pagination).
  */
 
@@ -109,7 +109,7 @@ export type {
   A2aTransportContext,
 } from './server.js';
 
-import type { Logger, Runtime } from '@syaocode/core';
+import type { Logger, Runtime } from '@liwencode/core';
 import type { DuplexChannel } from '../shared/transport.js';
 import { createHttpChannel, createSseChannel } from '../shared/transport.js';
 import { A2aAdapter, type A2aAdapterOptions } from './client.js';

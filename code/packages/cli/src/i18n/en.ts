@@ -64,7 +64,7 @@ export const en = {
   'cmd.resume.usage': '/resume [id]',
   'cmd.resume.summary': 'List or resume a previous session',
   'cmd.doctor.usage': '/doctor',
-  'cmd.doctor.summary': 'Run environment diagnostics (same as syao doctor)',
+  'cmd.doctor.summary': 'Run environment diagnostics (same as liwen doctor)',
   'cmd.setup.usage': '/setup',
   'cmd.setup.summary': 'Guided model setup: name, URL, API key, protocol, auth field, profile name (TUI)',
   'cmd.manage.usage': '/manage [name]',
@@ -135,7 +135,7 @@ export const en = {
   'setup.field.protocol': '  Protocol:{value}',
   'setup.field.auth': '  Auth:    {value}',
   'setup.field.key': '  Key:     {env} {status}',
-  'setup.keyInEnvFile': 'stored in ~/.syaocode/env (0600)',
+  'setup.keyInEnvFile': 'stored in ~/.liwencode/env (0600)',
   'setup.keyInProcessEnv': 'already present in the process environment',
   'setup.keyMissing': 'not set — edit later with /manage',
   'setup.protocolNotice': '  Note: this protocol adapter is planned for M2 and cannot be called yet; the configuration was saved.',
@@ -182,8 +182,8 @@ export const en = {
   'config.models': 'Model ({models}):',
   'config.modelPrompt': 'Model name [{default}]: ',
   'config.baseUrlPrompt': 'Base URL [{default}]: ',
-  'config.apiKeyPrompt': 'API Key (stored in ~/.syaocode/env, mode 0600; empty = skip): ',
-  'config.keySaved': 'Key saved to ~/.syaocode/env ({masked}). It never enters session files or logs.',
+  'config.apiKeyPrompt': 'API Key (stored in ~/.liwencode/env, mode 0600; empty = skip): ',
+  'config.keySaved': 'Key saved to ~/.liwencode/env ({masked}). It never enters session files or logs.',
   'config.done': 'Configured; switched to {provider}:{model}.',
   'config.pickProvider': 'Which provider to configure?',
   'config.invalidMode': 'Mode must be strict | default | acceptEdits | plan | bypass',
@@ -194,8 +194,8 @@ export const en = {
   'config.permissionSummary': 'Permission mode: {mode} (tier: {tier})',
   'config.adjust': 'Adjust: {invoked} <tier> | {invoked} mode <m> | {invoked} allow|deny <tool>',
   'config.unknownProviderList': "Unknown provider '{provider}'. Available: {list}",
-  'config.tuiOnly': '{cmd} needs the interactive TUI (progress wizard / selection lists). Run syao in an interactive terminal (no pipe); otherwise edit the models field in ~/.syaocode/config.json manually.',
-  'config.replOnly': '/model config needs an interactive terminal. You can edit ~/.syaocode/config.json and ~/.syaocode/env manually.',
+  'config.tuiOnly': '{cmd} needs the interactive TUI (progress wizard / selection lists). Run liwen in an interactive terminal (no pipe); otherwise edit the models field in ~/.liwencode/config.json manually.',
+  'config.replOnly': '/model config needs an interactive terminal. You can edit ~/.liwencode/config.json and ~/.liwencode/env manually.',
   'config.unknownCommand': "Unknown command '{cmd}'. Type /help to see all commands.",
   'config.indexModels': 'Model ({models}):',
   'config.invalidModeShort': 'Mode must be strict | default | acceptEdits | plan | bypass',
@@ -211,7 +211,7 @@ export const en = {
   'resume.entries': '{n} entries',
   'resume.notFound': "Session '{id}' not found (SY-SES-001). See /resume for the list.",
   'resume.restored': 'Resumed session {id}; the next message continues that history.',
-  'banner.title': 'SYAOCode v0.1 interactive mode',
+  'banner.title': 'LIWENCode v0.1 interactive mode',
   'banner.tier': '  Permission tier: {tier}',
   'banner.hint': '  /help commands · @file attach context · !command run shell · Ctrl+C cancel/quit',
   'repl.pipeNotice': '(piped stdin detected: permission requests are auto-denied)',
@@ -250,12 +250,12 @@ export const en = {
   'provider.openai.label': 'OpenAI and compatible endpoints',
   'provider.anthropic.label': 'Anthropic (native Messages)',
   'key.masked': '{prefix}…{suffix} (set)',
-  'provider.needKeyEnv': "provider requires {env} to be set (SY-CFG-002). Use 'mock:' for offline runs, /model config to set it up, or syao doctor.",
+  'provider.needKeyEnv': "provider requires {env} to be set (SY-CFG-002). Use 'mock:' for offline runs, /model config to set it up, or liwen doctor.",
   'provider.unknown': "unknown provider '{provider}' (SY-CLI-001). Supported: {list}. Run /setup for guided setup or /model config.",
   'provider.profileNotFound': "model profile '@{name}' not found (SY-CLI-001). Run /setup to create it or /manage to list profiles.",
   'provider.protocolNotImplemented': "profile '@{name}' uses protocol '{protocol}' whose adapter is not implemented yet (planned M2). Re-run /setup with Anthropic or OpenAI ChatCompletion.",
   'provider.list': 'mock, deepseek, openai-compatible, anthropic',
-  'mock.noScript': 'MockProvider: no script configured. Set SYAO_MOCK_SCRIPT=<JSON message array> for deterministic output, or configure a real model with /model config.',
+  'mock.noScript': 'MockProvider: no script configured. Set LIWEN_MOCK_SCRIPT=<JSON message array> for deterministic output, or configure a real model with /model config.',
 
   // ── language command ────────────────────────────────────────────────────
   'language.name.en': 'English',
@@ -268,10 +268,10 @@ export const en = {
   'language.option2': '2) 中文 (Chinese)',
   'language.invalid': "Unknown language '{value}'. Use en or zh.",
   'language.already': 'Already using {lang}.',
-  'language.warning': 'The CLI will exit immediately after switching. The new language takes effect the next time you start syao.',
+  'language.warning': 'The CLI will exit immediately after switching. The new language takes effect the next time you start liwen.',
   'language.confirm': 'Switch to {lang} and exit now? [y/N]: ',
   'language.cancelled': 'Language unchanged.',
-  'language.saved': 'Language set to {lang}. Exiting — restart syao to use it.',
+  'language.saved': 'Language set to {lang}. Exiting — restart liwen to use it.',
   'language.panelHint': 'en = English · zh = 中文 · /language <code>',
 
   // ── CLI usage / args ────────────────────────────────────────────────────
@@ -284,23 +284,23 @@ export const en = {
   'args.modelSpec': "--model must be <provider>:<model>, got '{value}' (SY-CLI-001)",
   'args.promptRequired': '-p/exec requires a prompt (SY-CLI-001)',
   'config.requiresKey': 'config get requires a key (SY-CLI-001)',
-  'usage.text': `syao — SYAOCode coding agent CLI (v0.1 internal)
+  'usage.text': `liwen — LIWENCode coding agent CLI (v0.1 internal)
 
 Usage:
-  syao [options] [prompt]        enter interactive mode; prompt becomes the first turn
-  syao -p "prompt"               non-interactive run, print the result and exit
-  syao exec "prompt"             same as -p
-  syao doctor                    environment and config diagnostics
-  syao config list|get|path      show effective configuration
-  syao rpc <tasks|task|approvals|approve|deny|budget|audit|policy|status> [--json]
+  liwen [options] [prompt]        enter interactive mode; prompt becomes the first turn
+  liwen -p "prompt"               non-interactive run, print the result and exit
+  liwen exec "prompt"             same as -p
+  liwen doctor                    environment and config diagnostics
+  liwen config list|get|path      show effective configuration
+  liwen rpc <tasks|task|approvals|approve|deny|budget|audit|policy|status> [--json]
                                  governance console: tasks, approvals, budget, audit, policy
-  syao call <capabilityId> [--input @file|json] [--json]
+  liwen call <capabilityId> [--input @file|json] [--json]
                                  one governed invocation (exit 3 denied / 4 limit / 7 unavailable)
-  syao mcp <list|add <name> <command...>|remove <name>|tools <name>>
+  liwen mcp <list|add <name> <command...>|remove <name>|tools <name>>
                                  manage registered MCP servers (protocol edges)
-  syao serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]
+  liwen serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]
                                  expose the fabric over a protocol edge (loopback by default)
-  syao --version | --help
+  liwen --version | --help
 
 Inside interactive mode:
   /help /model /permission /permissions /status /cost /tools /compact /clear /resume /doctor /language /exit
@@ -361,8 +361,8 @@ Options:
   'manage.notFound': "Profile '@{name}' not found.",
   'manage.editHint': 'Editing @{name}: press Enter on text steps to keep the current value; leave the API key empty to keep it.',
   'manage.deleteConfirm': 'delete @{name}? [y/N]: ',
-  'manage.deleted': 'Deleted profile @{name} (its key stays in ~/.syaocode/env; remove it manually if needed).',
-  'welcome.title': 'Welcome to SYAOCode',
+  'manage.deleted': 'Deleted profile @{name} (its key stays in ~/.liwencode/env; remove it manually if needed).',
+  'welcome.title': 'Welcome to LIWENCode',
   'welcome.version': '{version} · model {model}',
   'welcome.permission': 'permission: {tier}',
   'welcome.hintHelp': 'all commands',
@@ -381,7 +381,7 @@ Options:
   'setup.step.profileName': 'profile name',
   'setup.hint.model': 'e.g. deepseek-chat, claude-sonnet-4, gemini-2.0-flash',
   'setup.hint.baseUrl': 'e.g. https://api.deepseek.com/v1',
-  'setup.hint.apiKey': 'stored in ~/.syaocode/env (chmod 0600), never in config/logs',
+  'setup.hint.apiKey': 'stored in ~/.liwencode/env (chmod 0600), never in config/logs',
   'setup.hint.protocol': '↑↓ to pick · Enter to confirm',
   'setup.hint.authField': 'how the key is attached to requests',
   'setup.hint.profileName': 'referenced as @name in /model use; saved at the end',
@@ -535,13 +535,13 @@ Options:
   'cmd.mcpAlias.summary': 'Alias of /peer: manage MCP server registrations',
 
   // ── ARF governance surface: argv command docs ─────────────────────────
-  'argv.rpc.usage': 'syao rpc <tasks|task <id>|approvals|approve <id> <option>|deny <id>|budget|audit|policy <capabilityId>|status> [--json]',
+  'argv.rpc.usage': 'liwen rpc <tasks|task <id>|approvals|approve <id> <option>|deny <id>|budget|audit|policy <capabilityId>|status> [--json]',
   'argv.rpc.summary': 'Governance console from the shell (same views as /rpc, non-interactive)',
-  'argv.call.usage': 'syao call <capabilityId> [--input @file|json] [--json]',
+  'argv.call.usage': 'liwen call <capabilityId> [--input @file|json] [--json]',
   'argv.call.summary': 'One governed invocation; exit code follows the kernel (0/2/3/4/5/7)',
-  'argv.mcp.usage': 'syao mcp <list|add <name> <command...>|remove <name>|tools <name>>',
+  'argv.mcp.usage': 'liwen mcp <list|add <name> <command...>|remove <name>|tools <name>>',
   'argv.mcp.summary': 'Manage registered MCP servers (same registry as /peer and /mcp)',
-  'argv.serve.usage': 'syao serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]',
+  'argv.serve.usage': 'liwen serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]',
   'argv.serve.summary': 'Expose the fabric over a protocol edge (loopback by default)',
 
   // ── ARF panels: titles ────────────────────────────────────────────────
@@ -686,20 +686,20 @@ Options:
   'rpc.hint.tools': 'Register an edge first: /peer add <id> <command>',
   'rpc.lossyUnknown': 'semantic gap reported by the peer: {code}',
   'rpc.taskNotFound': 'No task with id {id} in this tenant.',
-  'rpc.taskRequired': 'Usage: syao rpc task <id>',
-  'rpc.policyRequired': 'Usage: syao rpc policy <capabilityId>',
+  'rpc.taskRequired': 'Usage: liwen rpc task <id>',
+  'rpc.policyRequired': 'Usage: liwen rpc policy <capabilityId>',
   'rpc.approvalRequired': 'Usage: /approve <id> [once|session|always|deny]',
   'rpc.badOption': 'Unknown approval option {option} — use once | session | always | deny.',
   'rpc.unknownSub': 'Unknown rpc subcommand {sub}.',
-  'rpc.usage': 'Usage: syao rpc <tasks|task <id>|approvals|approve <id> <option>|deny <id>|budget|audit|policy <capabilityId>|status> [--json]',
-  'rpc.callUsage': 'Usage: syao call <capabilityId> [--input @file|json] [--json]',
+  'rpc.usage': 'Usage: liwen rpc <tasks|task <id>|approvals|approve <id> <option>|deny <id>|budget|audit|policy <capabilityId>|status> [--json]',
+  'rpc.callUsage': 'Usage: liwen call <capabilityId> [--input @file|json] [--json]',
   'rpc.capabilityRequired': 'Usage: /call <capabilityId> [json input]',
   'rpc.inputNotJson': 'The input is not valid JSON. Pass inline JSON or @path/to/file.json.',
   'rpc.inputFileFailed': 'Cannot read input file {file}: {detail}',
-  'rpc.mcpUsage': 'Usage: syao mcp <list|add <name> <command...>|remove <name>|tools <name>>',
-  'rpc.mcpAddUsage': 'Usage: syao mcp add <name> <command...>',
-  'rpc.mcpRemoveUsage': 'Usage: syao mcp remove <name>',
-  'rpc.mcpToolsUsage': 'Usage: syao mcp tools <name>',
+  'rpc.mcpUsage': 'Usage: liwen mcp <list|add <name> <command...>|remove <name>|tools <name>>',
+  'rpc.mcpAddUsage': 'Usage: liwen mcp add <name> <command...>',
+  'rpc.mcpRemoveUsage': 'Usage: liwen mcp remove <name>',
+  'rpc.mcpToolsUsage': 'Usage: liwen mcp tools <name>',
   'rpc.badPeerId': 'Invalid edge id {id} — letters, digits, dot, dash and underscore only.',
   'rpc.peer.usage': 'Usage: /peer [list|add <id> <url|command>|remove <id>|ping <id>]',
   'rpc.peer.addUsage': 'Usage: /peer add <id> <command|url>',
@@ -708,8 +708,8 @@ Options:
   'rpc.peer.added': 'edge {id} registered ({target})',
   'rpc.peer.removed': 'edge {id} removed',
   'rpc.peer.notFound': 'no edge named {id}',
-  'rpc.peer.addHint': 'Restart syao (or mount it in this build) to discover its capabilities.',
-  'rpc.peer.mcpHint': 'The server is registered; `syao mcp list` shows it and `syao mcp tools <name>` its capabilities.',
+  'rpc.peer.addHint': 'Restart liwen (or mount it in this build) to discover its capabilities.',
+  'rpc.peer.mcpHint': 'The server is registered; `liwen mcp list` shows it and `liwen mcp tools <name>` its capabilities.',
   'rpc.peer.reachable': 'edge reachable',
   'rpc.peer.unreachable': 'edge not available in this build',
   'rpc.peer.edgeReady': 'the protocol adapter module loaded correctly',
@@ -747,7 +747,7 @@ Options:
 
   // ── serve ────────────────────────────────────────────────────────────
   'serve.badPort': 'Invalid port {port} — use an integer in 1..65535.',
-  'serve.unsafeListen': 'Refusing to listen on {host} without a token (SY-SRV-002, BR-041) — set SYAO_RPC_TOKEN or bind 127.0.0.1.',
+  'serve.unsafeListen': 'Refusing to listen on {host} without a token (SY-SRV-002, BR-041) — set LIWEN_RPC_TOKEN or bind 127.0.0.1.',
   'serve.loopbackOnly': 'Loopback only: no bearer token required.',
   'serve.tokenRequired': 'A bearer token is configured; every request must present it.',
   'serve.edgeUnavailable': 'Protocol edge not available in this build.',
@@ -758,15 +758,15 @@ Options:
   'serve.notFound': 'No route for {path}.',
   'serve.bindFailed': 'Cannot listen: {detail}',
   'serve.stopped': 'Service stopped.',
-  'serve.usage': 'Usage: syao serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]',
-  'serve.slashHint': 'The TUI never binds a listener; run `syao serve` from a shell to start it.',
+  'serve.usage': 'Usage: liwen serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]',
+  'serve.slashHint': 'The TUI never binds a listener; run `liwen serve` from a shell to start it.',
   'rpc.serve.listening': 'listening',
   'rpc.serve.refused': 'refused',
   'rpc.serve.stopped': 'stopped',
   'rpc.serve.tokenSet': 'configured',
   'rpc.serve.tokenUnset': 'not configured',
   'rpc.serve.edgeUnavailable': 'protocol edge not available in this build',
-  'rpc.serve.bindHint': 'Set SYAO_RPC_TOKEN for a non-loopback bind, or keep the default 127.0.0.1.',
+  'rpc.serve.bindHint': 'Set LIWEN_RPC_TOKEN for a non-loopback bind, or keep the default 127.0.0.1.',
   'rpc.panel.store': 'store / write lease',
   'rpc.store.dir': 'directory',
   'rpc.store.epoch': 'epoch',

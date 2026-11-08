@@ -5,7 +5,7 @@ import { zh } from './zh.js';
  * CLI 文案国际化（v0.1 追加）。
  *
  * 设计：
- * - 默认语言为英语；`/language` 写入 ~/.syaocode/config.json 的 language 字段，
+ * - 默认语言为英语；`/language` 写入 ~/.liwencode/config.json 的 language 字段，
  *   下次启动生效（指令本身会立即退出 CLI）。
  * - 键集合以 en.ts 为准，zh.ts 为 Record<MsgKey, string>，漏译即 typecheck 失败。
  * - 插值语法 `{name}`；缺键时回退英语再回退键名，绝不抛错（UI 不能因文案崩溃）。

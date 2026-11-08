@@ -2,12 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@syaocode/core": ["../core/src/index.ts"],
-      "@syaocode/protocols": ["../protocols/src/index.ts"],
-      "@syaocode/protocols/*": ["../protocols/src/*/index.ts"],
-      "@syaocode/providers": ["../providers/src/index.ts"],
-      "@syaocode/rpc": ["../rpc/src/index.ts"],
-      "@syaocode/tools": ["../tools/src/index.ts"]
+      "@liwencode/core": ["../core/src/index.ts"],
+      "@liwencode/protocols": ["../protocols/src/index.ts"],
+      "@liwencode/protocols/*": ["../protocols/src/*/index.ts"],
+      "@liwencode/providers": ["../providers/src/index.ts"],
+      "@liwencode/rpc": ["../rpc/src/index.ts"],
+      "@liwencode/tools": ["../tools/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]

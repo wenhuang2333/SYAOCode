@@ -1,7 +1,7 @@
 {
-  "name": "@syaocode/dhp",
+  "name": "@liwencode/dhp",
   "version": "0.1.0",
-  "description": "SYAOCode Desktop Host Protocol (DHP): zod schemas, error codes, projection and command envelopes",
+  "description": "LIWENCode Desktop Host Protocol (DHP): zod schemas, error codes, projection and command envelopes",
   "type": "module",
   "license": "Apache-2.0",
   "sideEffects": false,

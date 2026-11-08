@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FsError, globMatch, type Tool, type ToolContext, type ToolOutput } from '@syaocode/core';
+import { FsError, globMatch, type Tool, type ToolContext, type ToolOutput } from '@liwencode/core';
 
 /**
  * glob / grep (FR-034): workspace search honoring .gitignore.

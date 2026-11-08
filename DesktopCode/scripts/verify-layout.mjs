@@ -7,7 +7,7 @@
  *
  * 用法：
  *   node scripts/verify-layout.mjs
- *   SYAO_PLAYWRIGHT=/path/to/playwright/index.mjs SYAO_CHROMIUM=/path/to/chrome node scripts/verify-layout.mjs
+ *   LIWEN_PLAYWRIGHT=/path/to/playwright/index.mjs LIWEN_CHROMIUM=/path/to/chrome node scripts/verify-layout.mjs
  *
  * 没装 Playwright 时**跳过并以 0 退出**（不伪装成通过，也不阻塞其它人）。
  */
@@ -22,8 +22,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  * 刻意**不加进 package.json**：Playwright 只有渲染布局验证需要，
  * 不该让每个装依赖的人都下载一份浏览器。
  */
-const PW = process.env['SYAO_PLAYWRIGHT'] ?? 'playwright';
-const EXE = process.env['SYAO_CHROMIUM'];
+const PW = process.env['LIWEN_PLAYWRIGHT'] ?? 'playwright';
+const EXE = process.env['LIWEN_CHROMIUM'];
 
 const css = [
   `${ROOT}/packages/ui/src/styles.css`,
@@ -63,11 +63,11 @@ let chromium;
 try {
   ({ chromium } = await import(PW));
 } catch {
-  console.log('SKIP: playwright not installed. Set SYAO_PLAYWRIGHT to its index.mjs to run this check.');
+  console.log('SKIP: playwright not installed. Set LIWEN_PLAYWRIGHT to its index.mjs to run this check.');
   process.exit(0);
 }
 const browser = await chromium.launch(EXE === undefined ? {} : { executablePath: EXE }).catch((error) => {
-  console.log(`SKIP: cannot launch chromium (${error.message.split('\n')[0]}). Set SYAO_CHROMIUM to a browser binary.`);
+  console.log(`SKIP: cannot launch chromium (${error.message.split('\n')[0]}). Set LIWEN_CHROMIUM to a browser binary.`);
   process.exit(0);
 });
 const results = [];

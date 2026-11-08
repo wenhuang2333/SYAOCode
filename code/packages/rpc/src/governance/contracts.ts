@@ -9,7 +9,7 @@
  * concrete implementation, and never on a raw tool/endpoint handle.
  */
 
-import type { IdGenerator, Logger, Runtime } from '@syaocode/core';
+import type { IdGenerator, Logger, Runtime } from '@liwencode/core';
 import type {
   AdapterCapabilities,
   ApprovalDecision,

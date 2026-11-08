@@ -1,5 +1,5 @@
 /**
- * `@syaocode/client` —— 桌面端客户端 SDK。
+ * `@liwencode/client` —— 桌面端客户端 SDK。
  *
  * **不依赖 Electron，也不依赖 `node:`**：它是一个"普通 Web 客户端"。
  * 这正是 D-04（回环 WebSocket 协议）与 ADR-D07（UI 与宿主解耦）的落地形式——

@@ -24,7 +24,7 @@ import {
   type McpServerInfo,
   type SessionInspection,
   type SessionSnapshot,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 import { createHost, type RunningHost } from '../src/host.ts';
 import { MemoryCredentialProvider, keychainEntryFor } from '../src/credentials.ts';
 import type { CredentialIpcChannel } from '../src/credential-bridge.ts';
@@ -53,7 +53,7 @@ interface Client {
 async function boot(opts: { credentialChannel?: CredentialIpcChannel } = {}): Promise<Client> {
   host = await createHost({
     workspaceRoot: root,
-    env: { SYAOCODE_HOME: home, PROBE_API_KEY: 'probe-key' },
+    env: { LIWENCODE_HOME: home, PROBE_API_KEY: 'probe-key' },
     logger: () => {},
     ...(opts.credentialChannel !== undefined ? { credentialChannel: opts.credentialChannel } : {}),
   });
@@ -379,7 +379,7 @@ describe('Git 凭据私有通道（FR-N-027 / 030）', () => {
     // 状态文件只有条目名，没有令牌。
     const state = await fs.readFile(path.join(home, 'desktop', 'state-v2.json'), 'utf8');
     expect(state).not.toContain(TOKEN);
-    expect(state).toContain('syaocode.git.github.com.token');
+    expect(state).toContain('liwencode.git.github.com.token');
   });
 
   it('重启后恢复元信息；换一条空钥匙串则不伪造"已配置"', async () => {
@@ -424,7 +424,7 @@ describe('Git 凭据私有通道（FR-N-027 / 030）', () => {
     await store.set(keychainEntryFor('github.com', 'token'), TOKEN);
     main.notify({ workspaceRoot: root, remote: 'origin', url: REPO_URL, method: 'token' });
     await flush();
-    expect((await fs.readFile(path.join(home, 'desktop', 'state-v2.json'), 'utf8'))).toContain('syaocode.git.github.com.token');
+    expect((await fs.readFile(path.join(home, 'desktop', 'state-v2.json'), 'utf8'))).toContain('liwencode.git.github.com.token');
 
     await c.request(F.GitAuthClear, { workspaceRoot: root, remote: 'origin' });
     expect(store.has(keychainEntryFor('github.com', 'token'))).toBe(false);
@@ -433,7 +433,7 @@ describe('Git 凭据私有通道（FR-N-027 / 030）', () => {
       { workspaceRoot: root },
     );
     expect(status.remotes[0]?.auth).toMatchObject({ method: 'none', configured: false });
-    expect(await fs.readFile(path.join(home, 'desktop', 'state-v2.json'), 'utf8')).not.toContain('syaocode.git.github.com.token');
+    expect(await fs.readFile(path.join(home, 'desktop', 'state-v2.json'), 'utf8')).not.toContain('liwencode.git.github.com.token');
   });
 
   it('生成 SSH 密钥：只返回公钥与指纹，私钥留在凭据通道', async () => {
@@ -456,7 +456,7 @@ describe('Git 凭据私有通道（FR-N-027 / 030）', () => {
     expect(stored ?? '').toContain('PRIVATE KEY');
     const state = await fs.readFile(path.join(home, 'desktop', 'state-v2.json'), 'utf8');
     expect(state).not.toContain('PRIVATE KEY');
-    expect(state).toContain('syaocode.git.github.com.ssh-key');
+    expect(state).toContain('liwencode.git.github.com.ssh-key');
   });
 });
 

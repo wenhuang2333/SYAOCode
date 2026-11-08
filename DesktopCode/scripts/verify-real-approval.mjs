@@ -49,8 +49,8 @@ const { DhpConnection } = await import(path.join(ROOT, 'packages/client/src/inde
 const WS = createRequire(path.join(ROOT, 'packages/host/package.json'))('ws');
 
 const { writeFile } = await import('node:fs/promises');
-const workspace = await realpath(await mkdtemp(path.join(os.tmpdir(), 'syao-approval-')));
-const home = await mkdtemp(path.join(os.tmpdir(), 'syao-approval-home-'));
+const workspace = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liwen-approval-')));
+const home = await mkdtemp(path.join(os.tmpdir(), 'liwen-approval-home-'));
 await writeFile(path.join(workspace, TARGET), ORIGINAL);
 
 let host;
@@ -64,7 +64,7 @@ let writeRequested = false;
 try {
   host = await createHost({
     workspaceRoot: workspace,
-    env: { SYAOCODE_HOME: home, OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE },
+    env: { LIWENCODE_HOME: home, OPENAI_API_KEY: KEY, OPENAI_BASE_URL: BASE },
     logger: () => {},
   });
   conn = new DhpConnection({

@@ -11,7 +11,7 @@
  * 本模块只做一件事：把"取/存/删凭据"翻译成主进程 IPC 请求。
  * 它**不**接触 DHP，**不**把凭据写进任何返回值或日志。
  *
- * 独立运行（`syao host`，没有 Electron 父进程）时通道不存在 →
+ * 独立运行（`liwen host`，没有 Electron 父进程）时通道不存在 →
  * {@link IpcCredentialBridge.available} 返回 false，界面必须提示
  * "本次不持久化"（`27` Q9 的降级策略）。
  */

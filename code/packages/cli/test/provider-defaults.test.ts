@@ -5,27 +5,27 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args';
 import { resolveProvider } from '../src/provider-select';
 import { modelSpecLabel } from '../src/model-config';
-import { MockProvider } from '@syaocode/testing';
-import type { Message, Provider } from '@syaocode/core';
+import { MockProvider } from '@liwencode/testing';
+import type { Message, Provider } from '@liwencode/core';
 
 /**
  * 默认通用配置：交互与非交互（-p/exec）必须使用同一套解析顺序
- * （--model > SYAO_MODEL > ~/.syaocode/config.json > mock）。
+ * （--model > LIWEN_MODEL > ~/.liwencode/config.json > mock）。
  */
 
 let home: string;
 const savedEnv = { ...process.env };
 
 function writeConfig(config: unknown): void {
-  fs.mkdirSync(path.join(home, '.syaocode'), { recursive: true });
-  fs.writeFileSync(path.join(home, '.syaocode', 'config.json'), JSON.stringify(config));
+  fs.mkdirSync(path.join(home, '.liwencode'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.liwencode', 'config.json'), JSON.stringify(config));
 }
 
 beforeEach(() => {
-  home = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-defaults-'));
+  home = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-defaults-'));
   process.env.HOME = home;
-  delete process.env.SYAO_MODEL;
-  delete process.env.SYAO_KEY_P1;
+  delete process.env.LIWEN_MODEL;
+  delete process.env.LIWEN_KEY_P1;
 });
 
 afterEach(() => {
@@ -48,7 +48,7 @@ describe('provider resolution defaults (interactive == -p/exec)', () => {
     expect(provider.id).toBe('mock');
   });
 
-  it('honors the saved profile from ~/.syaocode/config.json (no --model needed)', () => {
+  it('honors the saved profile from ~/.liwencode/config.json (no --model needed)', () => {
     writeConfig({
       models: {
         p1: {
@@ -56,23 +56,23 @@ describe('provider resolution defaults (interactive == -p/exec)', () => {
           baseUrl: 'https://example.test/v1',
           protocol: 'openai-chat',
           authField: 'bearer',
-          apiKeyEnv: 'SYAO_KEY_P1',
+          apiKeyEnv: 'LIWEN_KEY_P1',
           createdAt: 0,
           updatedAt: 0,
         },
       },
       model: { provider: '@p1', name: 'm-1' },
     });
-    process.env.SYAO_KEY_P1 = 'sk-test-key';
+    process.env.LIWEN_KEY_P1 = 'sk-test-key';
     const provider = resolveProvider(parseArgs([]), deps);
     expect(provider.id).toBe('@p1');
     expect(provider.model).toBe('m-1');
   });
 
-  it('precedence: --model beats SYAO_MODEL beats saved config', () => {
+  it('precedence: --model beats LIWEN_MODEL beats saved config', () => {
     writeConfig({ model: { provider: 'deepseek', name: 'from-config' } });
     process.env.DEEPSEEK_API_KEY = 'sk-test-key';
-    process.env.SYAO_MODEL = 'deepseek:from-env';
+    process.env.LIWEN_MODEL = 'deepseek:from-env';
     expect(resolveProvider(parseArgs([]), deps).model).toBe('from-env');
     expect(resolveProvider(parseArgs(['--model', 'deepseek:from-flag']), deps).model).toBe('from-flag');
   });

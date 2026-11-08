@@ -62,7 +62,7 @@ export const zh: Record<MsgKey, string> = {
   'cmd.resume.usage': '/resume [会话]',
   'cmd.resume.summary': '列出或恢复历史会话',
   'cmd.doctor.usage': '/doctor',
-  'cmd.doctor.summary': '运行环境诊断（同 syao doctor）',
+  'cmd.doctor.summary': '运行环境诊断（同 liwen doctor）',
   'cmd.setup.usage': '/setup',
   'cmd.setup.summary': '模型配置向导：名称、地址、密钥、协议、认证字段、档案名（TUI）',
   'cmd.manage.usage': '/manage [档案]',
@@ -133,7 +133,7 @@ export const zh: Record<MsgKey, string> = {
   'setup.field.protocol': '  协议：  {value}',
   'setup.field.auth': '  认证：  {value}',
   'setup.field.key': '  密钥：  {env} {status}',
-  'setup.keyInEnvFile': '已存入 ~/.syaocode/env（0600）',
+  'setup.keyInEnvFile': '已存入 ~/.liwencode/env（0600）',
   'setup.keyInProcessEnv': '已存在于进程环境变量',
   'setup.keyMissing': '未设置——可稍后用 /manage 编辑补填',
   'setup.protocolNotice': '  注意：该协议适配器规划于 M2，当前无法实际调用；配置已保存。',
@@ -180,8 +180,8 @@ export const zh: Record<MsgKey, string> = {
   'config.models': '模型（{models}）：',
   'config.modelPrompt': '模型名 [{default}]：',
   'config.baseUrlPrompt': '请求地址 [{default}]：',
-  'config.apiKeyPrompt': 'API Key（存入 ~/.syaocode/env，权限 0600；直接回车＝跳过）：',
-  'config.keySaved': '密钥已保存到 ~/.syaocode/env（{masked}）。绝不进入会话文件与日志。',
+  'config.apiKeyPrompt': 'API Key（存入 ~/.liwencode/env，权限 0600；直接回车＝跳过）：',
+  'config.keySaved': '密钥已保存到 ~/.liwencode/env（{masked}）。绝不进入会话文件与日志。',
   'config.done': '配置完成，已切换到 {provider}:{model}。',
   'config.pickProvider': '配置哪个 Provider？',
   'config.invalidMode': '模式必须为 strict | default | acceptEdits | plan | bypass',
@@ -192,8 +192,8 @@ export const zh: Record<MsgKey, string> = {
   'config.permissionSummary': '权限模式：{mode}（当前档位：{tier}）',
   'config.adjust': '调整：{invoked} <档位> | {invoked} mode <模式> | {invoked} allow|deny <工具>',
   'config.unknownProviderList': '未知 provider「{provider}」。可选：{list}',
-  'config.tuiOnly': '{cmd} 需要 TUI 交互界面（进度线向导/选择列表）。请在交互式终端中运行 syao（无管道）后使用；非交互场景可手动编辑 ~/.syaocode/config.json 的 models 字段。',
-  'config.replOnly': '/model config 需要交互式终端。可手动编辑 ~/.syaocode/config.json 与 ~/.syaocode/env。',
+  'config.tuiOnly': '{cmd} 需要 TUI 交互界面（进度线向导/选择列表）。请在交互式终端中运行 liwen（无管道）后使用；非交互场景可手动编辑 ~/.liwencode/config.json 的 models 字段。',
+  'config.replOnly': '/model config 需要交互式终端。可手动编辑 ~/.liwencode/config.json 与 ~/.liwencode/env。',
   'config.unknownCommand': '未知命令「{cmd}」。输入 /help 查看全部命令。',
   'config.indexModels': '模型（{models}）：',
   'config.invalidModeShort': '模式必须为 strict | default | acceptEdits | plan | bypass',
@@ -209,7 +209,7 @@ export const zh: Record<MsgKey, string> = {
   'resume.entries': '{n} 条',
   'resume.notFound': '会话「{id}」不存在（SY-SES-001）。/resume 查看列表。',
   'resume.restored': '已恢复会话 {id}，下一条消息将接续该历史。',
-  'banner.title': 'SYAOCode v0.1 交互模式',
+  'banner.title': 'LIWENCode v0.1 交互模式',
   'banner.tier': '  权限档位：{tier}',
   'banner.hint': '  /help 查看命令 · @文件 引用上下文 · !命令 执行 shell · Ctrl+C 取消/退出',
   'repl.pipeNotice': '（检测到管道输入：权限请求将按无人值守策略自动拒绝）',
@@ -248,12 +248,12 @@ export const zh: Record<MsgKey, string> = {
   'provider.openai.label': 'OpenAI 及兼容端点',
   'provider.anthropic.label': 'Anthropic（原生 Messages）',
   'key.masked': '{prefix}…{suffix}（已设置）',
-  'provider.needKeyEnv': 'provider 需要设置 {env}（SY-CFG-002）。离线运行可用 mock:，或用 /model config 配置，也可运行 syao doctor 诊断。',
+  'provider.needKeyEnv': 'provider 需要设置 {env}（SY-CFG-002）。离线运行可用 mock:，或用 /model config 配置，也可运行 liwen doctor 诊断。',
   'provider.unknown': '未知 provider「{provider}」（SY-CLI-001）。支持：{list}。运行 /setup 进入向导，或用 /model config。',
   'provider.profileNotFound': '模型档案 @{name} 不存在（SY-CLI-001）。用 /setup 创建，或用 /manage 查看档案列表。',
   'provider.protocolNotImplemented': '档案 @{name} 使用的协议 {protocol} 适配器尚未实现（规划于 M2）。请重新运行 /setup 选择 Anthropic 或 OpenAI ChatCompletion。',
   'provider.list': 'mock、deepseek、openai-compatible、anthropic',
-  'mock.noScript': 'MockProvider：未配置剧本。设置 SYAO_MOCK_SCRIPT=<JSON 消息数组> 可获得确定性输出；或用 /model config 配置真实模型。',
+  'mock.noScript': 'MockProvider：未配置剧本。设置 LIWEN_MOCK_SCRIPT=<JSON 消息数组> 可获得确定性输出；或用 /model config 配置真实模型。',
 
   // ── language 指令 ───────────────────────────────────────────────────────
   'language.name.en': 'English',
@@ -266,10 +266,10 @@ export const zh: Record<MsgKey, string> = {
   'language.option2': '2) 中文',
   'language.invalid': '未知语言「{value}」。请使用 en 或 zh。',
   'language.already': '当前已经在使用{lang}。',
-  'language.warning': '切换后当前 CLI 会立即退出；新语言将在下次启动 syao 时生效。',
+  'language.warning': '切换后当前 CLI 会立即退出；新语言将在下次启动 liwen 时生效。',
   'language.confirm': '切换到{lang}并立即退出？[y/N]：',
   'language.cancelled': '语言未改变。',
-  'language.saved': '语言已设置为{lang}。正在退出——重新启动 syao 后生效。',
+  'language.saved': '语言已设置为{lang}。正在退出——重新启动 liwen 后生效。',
   'language.panelHint': 'en = English · zh = 中文 · /language <代码>',
 
   // ── CLI 用法 / 参数 ─────────────────────────────────────────────────────
@@ -282,23 +282,23 @@ export const zh: Record<MsgKey, string> = {
   'args.modelSpec': '--model 必须为 <provider>:<model>，收到「{value}」（SY-CLI-001）',
   'args.promptRequired': '-p/exec 需要提供提示词（SY-CLI-001）',
   'config.requiresKey': 'config get 需要一个键名（SY-CLI-001）',
-  'usage.text': `syao —— SYAOCode 编码智能体 CLI（v0.1 内部版）
+  'usage.text': `liwen —— LIWENCode 编码智能体 CLI（v0.1 内部版）
 
 用法：
-  syao [选项] [提示词]           进入交互模式；提示词作为首轮输入
-  syao -p "提示词"               非交互运行，输出结果后退出
-  syao exec "提示词"             同 -p
-  syao doctor                    环境与配置诊断
-  syao config list|get|path      查看生效配置
-  syao rpc <tasks|task|approvals|approve|deny|budget|audit|policy|status> [--json]
+  liwen [选项] [提示词]           进入交互模式；提示词作为首轮输入
+  liwen -p "提示词"               非交互运行，输出结果后退出
+  liwen exec "提示词"             同 -p
+  liwen doctor                    环境与配置诊断
+  liwen config list|get|path      查看生效配置
+  liwen rpc <tasks|task|approvals|approve|deny|budget|audit|policy|status> [--json]
                                  治理控制台：任务、审批、预算、审计、策略
-  syao call <capabilityId> [--input @文件|json] [--json]
+  liwen call <capabilityId> [--input @文件|json] [--json]
                                  一次受治理的调用（退出码 3 拒绝 / 4 超限 / 7 不可用）
-  syao mcp <list|add <名称> <命令...>|remove <名称>|tools <名称>>
+  liwen mcp <list|add <名称> <命令...>|remove <名称>|tools <名称>>
                                  管理已注册的 MCP server（协议边）
-  syao serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]
+  liwen serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]
                                  通过协议边暴露 fabric（默认只监听回环地址）
-  syao --version | --help
+  liwen --version | --help
 
 交互模式内：
   /help /model /permission /permissions /status /cost /tools /compact /clear /resume /doctor /language /exit
@@ -359,8 +359,8 @@ export const zh: Record<MsgKey, string> = {
   'manage.notFound': '档案 @{name} 不存在。',
   'manage.editHint': '编辑 @{name}：文本步直接回车＝沿用当前值；API Key 留空＝不变更。',
   'manage.deleteConfirm': '删除 @{name}？[y/N]：',
-  'manage.deleted': '已删除档案 @{name}（密钥字段保留在 ~/.syaocode/env，可手动清理）。',
-  'welcome.title': '欢迎使用 SYAOCode',
+  'manage.deleted': '已删除档案 @{name}（密钥字段保留在 ~/.liwencode/env，可手动清理）。',
+  'welcome.title': '欢迎使用 LIWENCode',
   'welcome.version': '{version} · 模型 {model}',
   'welcome.permission': '权限：{tier}',
   'welcome.hintHelp': '全部命令',
@@ -379,7 +379,7 @@ export const zh: Record<MsgKey, string> = {
   'setup.step.profileName': '档案名称',
   'setup.hint.model': '例如 deepseek-chat、claude-sonnet-4、gemini-2.0-flash',
   'setup.hint.baseUrl': '例如 https://api.deepseek.com/v1',
-  'setup.hint.apiKey': '存入 ~/.syaocode/env（权限 0600），绝不写入配置或日志',
+  'setup.hint.apiKey': '存入 ~/.liwencode/env（权限 0600），绝不写入配置或日志',
   'setup.hint.protocol': '↑↓ 选择 · Enter 确认',
   'setup.hint.authField': '密钥附加到请求的方式',
   'setup.hint.profileName': '在 /model use 中以 @名称 引用；最后一步保存',
@@ -533,13 +533,13 @@ export const zh: Record<MsgKey, string> = {
   'cmd.mcpAlias.summary': '/peer 的别名：管理 MCP server 注册表',
 
   // ── ARF 治理面：命令行文档 ─────────────────────────────────────────────
-  'argv.rpc.usage': 'syao rpc <tasks|task <id>|approvals|approve <id> <option>|deny <id>|budget|audit|policy <capabilityId>|status> [--json]',
+  'argv.rpc.usage': 'liwen rpc <tasks|task <id>|approvals|approve <id> <option>|deny <id>|budget|audit|policy <capabilityId>|status> [--json]',
   'argv.rpc.summary': '在 shell 里查看治理控制台（与 /rpc 同一批视图，非交互）',
-  'argv.call.usage': 'syao call <capabilityId> [--input @file|json] [--json]',
+  'argv.call.usage': 'liwen call <capabilityId> [--input @file|json] [--json]',
   'argv.call.summary': '一次受治理的调用；退出码沿用内核约定（0/2/3/4/5/7）',
-  'argv.mcp.usage': 'syao mcp <list|add <name> <command...>|remove <name>|tools <name>>',
+  'argv.mcp.usage': 'liwen mcp <list|add <name> <command...>|remove <name>|tools <name>>',
   'argv.mcp.summary': '管理已注册的 MCP server（与 /peer、/mcp 共用同一注册表）',
-  'argv.serve.usage': 'syao serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]',
+  'argv.serve.usage': 'liwen serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]',
   'argv.serve.summary': '通过协议边暴露 fabric（默认只监听回环地址）',
 
   // ── ARF 面板：标题 ─────────────────────────────────────────────────────
@@ -684,20 +684,20 @@ export const zh: Record<MsgKey, string> = {
   'rpc.hint.tools': '请先注册协议边：/peer add <id> <command>',
   'rpc.lossyUnknown': '对端上报的语义缺口：{code}',
   'rpc.taskNotFound': '当前租户下没有 id 为 {id} 的任务。',
-  'rpc.taskRequired': '用法：syao rpc task <id>',
-  'rpc.policyRequired': '用法：syao rpc policy <capabilityId>',
+  'rpc.taskRequired': '用法：liwen rpc task <id>',
+  'rpc.policyRequired': '用法：liwen rpc policy <capabilityId>',
   'rpc.approvalRequired': '用法：/approve <id> [once|session|always|deny]',
   'rpc.badOption': '无法识别的审批选项 {option}——可用 once | session | always | deny。',
   'rpc.unknownSub': '无法识别的 rpc 子命令 {sub}。',
-  'rpc.usage': '用法：syao rpc <tasks|task <id>|approvals|approve <id> <option>|deny <id>|budget|audit|policy <capabilityId>|status> [--json]',
-  'rpc.callUsage': '用法：syao call <capabilityId> [--input @file|json] [--json]',
+  'rpc.usage': '用法：liwen rpc <tasks|task <id>|approvals|approve <id> <option>|deny <id>|budget|audit|policy <capabilityId>|status> [--json]',
+  'rpc.callUsage': '用法：liwen call <capabilityId> [--input @file|json] [--json]',
   'rpc.capabilityRequired': '用法：/call <capabilityId> [json 输入]',
   'rpc.inputNotJson': '输入不是合法 JSON。请传内联 JSON 或 @文件路径.json。',
   'rpc.inputFileFailed': '无法读取输入文件 {file}：{detail}',
-  'rpc.mcpUsage': '用法：syao mcp <list|add <name> <command...>|remove <name>|tools <name>>',
-  'rpc.mcpAddUsage': '用法：syao mcp add <name> <command...>',
-  'rpc.mcpRemoveUsage': '用法：syao mcp remove <name>',
-  'rpc.mcpToolsUsage': '用法：syao mcp tools <name>',
+  'rpc.mcpUsage': '用法：liwen mcp <list|add <name> <command...>|remove <name>|tools <name>>',
+  'rpc.mcpAddUsage': '用法：liwen mcp add <name> <command...>',
+  'rpc.mcpRemoveUsage': '用法：liwen mcp remove <name>',
+  'rpc.mcpToolsUsage': '用法：liwen mcp tools <name>',
   'rpc.badPeerId': '协议边 id {id} 不合法——只允许字母、数字、点、短横线和下划线。',
   'rpc.peer.usage': '用法：/peer [list|add <id> <url|command>|remove <id>|ping <id>]',
   'rpc.peer.addUsage': '用法：/peer add <id> <command|url>',
@@ -706,8 +706,8 @@ export const zh: Record<MsgKey, string> = {
   'rpc.peer.added': '已注册协议边 {id}（{target}）',
   'rpc.peer.removed': '已删除协议边 {id}',
   'rpc.peer.notFound': '没有名为 {id} 的协议边',
-  'rpc.peer.addHint': '重启 syao（或在本构建中挂载它）后即可发现它的能力。',
-  'rpc.peer.mcpHint': '服务已注册；`syao mcp list` 可查看，`syao mcp tools <name>` 可列出其能力。',
+  'rpc.peer.addHint': '重启 liwen（或在本构建中挂载它）后即可发现它的能力。',
+  'rpc.peer.mcpHint': '服务已注册；`liwen mcp list` 可查看，`liwen mcp tools <name>` 可列出其能力。',
   'rpc.peer.reachable': '协议边可用',
   'rpc.peer.unreachable': '当前构建中协议边不可用',
   'rpc.peer.edgeReady': '协议适配器模块已正确加载',
@@ -745,7 +745,7 @@ export const zh: Record<MsgKey, string> = {
 
   // ── serve ──────────────────────────────────────────────────────────────
   'serve.badPort': '端口 {port} 不合法——请使用 1..65535 之间的整数。',
-  'serve.unsafeListen': '没有令牌时拒绝监听 {host}（SY-SRV-002，BR-041）——请设置 SYAO_RPC_TOKEN 或绑定 127.0.0.1。',
+  'serve.unsafeListen': '没有令牌时拒绝监听 {host}（SY-SRV-002，BR-041）——请设置 LIWEN_RPC_TOKEN 或绑定 127.0.0.1。',
   'serve.loopbackOnly': '仅监听回环地址：无需 bearer 令牌。',
   'serve.tokenRequired': '已配置 bearer 令牌；每个请求都必须携带。',
   'serve.edgeUnavailable': '当前构建不含该协议边。',
@@ -756,15 +756,15 @@ export const zh: Record<MsgKey, string> = {
   'serve.notFound': '没有匹配 {path} 的路由。',
   'serve.bindFailed': '无法监听：{detail}',
   'serve.stopped': '服务已停止。',
-  'serve.usage': '用法：syao serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]',
-  'serve.slashHint': 'TUI 不会真正监听端口；请在 shell 中运行 `syao serve` 启动服务。',
+  'serve.usage': '用法：liwen serve --mcp|--acp|--a2a [--stdio|--http] [--port N] [--host H]',
+  'serve.slashHint': 'TUI 不会真正监听端口；请在 shell 中运行 `liwen serve` 启动服务。',
   'rpc.serve.listening': '监听中',
   'rpc.serve.refused': '已拒绝',
   'rpc.serve.stopped': '已停止',
   'rpc.serve.tokenSet': '已配置',
   'rpc.serve.tokenUnset': '未配置',
   'rpc.serve.edgeUnavailable': '当前构建不含该协议边',
-  'rpc.serve.bindHint': '非回环地址需设置 SYAO_RPC_TOKEN，或保持默认的 127.0.0.1。',
+  'rpc.serve.bindHint': '非回环地址需设置 LIWEN_RPC_TOKEN，或保持默认的 127.0.0.1。',
   'rpc.panel.store': '存储 / 写租约',
   'rpc.store.dir': '目录',
   'rpc.store.epoch': '纪元',

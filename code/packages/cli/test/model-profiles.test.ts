@@ -14,9 +14,9 @@ import {
   type ModelProfile,
 } from '../src/model-config';
 
-/** 隔离 HOME，避免污染真实 ~/.syaocode */
+/** 隔离 HOME，避免污染真实 ~/.liwencode */
 function isolatedHome(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'syao-profiles-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-profiles-'));
 }
 
 function sampleProfile(over: Partial<ModelProfile> = {}): ModelProfile {
@@ -25,7 +25,7 @@ function sampleProfile(over: Partial<ModelProfile> = {}): ModelProfile {
     baseUrl: 'https://api.example.com/v1',
     protocol: 'openai-chat',
     authField: 'bearer',
-    apiKeyEnv: 'SYAO_KEY_TEST',
+    apiKeyEnv: 'LIWEN_KEY_TEST',
     createdAt: 1,
     updatedAt: 2,
     ...over,
@@ -36,7 +36,7 @@ describe('model profiles（/setup · /manage 数据层）', () => {
   let home: string;
   beforeEach(() => {
     home = isolatedHome();
-    delete process.env.SYAO_KEY_TEST;
+    delete process.env.LIWEN_KEY_TEST;
   });
 
   it('saveProfile：档案入 config.json，密钥只入 env 文件（BR-023）', () => {
@@ -48,8 +48,8 @@ describe('model profiles（/setup · /manage 数据层）', () => {
     expect(configRaw).not.toContain('sk-secret-value');
     // 密钥在 env 文件（0600）且已同步进程环境
     const env = parseEnvFile(fs.readFileSync(envFilePath(home), 'utf8'));
-    expect(env.SYAO_KEY_TEST).toBe('sk-secret-value');
-    expect(process.env.SYAO_KEY_TEST).toBe('sk-secret-value');
+    expect(env.LIWEN_KEY_TEST).toBe('sk-secret-value');
+    expect(process.env.LIWEN_KEY_TEST).toBe('sk-secret-value');
     expect(getProfile('test', home)?.model).toBe('my-model');
   });
 
@@ -57,7 +57,7 @@ describe('model profiles（/setup · /manage 数据层）', () => {
     saveProfile('test', sampleProfile(), 'sk-first', home);
     saveProfile('test', sampleProfile({ model: 'v2' }), undefined, home);
     const env = parseEnvFile(fs.readFileSync(envFilePath(home), 'utf8'));
-    expect(env.SYAO_KEY_TEST).toBe('sk-first');
+    expect(env.LIWEN_KEY_TEST).toBe('sk-first');
     expect(getProfile('test', home)?.model).toBe('v2');
   });
 

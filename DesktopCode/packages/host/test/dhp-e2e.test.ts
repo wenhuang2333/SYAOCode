@@ -13,15 +13,15 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createHost, type RunningHost } from '../src/host.ts';
-import { Method, Notification, DHP_VERSION, DHP_CAPABILITIES, type SessionSnapshot } from '@syaocode/dhp';
+import { Method, Notification, DHP_VERSION, DHP_CAPABILITIES, type SessionSnapshot } from '@liwencode/dhp';
 
 let host: RunningHost | undefined;
 let tmpHome: string;
 let tmpWs: string;
 
 beforeEach(() => {
-  tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-e2e-home-'));
-  tmpWs = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-e2e-ws-'));
+  tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-e2e-home-'));
+  tmpWs = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-e2e-ws-'));
   fs.writeFileSync(path.join(tmpWs, 'README.md'), '# demo\nhello\n');
 });
 
@@ -122,7 +122,7 @@ describe('DHP 端到端', () => {
   it('握手 → 建会话 → 订阅 → 发一轮 → 收到流式事件', async () => {
     host = await createHost({
       workspaceRoot: tmpWs,
-      env: { SYAOCODE_HOME: tmpHome },
+      env: { LIWENCODE_HOME: tmpHome },
       exitOnShutdown: false,
     });
     const client = await connect(host.server.url, host.server.token);
@@ -173,7 +173,7 @@ describe('DHP 端到端', () => {
   it('错误令牌 → 握手被拒（不回业务错误）', async () => {
     host = await createHost({
       workspaceRoot: tmpWs,
-      env: { SYAOCODE_HOME: tmpHome },
+      env: { LIWENCODE_HOME: tmpHome },
       exitOnShutdown: false,
     });
     await expect(connect(host.server.url, 'wrong-token')).rejects.toBeTruthy();
@@ -182,7 +182,7 @@ describe('DHP 端到端', () => {
   it('未握手直接调业务方法 → not_ready', async () => {
     host = await createHost({
       workspaceRoot: tmpWs,
-      env: { SYAOCODE_HOME: tmpHome },
+      env: { LIWENCODE_HOME: tmpHome },
       exitOnShutdown: false,
     });
     const client = await connect(host.server.url, host.server.token);
@@ -193,7 +193,7 @@ describe('DHP 端到端', () => {
   it('同 commandId 重复提交 → duplicate，只执行一次', async () => {
     host = await createHost({
       workspaceRoot: tmpWs,
-      env: { SYAOCODE_HOME: tmpHome },
+      env: { LIWENCODE_HOME: tmpHome },
       exitOnShutdown: false,
     });
     const client = await connect(host.server.url, host.server.token);
@@ -233,7 +233,7 @@ describe('DHP 端到端', () => {
   it('baseRevision 过期 → stale，且无副作用', async () => {
     host = await createHost({
       workspaceRoot: tmpWs,
-      env: { SYAOCODE_HOME: tmpHome },
+      env: { LIWENCODE_HOME: tmpHome },
       exitOnShutdown: false,
     });
     const client = await connect(host.server.url, host.server.token);
@@ -277,7 +277,7 @@ describe('DHP 端到端', () => {
 
     host = await createHost({
       workspaceRoot: tmpWs,
-      env: { SYAOCODE_HOME: tmpHome },
+      env: { LIWENCODE_HOME: tmpHome },
       exitOnShutdown: false,
     });
     const client = await connect(host.server.url, host.server.token);
@@ -338,7 +338,7 @@ describe('DHP 端到端', () => {
   it('订阅时可补洞（baseSeq 落后但仍在环内）', async () => {
     host = await createHost({
       workspaceRoot: tmpWs,
-      env: { SYAOCODE_HOME: tmpHome },
+      env: { LIWENCODE_HOME: tmpHome },
       exitOnShutdown: false,
     });
     const client = await connect(host.server.url, host.server.token);
@@ -392,7 +392,7 @@ describe('DHP 端到端', () => {
   it('app/info 与 doctor/run 可用', async () => {
     host = await createHost({
       workspaceRoot: tmpWs,
-      env: { SYAOCODE_HOME: tmpHome },
+      env: { LIWENCODE_HOME: tmpHome },
       exitOnShutdown: false,
     });
     const client = await connect(host.server.url, host.server.token);
@@ -407,7 +407,7 @@ describe('DHP 端到端', () => {
     expect(info.dhpVersion.major).toBe(1);
 
     const doc = (await client.request(Method.DoctorRun)) as { checks: { name: string }[] };
-    expect(doc.checks.some((c) => c.name === 'syaoHome')).toBe(true);
+    expect(doc.checks.some((c) => c.name === 'liwenHome')).toBe(true);
 
     client.close();
   }, 15000);

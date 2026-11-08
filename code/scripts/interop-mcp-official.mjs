@@ -1,6 +1,6 @@
 /**
  * Real interop probe: the OFFICIAL @modelcontextprotocol/client@2.4.0 against
- * SYAOCode's MCP server.
+ * LIWENCode's MCP server.
  *
  * This is NOT a unit test — it needs the official SDK installed and a server
  * listening — so it lives as a script and is run manually or in a CI job with
@@ -44,7 +44,7 @@ try {
 
 const transport = new StreamableHTTPClientTransport(new URL(target));
 const client = new Client(
-  { name: 'syaocode-interop-probe', version: '1.0.0' },
+  { name: 'liwencode-interop-probe', version: '1.0.0' },
   // The modern era has no `initialize` handshake: the client probes with
   // `server/discover` and pins the revision.
   { versionNegotiation: { mode: { pin: '2026-07-28' } } },

@@ -6,7 +6,7 @@
  * (03 §3.4 hard constraint 3).
  */
 
-import type { TaskInputBlock, TaskState } from '@syaocode/rpc';
+import type { TaskInputBlock, TaskState } from '@liwencode/rpc';
 
 // ── content blocks ────────────────────────────────────────────────────────
 

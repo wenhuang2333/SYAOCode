@@ -56,7 +56,7 @@ export interface CommitMessageInput {
   readonly files: readonly string[];
   /** 已暂存/待提交的 unified diff 文本；服务内部按 maxDiffBytes 截断。 */
   readonly diff: string;
-  /** 可选：本会话改动（FileChange[]，来自 @syaocode/dhp），用于提示词补充意图。 */
+  /** 可选：本会话改动（FileChange[]，来自 @liwencode/dhp），用于提示词补充意图。 */
   readonly sessionChanges?: readonly {
     readonly path: string;
     readonly status: string;

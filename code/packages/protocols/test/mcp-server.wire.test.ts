@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { MCP_ERROR_CODES } from '@syaocode/rpc';
+import { MCP_ERROR_CODES } from '@liwencode/rpc';
 import { McpClient } from '../src/mcp/client.js';
 import { McpServer, requiresInput, type McpToolExecutor, type McpServerTool } from '../src/mcp/server.js';
 import {

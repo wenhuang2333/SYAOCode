@@ -10,7 +10,7 @@ import * as path from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { EMPTY_USAGE, type Artifact, type ChangesCoverage, type ContextInfo, type DiffHunk, type FileChange, type SessionChangeDiffResult, type SessionInspection, type SourceRef } from '@syaocode/dhp';
+import { EMPTY_USAGE, type Artifact, type ChangesCoverage, type ContextInfo, type DiffHunk, type FileChange, type SessionChangeDiffResult, type SessionInspection, type SourceRef } from '@liwencode/dhp';
 import {
   ArtifactPreview, CHANGE_DIFF_UNAVAILABLE_TEXT, PREVIEW_TRUNCATED_TEXT, CHANGE_STATUS_LETTERS, ChangeDiffPanel, DETAIL_EMPTY_TEXT, DETAIL_SECTIONS, DetailPanel,
   artifactActionLabels, artifactCopyNote, artifactLineLabel, artifactSizeText, changeDiffNote, changeDiffStatsText, changeLineLabel, changeStatText, changeStatusLetter, changeStatusLabel,
@@ -392,6 +392,6 @@ describe('artifact actions and read-only preview (§8.3 / §8.4)', () => {
     expect(workbenchSource).toContain('onPreviewArtifact');
     // revealPath 只作为回调传入（不在渲染期直接调用）。
     expect(workbenchSource.match(/revealPath/g)).toHaveLength(2);
-    expect(workbenchSource).toMatch(/onRevealArtifact=\{window\.syao\?\.app\.revealPath \? async \(path\) => \{ await window\.syao\?\.app\.revealPath\?\.\(path\); \} : undefined\}/);
+    expect(workbenchSource).toMatch(/onRevealArtifact=\{window\.liwen\?\.app\.revealPath \? async \(path\) => \{ await window\.liwen\?\.app\.revealPath\?\.\(path\); \} : undefined\}/);
   });
 });

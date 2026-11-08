@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { A2A_ERROR_CODES, ACP_ERROR_CODES, MCP_ERROR_CODES, TASK_STATES, TASK_TO_A2A, TASK_TO_ACP_STOP, TASK_TO_MCP } from '@syaocode/rpc';
+import { A2A_ERROR_CODES, ACP_ERROR_CODES, MCP_ERROR_CODES, TASK_STATES, TASK_TO_A2A, TASK_TO_ACP_STOP, TASK_TO_MCP } from '@liwencode/rpc';
 import {
   A2A_INVENTORY,
   A2A_TASK_STATES,

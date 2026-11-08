@@ -1,5 +1,5 @@
 /**
- * Real interop probe: the OFFICIAL @a2a-js/sdk client against SYAOCode's A2A
+ * Real interop probe: the OFFICIAL @a2a-js/sdk client against LIWENCode's A2A
  * edge.
  *
  * Like the MCP probe, this is not a unit test — it needs the official SDK and
@@ -70,7 +70,7 @@ try {
   const client = await factory.createFromUrl(`${base}/a2a`);
 
   const card = await client.getAgentCard();
-  check('resolves the AgentCard from /.well-known/agent-card.json', card?.name === 'syaocode', `name=${card?.name}`);
+  check('resolves the AgentCard from /.well-known/agent-card.json', card?.name === 'liwencode', `name=${card?.name}`);
   check('the card advertises protocolVersion 1.0', card?.supportedInterfaces?.[0]?.protocolVersion === '1.0');
   check('the card points at the JSONRPC edge path', String(card?.supportedInterfaces?.[0]?.url ?? '').endsWith('/a2a'));
   check('the client negotiates 1.0', client.protocolVersion === '1.0', `negotiated=${client.protocolVersion}`);
@@ -81,7 +81,7 @@ try {
     await client.sendMessage(
       {
         message: { messageId: 'm1', role: 'ROLE_USER', parts: [{ text: 'hello' }], kind: 'message' },
-        metadata: { tenantId: 'syaocode-local' },
+        metadata: { tenantId: 'liwencode-local' },
       },
       { serviceParameters: versionedParameters() },
     );

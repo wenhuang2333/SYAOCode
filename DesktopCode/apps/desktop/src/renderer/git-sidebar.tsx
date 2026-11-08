@@ -31,7 +31,7 @@ import type {
   GitRemotesResult,
   GitStatusResult,
   GitUploadResult,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 import { Icon } from './icons';
 import { formatRelative } from './format';
 import { t, type Lang } from './i18n';

@@ -1,5 +1,5 @@
 /**
- * `@syaocode/dhp` —— SYAOCode 桌面宿主协议。
+ * `@liwencode/dhp` —— LIWENCode 桌面宿主协议。
  *
  * 这个包是**纯数据与纯函数**：没有 IO、没有 `node:` 导入、没有 Electron。
  * 因此它能在三个地方同构运行：Host（Node）、渲染层（浏览器）、测试（node）。

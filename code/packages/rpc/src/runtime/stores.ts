@@ -9,7 +9,7 @@
  * Host-agnostic: no `node:` imports; ids and the ISO clock are injected.
  */
 
-import { sha256Hex, type IdGenerator } from '@syaocode/core';
+import { sha256Hex, type IdGenerator } from '@liwencode/core';
 import type {
   ApprovalRecord,
   BudgetAccount,

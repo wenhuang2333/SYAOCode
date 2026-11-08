@@ -1,13 +1,13 @@
 /**
- * @syaocode/core — the SYAOCode kernel.
+ * @liwencode/core — the LIWENCode kernel.
  * Depends only on zod; no UI, no provider SDKs, no global state (NFR-012/015).
  */
 
 // errors
 export { ERROR_REGISTRY, ALL_ERROR_CODES, ERROR_DOMAINS, DOMAIN_CATEGORY, lookupError, requireError } from './errors/registry.js';
 export type { ErrorCategory, ErrorDomain, ErrorCodeEntry, Recovery, Severity } from './errors/registry.js';
-export { SyaoError, ProviderError, ToolError, PermissionError, FsError, ContextError, SessionError, InternalError } from './errors/syao-error.js';
-export type { ErrorInit, SerializedError } from './errors/syao-error.js';
+export { LIWENError, ProviderError, ToolError, PermissionError, FsError, ContextError, SessionError, InternalError } from './errors/liwen-error.js';
+export type { ErrorInit, SerializedError } from './errors/liwen-error.js';
 export { MESSAGES_ZH_CN } from './errors/messages-zh.js';
 
 // types
@@ -51,7 +51,7 @@ export type { ContextConfig } from './context.js';
 export { assembleSystemPrompt, estimateTokens, estimateMessagesTokens, trimOldToolResults } from './context.js';
 
 // config
-export type { RpcConfig, SyaoConfig, LoadConfigOptions } from './config.js';
+export type { RpcConfig, LIWENConfig, LoadConfigOptions } from './config.js';
 export {
   configSchema,
   loadConfig,

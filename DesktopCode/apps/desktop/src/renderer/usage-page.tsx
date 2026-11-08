@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import type { ChannelInfo, UsageDay, UsageGroup, UsageQuery, UsageReport, UsageTotals, WorkspaceInfo } from '@syaocode/dhp';
+import type { ChannelInfo, UsageDay, UsageGroup, UsageQuery, UsageReport, UsageTotals, WorkspaceInfo } from '@liwencode/dhp';
 import { tv, type Lang } from './i18n-views';
 
 export interface UsagePageProps {

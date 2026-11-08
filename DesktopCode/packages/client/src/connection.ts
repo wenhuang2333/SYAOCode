@@ -26,7 +26,7 @@ import {
   type SessionChangesNotification,
   type SessionDelta,
   type SessionSnapshot,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 
 /** 最小 WebSocket 接口（DOM 与 `ws` 都满足）。 */
 export interface WebSocketLike {
@@ -88,7 +88,7 @@ export class DhpRequestError extends Error {
     message: string,
     readonly code: number,
     readonly kind: string | undefined,
-    readonly syaoCode: string | undefined,
+    readonly liwenCode: string | undefined,
   ) {
     super(message);
     this.name = 'DhpRequestError';
@@ -141,7 +141,7 @@ export class DhpConnection {
 
     this.setState('handshaking');
     const ack = (await this.request(Method.Hello, {
-      clientName: this.opts.clientName ?? 'syaocode-desktop',
+      clientName: this.opts.clientName ?? 'liwencode-desktop',
       clientVersion: this.opts.clientVersion ?? '0.1.0',
       dhpVersion: DHP_VERSION,
       capabilities: this.opts.capabilities ?? DHP_CAPABILITIES,
@@ -208,7 +208,7 @@ export class DhpConnection {
       if ('error' in frame) {
         const e = frame.error;
         slot.reject(
-          new DhpRequestError(e.message, e.code, e.data?.kind, e.data?.syaoCode),
+          new DhpRequestError(e.message, e.code, e.data?.kind, e.data?.liwenCode),
         );
       } else {
         slot.resolve(frame.result);

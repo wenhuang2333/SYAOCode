@@ -48,8 +48,8 @@ class Driver:
         env.update({
             "HOME": home,
             "TERM": "xterm-256color",
-            "SYAO_MODEL": "mock:default",
-            "SYAO_MOCK_SCRIPT": json.dumps([
+            "LIWEN_MODEL": "mock:default",
+            "LIWEN_MOCK_SCRIPT": json.dumps([
                 {"id": f"a{i}", "role": "assistant",
                  "content": [{"type": "text", "text": f"mock 回复 {i}：已收到指令，用于压测长文本滚动与多轮提交。"}],
                  "meta": {"createdAt": 0}}
@@ -157,9 +157,9 @@ def main():
     # 路径相对本文件解析，仓库可移植（不写死开发者机器上的绝对路径）
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     entry_dir = os.path.join(repo_root, "packages", "cli")
-    outdir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(tempfile.gettempdir(), "syao-tui-shots")
-    home = tempfile.mkdtemp(prefix="syao-drive-")
-    os.makedirs(f"{home}/.syaocode", exist_ok=True)
+    outdir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(tempfile.gettempdir(), "liwen-tui-shots")
+    home = tempfile.mkdtemp(prefix="liwen-drive-")
+    os.makedirs(f"{home}/.liwencode", exist_ok=True)
 
     d = Driver(entry_dir, outdir, home)
     d.pump(3.0)  # 等启动（--no-boot 无动画）

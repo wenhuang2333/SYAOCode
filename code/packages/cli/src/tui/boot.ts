@@ -1,5 +1,5 @@
 /**
- * 启动粒子动画：城市天际线 → 蝴蝶（扇动两下）→ SYAO CODE 三层色艺术字。
+ * 启动粒子动画：城市天际线 → 蝴蝶（扇动两下）→ LIWEN CODE 三层色艺术字。
  *
  * 设计要点：
  * - 纯时间驱动：tick(tMs) 为纯函数式计算（同参数同输出），便于确定性单测。
@@ -174,9 +174,9 @@ function genButterfly(cols: number, pixelH: number, rand: () => number): FlyTarg
   return out;
 }
 
-/** SYAO CODE 艺术字：5x7 点阵等比放大居中，纵向三层色 */
+/** LIWEN CODE 艺术字：5x7 点阵等比放大居中，纵向三层色 */
 function genArt(cols: number, pixelH: number): ArtTarget[] {
-  const text = 'SYAO CODE';
+  const text = 'LIWEN CODE';
   const gw = gridWidth(text);
   const sx = Math.floor((cols * 0.92) / gw);
   const sy = Math.floor((pixelH * 0.62) / GRID_HEIGHT);

@@ -11,12 +11,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { InteractionBroker, toPendingInteraction } from '../src/interaction-broker.ts';
 import { SessionRegistry, toSessionEvents } from '../src/session-registry.ts';
 import { WorkspaceService, diffLines } from '../src/workspace.ts';
-import { resolveSyaoHome, syaoPaths, SyaoHomeError } from '../src/paths.ts';
+import { resolveLIWENHome, liwenPaths, LIWENHomeError } from '../src/paths.ts';
 import { ConfigService } from '../src/config-service.ts';
 
 const tmpDirs: string[] = [];
 function mkTmp(): string {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'syao-host-'));
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-host-'));
   tmpDirs.push(d);
   return d;
 }
@@ -25,28 +25,28 @@ afterEach(() => {
 });
 
 describe('数据目录解析（OI-D-07）', () => {
-  it('SYAOCODE_HOME 优先', () => {
-    expect(resolveSyaoHome({ SYAOCODE_HOME: '/tmp/x' })).toBe('/tmp/x');
+  it('LIWENCODE_HOME 优先', () => {
+    expect(resolveLIWENHome({ LIWENCODE_HOME: '/tmp/x' })).toBe('/tmp/x');
   });
 
   it('未设置时回退 os.homedir()', () => {
-    expect(resolveSyaoHome({})).toBe(path.join(os.homedir(), '.syaocode'));
+    expect(resolveLIWENHome({})).toBe(path.join(os.homedir(), '.liwencode'));
   });
 
   it('空字符串视为未设置', () => {
-    expect(resolveSyaoHome({ SYAOCODE_HOME: '   ' })).toBe(path.join(os.homedir(), '.syaocode'));
+    expect(resolveLIWENHome({ LIWENCODE_HOME: '   ' })).toBe(path.join(os.homedir(), '.liwencode'));
   });
 
-  it('路径全部由 syaoPaths 一次构造', () => {
-    const p = syaoPaths({ SYAOCODE_HOME: '/tmp/home' });
+  it('路径全部由 liwenPaths 一次构造', () => {
+    const p = liwenPaths({ LIWENCODE_HOME: '/tmp/home' });
     expect(p.configFile).toBe(path.join('/tmp/home', 'config.json'));
     expect(p.sessionsDir).toBe(path.join('/tmp/home', 'sessions'));
     expect(p.desktopDir).toBe(path.join('/tmp/home', 'desktop'));
   });
 
-  it('SyaoHomeError 是具名错误', () => {
-    const e = new SyaoHomeError('x');
-    expect(e.name).toBe('SyaoHomeError');
+  it('LIWENHomeError 是具名错误', () => {
+    const e = new LIWENHomeError('x');
+    expect(e.name).toBe('LIWENHomeError');
   });
 });
 
@@ -307,7 +307,7 @@ describe('配置服务', () => {
   it('默认值 + 来源标注', async () => {
     const home = mkTmp();
     const ws = mkTmp();
-    const paths = syaoPaths({ SYAOCODE_HOME: home });
+    const paths = liwenPaths({ LIWENCODE_HOME: home });
     const cfg = new ConfigService(paths, ws, {});
     const eff = await cfg.effective();
     expect(eff.model).toBe('mock:default');
@@ -317,8 +317,8 @@ describe('配置服务', () => {
   it('环境变量优先级最高', async () => {
     const home = mkTmp();
     const ws = mkTmp();
-    const paths = syaoPaths({ SYAOCODE_HOME: home });
-    const cfg = new ConfigService(paths, ws, { SYAO_MODEL: 'deepseek:deepseek-chat' });
+    const paths = liwenPaths({ LIWENCODE_HOME: home });
+    const cfg = new ConfigService(paths, ws, { LIWEN_MODEL: 'deepseek:deepseek-chat' });
     const eff = await cfg.effective();
     expect(eff.model).toBe('deepseek:deepseek-chat');
     expect(eff.sources['model']).toBe('env');
@@ -327,7 +327,7 @@ describe('配置服务', () => {
   it('写回保留其他字段（不抹掉用户档案）', async () => {
     const home = mkTmp();
     const ws = mkTmp();
-    const paths = syaoPaths({ SYAOCODE_HOME: home });
+    const paths = liwenPaths({ LIWENCODE_HOME: home });
     fs.mkdirSync(home, { recursive: true });
     fs.writeFileSync(paths.configFile, JSON.stringify({ models: { work: { provider: 'x' } } }));
     const cfg = new ConfigService(paths, ws, {});
@@ -340,7 +340,7 @@ describe('配置服务', () => {
   it('拒绝非法 permissionMode', async () => {
     const home = mkTmp();
     const ws = mkTmp();
-    const cfg = new ConfigService(syaoPaths({ SYAOCODE_HOME: home }), ws, {});
+    const cfg = new ConfigService(liwenPaths({ LIWENCODE_HOME: home }), ws, {});
     await expect(cfg.set('permissionMode', 'god')).rejects.toThrow();
   });
 });

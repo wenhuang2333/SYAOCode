@@ -333,7 +333,7 @@ describe('file-backed store bundle (C-4)', () => {
     const ids = deterministicIds();
     const stores = createFileStores({
       runtime,
-      dir: '/tmp/syao-bundle-test',
+      dir: '/tmp/liwen-bundle-test',
       ids,
       now: () => TEST_NOW,
       hash: hasher,
@@ -364,7 +364,7 @@ describe('file-backed stores round-trip every record kind', () => {
   }
 
   it('sessions survive a restart', async () => {
-    const dir = '/tmp/syao-bundle-sessions';
+    const dir = '/tmp/liwen-bundle-sessions';
     const { runtime, stores } = await bundle(dir);
     const session = {
       id: 'ses_1', tenantId: TEST_TENANT,
@@ -382,7 +382,7 @@ describe('file-backed stores round-trip every record kind', () => {
   });
 
   it('approval decisions and expiry survive a restart', async () => {
-    const dir = '/tmp/syao-bundle-approvals';
+    const dir = '/tmp/liwen-bundle-approvals';
     const { runtime, stores } = await bundle(dir);
     await stores.approvals.insert({
       id: 'apr_1', tenantId: TEST_TENANT, taskId: 'task_1',
@@ -403,7 +403,7 @@ describe('file-backed stores round-trip every record kind', () => {
   });
 
   it('budget reservations survive a restart', async () => {
-    const dir = '/tmp/syao-bundle-budget';
+    const dir = '/tmp/liwen-bundle-budget';
     const { runtime, stores } = await bundle(dir);
     await stores.budget.putReservation({
       id: 'rsv_1', accountId: 'default', accountChain: ['default'],
@@ -415,7 +415,7 @@ describe('file-backed stores round-trip every record kind', () => {
   });
 
   it('idempotency records survive a restart', async () => {
-    const dir = '/tmp/syao-bundle-idem';
+    const dir = '/tmp/liwen-bundle-idem';
     const { runtime, stores } = await bundle(dir);
     await stores.idempotency.begin('k', 'hash', 60_000);
     await stores.idempotency.complete('k', { ok: true });
@@ -429,7 +429,7 @@ describe('file-backed stores round-trip every record kind', () => {
   });
 
   it('events snapshot and audit checkpoint work over the files', async () => {
-    const dir = '/tmp/syao-bundle-events';
+    const dir = '/tmp/liwen-bundle-events';
     const { runtime, stores } = await bundle(dir);
     await stores.events.append({
       taskId: 'task_1', correlationId: 'c', principalId: 'user:local', protocol: 'native',

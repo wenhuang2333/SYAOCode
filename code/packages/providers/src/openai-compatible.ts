@@ -1,5 +1,5 @@
 import {
-  SyaoError,
+  LIWENError,
   mapHttpStatus,
   type Capabilities,
   type ContentBlock,
@@ -8,7 +8,7 @@ import {
   type ModelStreamEvent,
   type Provider,
   type Runtime,
-} from '@syaocode/core';
+} from '@liwencode/core';
 import { sseEvents } from './sse.js';
 
 /**
@@ -112,7 +112,7 @@ export function createOpenAICompatibleProvider(opts: OpenAICompatibleOptions): P
         try {
           chunk = JSON.parse(data);
         } catch {
-          throw new SyaoError({ code: 'SY-PRV-008', message: 'unparsable SSE chunk', details: { data: data.slice(0, 200) } });
+          throw new LIWENError({ code: 'SY-PRV-008', message: 'unparsable SSE chunk', details: { data: data.slice(0, 200) } });
         }
         if (chunk.usage !== undefined && chunk.usage !== null) {
           usage.inputTokens = chunk.usage.prompt_tokens ?? usage.inputTokens;
@@ -181,7 +181,7 @@ export function createOpenAICompatibleProvider(opts: OpenAICompatibleOptions): P
       }
 
       if (!emittedAny && blocks.length === 0 && toolCalls.size === 0) {
-        throw new SyaoError({ code: 'SY-PRV-007', message: 'stream ended without content' });
+        throw new LIWENError({ code: 'SY-PRV-007', message: 'stream ended without content' });
       }
 
       const messageId = `msg_${Date.now().toString(36)}`;
@@ -265,7 +265,7 @@ function toWire(req: ModelRequest): Record<string, unknown> {
   };
 }
 
-function mapNetworkError(e: unknown): SyaoError {
+function mapNetworkError(e: unknown): LIWENError {
   const msg = e instanceof Error ? e.message : String(e);
-  return new SyaoError({ code: 'SY-PRV-003', message: msg, cause: e });
+  return new LIWENError({ code: 'SY-PRV-003', message: msg, cause: e });
 }

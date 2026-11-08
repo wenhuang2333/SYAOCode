@@ -1,9 +1,9 @@
 import type { ContentBlock, Message, StopReason, Usage } from './types.js';
 import type { Runtime } from './runtime/index.js';
-import { SyaoError, ProviderError } from './errors/syao-error.js';
+import { LIWENError, ProviderError } from './errors/liwen-error.js';
 
 /**
- * Provider abstraction (DD-3). Adapters live in @syaocode/providers; the
+ * Provider abstraction (DD-3). Adapters live in @liwencode/providers; the
  * kernel only knows this interface. Normalized stream events keep the loop
  * vendor-agnostic.
  */
@@ -119,7 +119,7 @@ export function withRetry(
           return;
         } catch (e) {
           if (opts.signal.aborted) throw e;
-          const wrapped = SyaoError.is(e) ? e : mapUnknown(e);
+          const wrapped = LIWENError.is(e) ? e : mapUnknown(e);
           // A stream that already emitted any content (text/thinking deltas or
           // a committed tool_use) cannot be safely replayed (BR-014). Replaying
           // a text-only response duplicates output and bills the user twice.

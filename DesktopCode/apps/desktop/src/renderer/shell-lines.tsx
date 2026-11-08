@@ -10,7 +10,7 @@
  */
 
 import type { ReactNode } from 'react';
-import type { SessionRunCommandResult } from '@syaocode/dhp';
+import type { SessionRunCommandResult } from '@liwencode/dhp';
 import { t, type Lang } from './i18n';
 
 // ── 纯函数（可被测试直接断言）────────────────────────────────────────────

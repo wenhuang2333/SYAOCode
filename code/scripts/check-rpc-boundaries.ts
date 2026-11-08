@@ -2,10 +2,10 @@
  * CI gate for the Agent RPC package boundaries (03 §7.3).
  *
  * Rules enforced:
- *   (a) packages/rpc must not import @syaocode/node — the governance kernel
+ *   (a) packages/rpc must not import @liwencode/node — the governance kernel
  *       is host-agnostic; Node capabilities arrive through Runtime.
  *   (b) packages/protocols must not import `node:` — protocol edges must use
- *       the @syaocode/node helpers, so the SDK boundary stays in one place.
+ *       the @liwencode/node helpers, so the SDK boundary stays in one place.
  *   (c) adapters must not import core/src/agent.ts and must not call
  *       Tool.execute directly — the only path to a side effect is the
  *       governance dispatcher (02 §4, invariant I13).
@@ -60,12 +60,12 @@ function importSpecifiers(text: string): string[] {
   return out;
 }
 
-// ── (a) rpc must not import @syaocode/node ────────────────────────────────
+// ── (a) rpc must not import @liwencode/node ────────────────────────────────
 for (const file of tsFiles(join(packagesRoot, 'rpc', 'src'))) {
   const text = readFileSync(file, 'utf8');
   for (const spec of importSpecifiers(text)) {
-    if (spec === '@syaocode/node' || spec.startsWith('@syaocode/node/')) {
-      failures.push(`${rel(file)}: imports '${spec}' — @syaocode/rpc must stay host-agnostic (03 §3.1)`);
+    if (spec === '@liwencode/node' || spec.startsWith('@liwencode/node/')) {
+      failures.push(`${rel(file)}: imports '${spec}' — @liwencode/rpc must stay host-agnostic (03 §3.1)`);
     }
   }
 }
@@ -74,7 +74,7 @@ for (const file of tsFiles(join(packagesRoot, 'rpc', 'src'))) {
 for (const file of tsFiles(join(packagesRoot, 'protocols', 'src'))) {
   const text = readFileSync(file, 'utf8');
   for (const m of text.matchAll(/from\s+['"](node:[^'"]+)['"]|import\s*\(\s*['"](node:[^'"]+)['"]\s*\)/g)) {
-    failures.push(`${rel(file)}: imports '${m[1] ?? m[2]}' — protocol edges must use @syaocode/node helpers`);
+    failures.push(`${rel(file)}: imports '${m[1] ?? m[2]}' — protocol edges must use @liwencode/node helpers`);
   }
 }
 

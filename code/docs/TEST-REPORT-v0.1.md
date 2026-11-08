@@ -1,4 +1,4 @@
-# SYAOCode v0.1 测试报告
+# LIWENCode v0.1 测试报告
 
 > **历史报告（v0.1 基线，211 项）**。v0.2-dev 新增的安全/事件/Evidence 测试与当前 334 项基线见 `V0.2-REPORT-ALIGNMENT.md`；本文件保留当时的原始记录，不再更新计数。
 
@@ -23,9 +23,9 @@
 
 ## 2. 各包测试明细
 
-### 2.1 `@syaocode/core`（58 项）
+### 2.1 `@liwencode/core`（58 项）
 
-- **错误体系（09 章验收）**：注册表 78 码唯一且格式合法；SY-DEC-007 空缺保持（序号不复用）；每个 active 码有 zh-CN 消息且无孤立项；fatal 集恰为 {CTX-002, ACP-001, INT-001} 且均不可重试；可重试集合与登记表一致；`SyaoError` 序列化为固定 7 字段；`is()` 用 Symbol 品牌判定（不依赖 `instanceof`/`name`，多副本安全）；`wrap()` 对非 SyaoError 装箱为 SY-INT-001；未注册码构造时即刻抛错。
+- **错误体系（09 章验收）**：注册表 78 码唯一且格式合法；SY-DEC-007 空缺保持（序号不复用）；每个 active 码有 zh-CN 消息且无孤立项；fatal 集恰为 {CTX-002, ACP-001, INT-001} 且均不可重试；可重试集合与登记表一致；`LIWENError` 序列化为固定 7 字段；`is()` 用 Symbol 品牌判定（不依赖 `instanceof`/`name`，多副本安全）；`wrap()` 对非 LIWENError 装箱为 SY-INT-001；未注册码构造时即刻抛错。
 - **权限引擎（FR-040~044）**：deny>ask>allow 优先级（BR-001）；default 模式读允许、写无审批器时按 deny（SY-PERM-005）；审批器拒绝 → SY-PERM-002；plan 模式仅放行只读（含分类为只读的 bash 命令）；acceptEdits 放行工作区内写、拒绝工作区外（SY-PERM-003）；bypass 全放行；危险命令库（rm -rf 根/家目录、mkfs、dd 写盘、git push --force、shutdown 等）默认拒绝（SY-PERM-004）且仅用户级 allow 规则可放行（BR-006）；命令分类 16 组用例（只读白名单、管道/链式拆段、重定向判写）；glob 规则匹配（`mcp__github__*`）。
 - **Agent 循环（FR-001~006）**：工具往返直至完成；连续只读调用并行批次且结果按调用顺序回填（BR-008）；每个 tool_use 恰好一个 tool_result（BR-009）；中断时未执行调用以 SY-LOOP-003 回填且历史合法；maxTurns 触发 SY-LOOP-001；同参失败 3 次注入提示、5 次终止（BR-011）；未注册工具返回 SY-TOOL-001 结构化错误并列出可用工具；Zod 校验失败返回 SY-TOOL-002 带字段提示；工具超时不挂死循环并继续；20 个并发 agent 实例状态隔离（NFR-004）。
 - **管道（BR-012/BR-025）**：截断保头 40% 尾 60% 并附说明；小结果不动；按行数截断。
@@ -34,21 +34,21 @@
 - **脱敏（FR-045, BR-023）**：8 类常见密钥形态 + 注册值精确替换；只记录类型不记录值；嵌套结构深度脱敏。
 - **上下文（FR-050/052）**：提示词分段组装稳定；CJK token 估算重于拉丁。
 
-### 2.2 `@syaocode/providers`（18 项）
+### 2.2 `@liwencode/providers`（18 项）
 
 - **OpenAI-compatible（FR-012）**：本地 SSE mock 服务器驱动真实 fetch 流式路径；文本增量重组 + usage；流式 tool_calls 聚合为 tool_use 块（参数跨分片拼接）；tool_result 历史转为 role=tool 消息（线上合法性）；401→SY-PRV-001（不重试）、429→SY-PRV-002（可重试）。
 - **Anthropic 原生（FR-011）**：message_start/content_block_* 事件流解析；thinking 与 text 块；input_json_delta 碎片聚合为结构化 tool_use；tool_result 原生回传含 is_error；5xx→SY-PRV-009（可重试）；[DONE] 哨兵兼容。
 - **G2 合约（同一套测试跑三个 Provider）**：`defineProviderContract` 分别对 MockProvider、OpenAI-compatible、Anthropic 各 5 项（文本流+usage、tool_use 往返、历史合法性、传输错误映射、withRetry 上限=5 次后放弃）——**三Provider 同合约全绿，G2 目标在 v0.1 内核层面达成**。
 
-### 2.3 `@syaocode/tools`（18 项）
+### 2.3 `@liwencode/tools`（18 项）
 
 - read：行号输出、offset/limit、SY-FS-005；write：新建免读、未读覆写拒绝（SY-FS-001）、外部修改拒绝（SY-FS-002）；edit：唯一匹配替换、多匹配报数量与行号（SY-FS-003）、replace_all、无匹配带近似行提示（SY-FS-004）、未读先改拦截（BR-004/005 全覆盖）；glob/grep：命中、include 过滤、.gitignore 目录/模式排除、非法正则结构化报错；bash：白名单命令执行与 exit 上报、非零退出标记 isError；FileStateTracker 单元。
 
-### 2.4 `@syaocode/testing`（9 项）
+### 2.4 `@liwencode/testing`（9 项）
 
 MockProvider 请求记录与脚本耗尽语义（SY-PRV-007）；MemoryRuntime 种子/读写/外部修改注入/确定性时钟与 id。
 
-### 2.5 `syaocode` CLI（22 项）
+### 2.5 `liwencode` CLI（22 项）
 
 参数解析（-p/exec/--output-format/--model/工具名单/限额）；非法参数与非法枚举含 SY-CLI-001 提示；退出码映射（BR-042）；doctor 无密钥可运行、不打印密钥值（FR-173）。
 
@@ -89,10 +89,10 @@ MockProvider 请求记录与脚本耗尽语义（SY-PRV-007）；MemoryRuntime �
 | 2 | 忽略 abort 信号的工具会挂死整个循环（违反 NFR-007） | 管道加 hang guard：执行与超时/中断信号 race，永不悬挂 |
 | 3 | 中断与超时都报 SY-TOOL-003，语义混用 | guard 区分：外部中断 → SY-LOOP-003 回填（BR-009），超时 → SY-TOOL-004 |
 | 4 | **评测发现的真 bug**：权限引擎对相对路径不做工作区锚定，导致 acceptEdits 下所有写入被判"工作区外"（4 个评测任务失败） | `resolve()` 以 workspaceRoots[0] 锚定相对路径 |
-| 5 | `SyaoError.is()` 依赖 `name` 字段，子类（SessionError 等）判定失败 | 改为 `Symbol.for` 品牌判定 |
+| 5 | `LIWENError.is()` 依赖 `name` 字段，子类（SessionError 等）判定失败 | 改为 `Symbol.for` 品牌判定 |
 | 6 | `echo hi > out.txt` 被分类为只读（重定向未优先判断） | 重定向检查移到只读白名单之前 |
 | 7 | `checkSubject` 不做命令分类，plan 模式误拒 `ls` 类命令 | 分类逻辑内联到引擎入口（FR-043 语义） |
-| 8 | `@syaocode/testing` 主入口引入 vitest，导致 evals 等纯 tsx 运行时崩溃 | 合约套件拆到 `@syaocode/testing/contract` 子路径 |
+| 8 | `@liwencode/testing` 主入口引入 vitest，导致 evals 等纯 tsx 运行时崩溃 | 合约套件拆到 `@liwencode/testing/contract` 子路径 |
 | 9 | **REPL 冒烟发现**：管道输入 EOF 触发 readline `close` 后，`rl.prompt()` 抛 "readline was closed"，后续命令全部丢失 | 全部 prompt/question 调用走 `safePrompt` 关闭守卫；审批器在输入关闭时按拒绝返回 |
 | 10 | 流式渲染缺失：循环只发 message.complete，UI 无法增量显示 | 循环转发 provider block_delta 为 `text.delta` 事件（ADR-02），REPL 增量渲染 |
 | 11 | **三档冒烟发现**：macOS 上 `--cwd` 指向 `/var/folders/...` 临时目录时，realpath 返回 `/private/var/...`，与未规范化的 workspaceRoot 不匹配 → 误判"工作区外"（SY-PERM-003） | 权限引擎对 workspaceRoots 做一次性 realpath 规范化后缓存再比较 |
@@ -139,7 +139,7 @@ MockProvider 请求记录与脚本耗尽语义（SY-PRV-007）；MemoryRuntime �
 
 ### 5.4 宽度与字形 `tui/width.ts` + `tui/font5x7.ts`（9 项）
 
-CJK/全角/emoji 列宽；ANSI 转义零列；truncateToWidth 不切半个宽字符；padToWidth 按显示宽度补齐。5x7 点阵：SYAO CODE 坐标在网格界内、gridWidth=字数×6−1、未知字符按空格、两次渲染逐点一致。
+CJK/全角/emoji 列宽；ANSI 转义零列；truncateToWidth 不切半个宽字符；padToWidth 按显示宽度补齐。5x7 点阵：LIWEN CODE 坐标在网格界内、gridWidth=字数×6−1、未知字符按空格、两次渲染逐点一致。
 
 ### 5.5 pty 冒烟（真实终端仿真，2 项）
 
@@ -153,10 +153,10 @@ macOS `script` 分配 pty 驱动真实 TUI：逐字输入实时回显且光标 E
 
 ### 6.1 欢迎面板 `tui/welcome.ts`（6 项）
 
-- 迷你像素字体（"SYAOCode" 专用变宽 5 行）点阵边界与紧凑宽度 32 列。
+- 迷你像素字体（"LIWENCode" 专用变宽 5 行）点阵边界与紧凑宽度 32 列。
 - 黑白阴影艺术字：主字亮白 250 + 投影深灰 238，**仅两色无彩色**；纵向 ×2 适配半块正方形像素。
 - 多彩蝴蝶：彩虹六色（196/208/226/46/44/21）按曲线角度分区，着色 ≥3 色；1/4 周期处翼展 < 全开 60%（持续扇翅，2.4s 周期）；`t` 与 `t+周期` 逐像素一致（周期性）。
-- renderPanel：行数=panelH、首尾行圆角边框、去 ANSI 后每行等宽、含 "Welcome to SYAOCode" 与模型/提示、右侧文本无 CJK（全英文）、两时刻帧不同（动画驱动）。
+- renderPanel：行数=panelH、首尾行圆角边框、去 ANSI 后每行等宽、含 "Welcome to LIWENCode" 与模型/提示、右侧文本无 CJK（全英文）、两时刻帧不同（动画驱动）。
 - 终端 <64 列或 <20 行返回空（调用方回退旧横幅）。
 
 ### 6.2 指令联想 `tui/palette.ts` + 编辑器 nav（12 项）
@@ -262,7 +262,7 @@ openai-compatible 新增 authStyle：x-api-key 头与 ?key= 查询参数按配�
 
 ### 10.3 终端异常清单复查（24 项，新增 12 项环境专项断言全部通过）
 
-- **渲染**：SYNC 原子刷新/未变零输出/流式 16ms 合批（闪烁）；SIGWINCH + 相对锚点（resize）；CJK/emoji 显示宽度对齐 + `SYAO_TUI_ASCII=1` 降级（乱码）；OSC 11 主题探测（浅色终端艺术字 240/248）；ANSI 零宽截断（截断）；<40×8 最小界面（黑屏/零区域）；崩溃与信号统一恢复光标。
+- **渲染**：SYNC 原子刷新/未变零输出/流式 16ms 合批（闪烁）；SIGWINCH + 相对锚点（resize）；CJK/emoji 显示宽度对齐 + `LIWEN_TUI_ASCII=1` 降级（乱码）；OSC 11 主题探测（浅色终端艺术字 240/248）；ANSI 零宽截断（截断）；<40×8 最小界面（黑屏/零区域）；崩溃与信号统一恢复光标。
 - **输入**：ESC 分片缓冲（方向键分块到达仍生效）；引导异常自动还原输入模式（焦点陷阱）；DEC 2004 括号粘贴 + 换行转空格 + 无 2004 启发式（粘贴）；`/exit\r` 同块不误判（回归测试，见修复 #29）。
 - **卡死**：事件驱动无阻塞读；空闲零写入；重试期可见进度。同步大文件读取短暂阻塞为 v0.1 已知限制。
 - **崩溃/污染**：`installTerminalGuards`（uncaughtException/unhandledRejection/exit/SIGINT/SIGTERM/SIGHUP）恢复 raw/光标/粘贴/同步输出（SIGTERM 实测 143 退出且终端恢复）；stdout EPIPE 不崩；SIGKILL/OOM 不可拦截（文档给出 reset/stty sane）。
@@ -272,11 +272,11 @@ openai-compatible 新增 authStyle：x-api-key 头与 ?key= 查询参数按配�
 
 ## 11. 真实模型端到端验证（v0.1 追加，DeepSeek-V4.1-Flash / OpenAI ChatCompletion 网关）
 
-环境：`https://fun.zionlin.com/v1` + `deepseek-v4.1-flash`，Chat Completions 协议。密钥只写入测试 HOME 的 `~/.syaocode/env`（0600），不进仓库、会话与日志；驱动脚本为工作区 `test/tui-real-model.py`（仓库外，pty+pyte 截图）。
+环境：`https://fun.zionlin.com/v1` + `deepseek-v4.1-flash`，Chat Completions 协议。密钥只写入测试 HOME 的 `~/.liwencode/env`（0600），不进仓库、会话与日志；驱动脚本为工作区 `test/tui-real-model.py`（仓库外，pty+pyte 截图）。
 
 ### 11.1 `/setup` 真实配置（6 步向导）
 
-模型名 → 请求地址 → API Key（掩码 `••••••••`）→ 协议选择（↑↓ 选中 OpenAI ChatCompletion）→ 认证字段（Bearer）→ 档案名 `zionlin` → 保存并激活。落盘结果：`~/.syaocode/config.json`（非密）+ `~/.syaocode/env`（0600），`/model` 面板出现 `@zionlin`，原始输入输出中未出现密钥明文。截图：`test/tui-real/01-setup/`。
+模型名 → 请求地址 → API Key（掩码 `••••••••`）→ 协议选择（↑↓ 选中 OpenAI ChatCompletion）→ 认证字段（Bearer）→ 档案名 `zionlin` → 保存并激活。落盘结果：`~/.liwencode/config.json`（非密）+ `~/.liwencode/env`（0600），`/model` 面板出现 `@zionlin`，原始输入输出中未出现密钥明文。截图：`test/tui-real/01-setup/`。
 
 ### 11.2 真实联调发现并修复的 7 个缺陷
 
@@ -288,7 +288,7 @@ openai-compatible 新增 authStyle：x-api-key 头与 ?key= 查询参数按配�
 | 4 | 流式正文被拆成大量短行（每个 16ms 批次一行） | `printAbove` 对流式片段也强制补换行 | 新增 `printStream`：不强制换行、chrome 感知；半行期间暂停 chrome 重绘，工具行/正文切换时统一收尾 |
 | 5 | 状态栏「上下文 71.1k/128k（56%）」虚报，与 `/status` 面板 13.0k 冲突 | 上下文占用用了累计计费 token（input+output+cache 之和） | 改为最近一次请求的 `input+output`；新增多轮不累加回归测试 |
 | 6 | `/cost` 始终显示 `(provider provides no pricing)`，但网关实际返回了费用 | provider 未映射 `usage.cost` / `gateway_cost` | `Usage` 增加可选 `costUsd`，网关上报值优先于本地价目表；`/cost` 显示真实 `$0.0093` |
-| 7 | 模型不知道工作目录，也不读取项目规则（P0：FR-051/FR-083 未落地） | CLI 未向 agent 传 `context` | 新增 `buildCliContext`：cwd/平台/日期 + 用户级 `~/.syaocode/AGENTS.md` + 仓库根 `AGENTS.md`（兼容 `CLAUDE.md`，`SYAO_INSTRUCTION_FILES` 可配置），接入 TUI / REPL / `-p`；新增 5 项单测 |
+| 7 | 模型不知道工作目录，也不读取项目规则（P0：FR-051/FR-083 未落地） | CLI 未向 agent 传 `context` | 新增 `buildCliContext`：cwd/平台/日期 + 用户级 `~/.liwencode/AGENTS.md` + 仓库根 `AGENTS.md`（兼容 `CLAUDE.md`，`LIWEN_INSTRUCTION_FILES` 可配置），接入 TUI / REPL / `-p`；新增 5 项单测 |
 
 ### 11.3 真实编码任务（C++ 单文件）
 
@@ -305,7 +305,7 @@ openai-compatible 新增 authStyle：x-api-key 头与 ?key= 查询参数按配�
 ### 12.1 双语支持（默认英语 + 中文支持板块）
 
 - 新增 `packages/cli/src/i18n/{en,zh,index}.ts`：英文目录为键集合的单一事实源，中文目录类型为 `Record<MsgKey, string>`（漏译即 typecheck 失败）；`t(key, vars)` 支持 `{name}` 插值，缺键回退英语。
-- 语言保存在 `~/.syaocode/config.json` 的 `language` 字段，启动时最先应用（早于 `--help`/参数错误/doctor 输出）。
+- 语言保存在 `~/.liwencode/config.json` 的 `language` 字段，启动时最先应用（早于 `--help`/参数错误/doctor 输出）。
 - `main.ts` 在解析参数前 `setLanguage(savedLanguage())`；TUI、REPL 与 `-p` 全部走同一语言。
 - 中文化范围：欢迎面板、状态栏、输入框标题、权限请求、全部信息面板（status/cost/tools/permissions/doctor/model/manage/help）、`/setup` 与 `/set-agents` 向导、斜杠命令说明、REPL 提示、CLI 用法、doctor 详情、错误提示（中文模式下 `SY-*` 用 09 §9.10 中文表）。英文目录不含中文句子（`language.*` 中的语言原名除外），由单测约束。
 - `/language` 指令：无参数进入问答（显示当前语言 + 两个选项），`/language en|zh` 直接指定；选择后**警告当前 CLI 会立即退出、下次启动生效**，确认后写入配置并退出（退出码 0），取消则不变；非法语言码拒绝。
@@ -349,7 +349,7 @@ openai-compatible 新增 authStyle：x-api-key 头与 ?key= 查询参数按配�
 
 | # | 问题 | 根因 | 修复 |
 | --- | --- | --- | --- |
-| 1 | `-p`/`exec` 忽略已保存模型，直接用 `mock:default` | `run.ts` 走 `parseModelSpec(args.model)`（默认 mock），与交互模式的 `resolveDefaultModel` 不是同一条链 | `resolveProvider` 统一改用 `resolveDefaultModel`：`--model` > `SYAO_MODEL` > `~/.syaocode/config.json` > mock，三种入口完全一致 |
+| 1 | `-p`/`exec` 忽略已保存模型，直接用 `mock:default` | `run.ts` 走 `parseModelSpec(args.model)`（默认 mock），与交互模式的 `resolveDefaultModel` 不是同一条链 | `resolveProvider` 统一改用 `resolveDefaultModel`：`--model` > `LIWEN_MODEL` > `~/.liwencode/config.json` > mock，三种入口完全一致 |
 | 2 | 问"你是什么模型"时模型答不上来 | 系统提示没有模型身份，模型无法自省底层版本 | `buildCliContext` 注入 `Harness:` 与 `Model:`（配置侧事实），TUI/REPL/`-p` 均生效 |
 | 3 | 从 mock 切到真实模型后，新模型会去评论旧 mock 回复 | `switchModel` 无条件保留历史 | 跨 mock 边界切换时清空旧上下文并提示（`model.switchedFresh`），真实↔真实切换仍保留历史 |
 | 4 | 默认严格档导致读操作也逐条打断 | 无参数时回退 `strict` | 默认改为 `default`（规范 FR-041 的 default：读免确认，写/删/执行仍审批）；`--permission-mode strict` 与 `/permission strict` 随时可切回 |
@@ -381,11 +381,11 @@ openai-compatible 新增 authStyle：x-api-key 头与 ?key= 查询参数按配�
 
 | 项 | 设计 |
 | --- | --- |
-| 存储位置 | `~/.syaocode/usage/<projectHash>.json`（与 session 日志同样按路径哈希分桶）；桶内以**工作区绝对路径**为索引，哈希碰撞也不会串账 |
+| 存储位置 | `~/.liwencode/usage/<projectHash>.json`（与 session 日志同样按路径哈希分桶）；桶内以**工作区绝对路径**为索引，哈希碰撞也不会串账 |
 | 记录内容 | 每工作区累计 `requests / inputTokens / outputTokens / cacheReadTokens / cacheWriteTokens / costUsd`；`models` 下按 `provider:model` 分别累计，含 `firstUsedAt / updatedAt` |
 | 写入时机 | TUI/REPL 的每个 `usage` 事件、`-p`/`exec` 每次运行结束（`requests` 取本次运行的 usage 事件数）；tmp + rename **原子替换**，损坏文件按空账本重建，写失败只在界面提示一次、不中断会话 |
 | 索引口径 | 工作区 = 启动时的 `cwd`；同一目录下的所有会话（含 `/clear`、`/resume`、重启）汇总到同一条记录 |
-| 安全 | 只写数字与模型名（无密钥、无对话内容），路径在 `~/.syaocode` 下，与代码仓库无关 |
+| 安全 | 只写数字与模型名（无密钥、无对话内容），路径在 `~/.liwencode` 下，与代码仓库无关 |
 | 并发 | 读-改-写合并；同一工作区多开时最后一次写入获胜（本地单用户场景，与 session 单写者假设一致） |
 
 `/cost` 面板改为三段：**WORKSPACE**（路径 + 起始时间）、**WORKSPACE TOTAL (ALL SESSIONS)**（请求/输入/输出/缓存读/合计/费用 + 占比条）、**BY MODEL**（`provider:model` 表格，按总 token 降序，费用无上报显示 `—`）、**THIS SESSION**（本次会话同口径），末尾以暗色行标出账本文件路径。费用优先取 provider 上报的 `usage.cost`（网关会按请求返回），全部为 0 时标注"未提供定价"。

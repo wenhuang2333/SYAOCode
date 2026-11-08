@@ -9,9 +9,9 @@
  * process would be serialized by the in-process queue and would prove nothing.
  */
 
-import { nodeRuntime, sha256Hex } from '@syaocode/node';
-import { createFileStores } from '@syaocode/rpc';
-import type { Task } from '@syaocode/rpc';
+import { nodeRuntime, sha256Hex } from '@liwencode/node';
+import { createFileStores } from '@liwencode/rpc';
+import type { Task } from '@liwencode/rpc';
 
 interface Args {
   dir: string;

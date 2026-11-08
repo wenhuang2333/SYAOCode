@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ApprovalRecord, AuditEvent, BudgetAccount, CanonicalEvent, Capability, PolicyDecision, Receipt, Task } from '@syaocode/rpc';
+import type { ApprovalRecord, AuditEvent, BudgetAccount, CanonicalEvent, Capability, PolicyDecision, Receipt, Task } from '@liwencode/rpc';
 import {
   approvalsPanel,
   auditPanel,
@@ -70,7 +70,7 @@ const capability = (id: string, protocol: Capability['protocol'] = 'mcp'): Capab
 const task: Task = {
   id: 'task_abc123',
   sessionId: 'session_xyz',
-  tenantId: 'syaocode-local',
+  tenantId: 'liwencode-local',
   state: 'completed',
   input: [{ type: 'text', text: 'summarize the governance kernel and its invariants' }],
   artifacts: [],
@@ -82,7 +82,7 @@ const task: Task = {
 
 const receipt: Receipt = {
   id: 'rcpt_0123456789abcdef',
-  tenantId: 'syaocode-local',
+  tenantId: 'liwencode-local',
   taskId: task.id,
   invocationId: 'inv_1',
   protocol: 'mcp',
@@ -103,7 +103,7 @@ const receipt: Receipt = {
 
 const approval: ApprovalRecord = {
   id: 'apr_0123456789',
-  tenantId: 'syaocode-local',
+  tenantId: 'liwencode-local',
   taskId: task.id,
   subject: {
     kind: 'tool',
@@ -126,7 +126,7 @@ const approval: ApprovalRecord = {
 
 const budget: BudgetAccount = {
   id: 'default',
-  tenantId: 'syaocode-local',
+  tenantId: 'liwencode-local',
   currency: 'USD',
   limitUsd: 5,
   reservedUsd: 0.25,
@@ -140,7 +140,7 @@ const budget: BudgetAccount = {
 const auditEvent: AuditEvent = {
   id: 'aud_1',
   ts: '2026-01-01T10:00:00.000Z',
-  tenantId: 'syaocode-local',
+  tenantId: 'liwencode-local',
   actor: { type: 'user', id: 'local' },
   action: 'policy.decide',
   subject: { type: 'capability', id: 'mcp://github/tool/create_issue' },
@@ -230,7 +230,7 @@ describe('lossyNotes — degradation must be visible', () => {
 
 describe('rpcOverviewPanel', () => {
   const overview = {
-    tenantId: 'syaocode-local',
+    tenantId: 'liwencode-local',
     policyRevision: 'sha256:deadbeefdeadbeef',
     capabilityCount: 15,
     pendingApprovals: 2,
@@ -245,7 +245,7 @@ describe('rpcOverviewPanel', () => {
     const lines = rpcOverviewPanel(overview);
     expectSanePanel(lines, 'overview');
     const rendered = text(lines);
-    expect(rendered).toContain('syaocode-local');
+    expect(rendered).toContain('liwencode-local');
     expect(rendered).toContain('15');
     expect(rendered).toContain('9');
     expect(rendered).toContain('intact (128 checked)');
@@ -560,7 +560,7 @@ describe('servePanel', () => {
     const rendered = text(lines);
     expect(rendered).toContain('refused');
     expect(rendered).toContain('SY-SRV-002');
-    expect(rendered).toContain('SYAO_RPC_TOKEN');
+    expect(rendered).toContain('LIWEN_RPC_TOKEN');
   });
 
   it('says when the protocol edge is not in this build', () => {

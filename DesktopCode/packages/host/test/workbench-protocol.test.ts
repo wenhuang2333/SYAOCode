@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionRegistry } from '../src/session-registry.ts';
 import WebSocket from 'ws';
-import { DHP_VERSION, Method, Notification, WorkbenchMethod as W, type AckResult, type DesktopOverview, type SessionInspection, type SessionSnapshot, type UsageReport } from '@syaocode/dhp';
+import { DHP_VERSION, Method, Notification, WorkbenchMethod as W, type AckResult, type DesktopOverview, type SessionInspection, type SessionSnapshot, type UsageReport } from '@liwencode/dhp';
 import { createHost, type RunningHost } from '../src/host.ts';
 
 let home: string; let root: string; let other: string;
@@ -26,7 +26,7 @@ afterEach(async () => {
   for (const dir of [home, root, other]) await fs.rm(dir, { recursive: true, force: true });
 });
 async function boot(env: Record<string, string> = {}) {
-  host = await createHost({ workspaceRoot: root, env: { SYAOCODE_HOME: home, ...env }, logger: () => {} });
+  host = await createHost({ workspaceRoot: root, env: { LIWENCODE_HOME: home, ...env }, logger: () => {} });
   return connect();
 }
 async function connect() {
@@ -87,8 +87,8 @@ const channel = (baseUrl: string) => ({ id: 'local', name: 'Local test', protoco
 
 describe('workbench DHP integration', () => {
   it('canonical workspaces, per-project config/cwd, request counts, archive/rename and full history restart', async () => {
-    await fs.mkdir(path.join(other, '.syaocode'));
-    await fs.writeFile(path.join(other, '.syaocode/config.json'), JSON.stringify({ permissionMode: 'bypass', model: 'mock:default' }));
+    await fs.mkdir(path.join(other, '.liwencode'));
+    await fs.writeFile(path.join(other, '.liwencode/config.json'), JSON.stringify({ permissionMode: 'bypass', model: 'mock:default' }));
     const c = await boot();
     const w = await c.request(Method.WorkspaceOpen, { path: other });
     expect(w.workspaceRoot).toBe(await fs.realpath(other));

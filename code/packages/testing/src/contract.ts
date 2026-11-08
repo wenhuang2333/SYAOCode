@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RETRY_POLICY, SyaoError, userText, withRetry, type Message, type Provider } from '@syaocode/core';
+import { DEFAULT_RETRY_POLICY, LIWENError, userText, withRetry, type Message, type Provider } from '@liwencode/core';
 
 /**
  * G2 acceptance: the SAME contract suite runs against MockProvider,
@@ -135,7 +135,7 @@ export function defineProviderContract(name: string, fixture: ContractFixture): 
         }),
         async *stream() {
           calls += 1;
-          throw new SyaoError({ code: 'SY-PRV-002', message: 'rate limited (test double)' });
+          throw new LIWENError({ code: 'SY-PRV-002', message: 'rate limited (test double)' });
         },
       };
       const runtime = {
@@ -147,7 +147,7 @@ export function defineProviderContract(name: string, fixture: ContractFixture): 
         for await (const _ev of retried.stream({ model: 'm', messages: [] }, { signal: new AbortController().signal })) {
           void _ev;
         }
-      }).rejects.toSatisfy((e: unknown) => SyaoError.is(e) && e.code === 'SY-PRV-002');
+      }).rejects.toSatisfy((e: unknown) => LIWENError.is(e) && e.code === 'SY-PRV-002');
       expect(calls).toBe(DEFAULT_RETRY_POLICY.maxAttempts);
     });
   });

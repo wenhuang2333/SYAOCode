@@ -1,7 +1,7 @@
 {
-  "name": "@syaocode/providers",
+  "name": "@liwencode/providers",
   "version": "0.2.0-dev",
-  "description": "SYAOCode provider adapters: OpenAI-compatible (DeepSeek etc.) and native Anthropic Messages",
+  "description": "LIWENCode provider adapters: OpenAI-compatible (DeepSeek etc.) and native Anthropic Messages",
   "type": "module",
   "license": "Apache-2.0",
   "sideEffects": false,
@@ -17,11 +17,11 @@
     "prepublishOnly": "pnpm run typecheck && pnpm run build"
   },
   "dependencies": {
-    "@syaocode/core": "workspace:*"
+    "@liwencode/core": "workspace:*"
   },
   "devDependencies": {
-    "@syaocode/node": "workspace:*",
-    "@syaocode/testing": "workspace:*",
+    "@liwencode/node": "workspace:*",
+    "@liwencode/testing": "workspace:*",
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
@@ -31,7 +31,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wenhuang2333/SYAOCode.git"
+    "url": "git+https://github.com/wenhuang2333/LIWENCode.git"
   },
   "files": [
     "dist",

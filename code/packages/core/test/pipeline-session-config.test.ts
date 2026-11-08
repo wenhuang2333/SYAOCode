@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FileSessionStore,
   MemorySessionStore,
-  SyaoError,
+  LIWENError,
   loadConfig,
   Redactor,
   TRUNCATION_MAX_CHARS,
@@ -49,7 +49,7 @@ describe('session stores (FR-060..062, BR-016)', () => {
     const forkId = await store.fork('s1', 'e1');
     const forked = await store.load(forkId);
     expect(forked).toHaveLength(1);
-    await expect(store.load('missing')).rejects.toSatisfy(SyaoError.is);
+    await expect(store.load('missing')).rejects.toSatisfy(LIWENError.is);
     await store.delete('s1');
     expect(await store.list()).toHaveLength(1);
   });
@@ -73,23 +73,23 @@ describe('session stores (FR-060..062, BR-016)', () => {
 
     // corruption over threshold (all corrupt) → SY-SES-002
     await rt.fs.writeFile('/sessions/proj1/s1.jsonl', '{"garbage\n{"more garbage\n');
-    await expect(store.load('s1')).rejects.toSatisfy((e) => SyaoError.is(e) && e.code === 'SY-SES-002');
+    await expect(store.load('s1')).rejects.toSatisfy((e) => LIWENError.is(e) && e.code === 'SY-SES-002');
 
     // version-too-high line must fail with SY-SES-003
     await rt.fs.writeFile('/sessions/proj1/s1.jsonl', '{"v":99,"id":"e9","ts":1,"sessionId":"s1","type":"message","data":{}}\n');
-    await expect(store.load('s1')).rejects.toSatisfy((e) => SyaoError.is(e) && e.code === 'SY-SES-003');
+    await expect(store.load('s1')).rejects.toSatisfy((e) => LIWENError.is(e) && e.code === 'SY-SES-003');
   });
 });
 
 describe('config layering (FR-120, BR-024)', () => {
   it('merges user then project then env then code; code wins', async () => {
     const rt = fakeRuntime();
-    await rt.fs.writeFile('/home/.syaocode/config.json', JSON.stringify({ permissionMode: 'default', rules: [{ effect: 'deny', tool: 'bash', source: 'user' }] }));
-    await rt.fs.writeFile('/.syaocode/config.json', JSON.stringify({ permissionMode: 'acceptEdits' }));
+    await rt.fs.writeFile('/home/.liwencode/config.json', JSON.stringify({ permissionMode: 'default', rules: [{ effect: 'deny', tool: 'bash', source: 'user' }] }));
+    await rt.fs.writeFile('/.liwencode/config.json', JSON.stringify({ permissionMode: 'acceptEdits' }));
     const config = await loadConfig({
-      userPath: '/home/.syaocode/config.json',
-      projectPath: '/.syaocode/config.json',
-      env: { SYAO_PERMISSION_MODE: 'plan' },
+      userPath: '/home/.liwencode/config.json',
+      projectPath: '/.liwencode/config.json',
+      env: { LIWEN_PERMISSION_MODE: 'plan' },
       code: { permissionMode: 'bypass' },
       runtime: rt,
     });
@@ -99,24 +99,24 @@ describe('config layering (FR-120, BR-024)', () => {
 
   it('rejects project-level bypass with a warning, not a crash (BR-002)', async () => {
     const rt = fakeRuntime();
-    await rt.fs.writeFile('/.syaocode/config.json', JSON.stringify({ permissionMode: 'bypass' }));
-    const config = await loadConfig({ projectPath: '/.syaocode/config.json', runtime: rt });
+    await rt.fs.writeFile('/.liwencode/config.json', JSON.stringify({ permissionMode: 'bypass' }));
+    const config = await loadConfig({ projectPath: '/.liwencode/config.json', runtime: rt });
     expect(config.permissionMode).toBe('default');
   });
 
   it('project cannot relax a user deny — forced back to deny (BR-024)', async () => {
     const rt = fakeRuntime();
-    await rt.fs.writeFile('/home/.syaocode/config.json', JSON.stringify({ rules: [{ effect: 'deny', tool: 'bash', source: 'user' }] }));
-    await rt.fs.writeFile('/.syaocode/config.json', JSON.stringify({ rules: [{ effect: 'allow', tool: 'bash', source: 'project' }] }));
-    const config = await loadConfig({ userPath: '/home/.syaocode/config.json', projectPath: '/.syaocode/config.json', runtime: rt });
+    await rt.fs.writeFile('/home/.liwencode/config.json', JSON.stringify({ rules: [{ effect: 'deny', tool: 'bash', source: 'user' }] }));
+    await rt.fs.writeFile('/.liwencode/config.json', JSON.stringify({ rules: [{ effect: 'allow', tool: 'bash', source: 'project' }] }));
+    const config = await loadConfig({ userPath: '/home/.liwencode/config.json', projectPath: '/.liwencode/config.json', runtime: rt });
     expect(config.rules.every((r) => r.effect === 'deny')).toBe(true);
   });
 
   it('invalid config fails with SY-CFG-001 and field paths', async () => {
     const rt = fakeRuntime();
-    await rt.fs.writeFile('/.syaocode/config.json', JSON.stringify({ permissionMode: 'nope', limits: { maxTurns: 'x' } }));
-    await expect(loadConfig({ projectPath: '/.syaocode/config.json', runtime: rt })).rejects.toSatisfy(
-      (e) => SyaoError.is(e) && e.code === 'SY-CFG-001',
+    await rt.fs.writeFile('/.liwencode/config.json', JSON.stringify({ permissionMode: 'nope', limits: { maxTurns: 'x' } }));
+    await expect(loadConfig({ projectPath: '/.liwencode/config.json', runtime: rt })).rejects.toSatisfy(
+      (e) => LIWENError.is(e) && e.code === 'SY-CFG-001',
     );
   });
 });

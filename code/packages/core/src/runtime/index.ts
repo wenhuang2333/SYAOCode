@@ -210,7 +210,7 @@ export const noopLogger: Logger = {
   },
 };
 
-/** Collect log lines in memory — handy for tests and `syao doctor`. */
+/** Collect log lines in memory — handy for tests and `liwen doctor`. */
 export class MemoryLogger implements Logger {
   readonly lines: { level: LogLevel; msg: string; fields?: Record<string, unknown> }[] = [];
   log(level: LogLevel, msg: string, fields?: Record<string, unknown>): void {

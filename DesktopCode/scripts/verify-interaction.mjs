@@ -11,7 +11,7 @@
  *
  * 用法：
  *   node scripts/verify-interaction.mjs
- *   SYAO_PLAYWRIGHT=... node scripts/verify-interaction.mjs
+ *   LIWEN_PLAYWRIGHT=... node scripts/verify-interaction.mjs
  *
  * 缺 Playwright / Electron 时跳过并 exit 0，绝不打印通过。
  */
@@ -24,13 +24,13 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const APP = path.join(ROOT, 'apps/desktop');
-const PW = process.env['SYAO_PLAYWRIGHT'] ?? 'playwright';
+const PW = process.env['LIWEN_PLAYWRIGHT'] ?? 'playwright';
 
 let _electron;
 try {
   ({ _electron } = await import(PW));
 } catch {
-  console.log('SKIP: playwright not installed. Set SYAO_PLAYWRIGHT to its index.mjs.');
+  console.log('SKIP: playwright not installed. Set LIWEN_PLAYWRIGHT to its index.mjs.');
   process.exit(0);
 }
 
@@ -39,7 +39,7 @@ try {
  * 与 `dev-desktop.mjs` 用同一套解析逻辑（纯 Node 里 `require('electron')` 返回二进制路径）。
  */
 function resolveElectron() {
-  if (process.env['SYAO_ELECTRON_BIN'] !== undefined) return process.env['SYAO_ELECTRON_BIN'];
+  if (process.env['LIWEN_ELECTRON_BIN'] !== undefined) return process.env['LIWEN_ELECTRON_BIN'];
   try {
     const req = createRequire(path.join(APP, 'package.json'));
     const bin = req('electron');
@@ -51,7 +51,7 @@ function resolveElectron() {
 }
 const electronBin = resolveElectron();
 if (electronBin === undefined) {
-  console.log('SKIP: electron binary not found. Install dev deps or set SYAO_ELECTRON_BIN.');
+  console.log('SKIP: electron binary not found. Install dev deps or set LIWEN_ELECTRON_BIN.');
   process.exit(0);
 }
 if (_electron === undefined) {
@@ -59,8 +59,8 @@ if (_electron === undefined) {
   process.exit(0);
 }
 
-const home = await mkdtemp(path.join(os.tmpdir(), 'syao-interaction-'));
-const env = { ...process.env, HOME: home, SYAO_HOME: home };
+const home = await mkdtemp(path.join(os.tmpdir(), 'liwen-interaction-'));
+const env = { ...process.env, HOME: home, LIWEN_HOME: home };
 delete env['ELECTRON_RUN_AS_NODE'];
 
 let app;
@@ -227,7 +227,7 @@ try {
   }
 
   // 取证截图：成功路径也留一张，方便人眼复核"真实界面长什么样"。
-  await page.screenshot({ path: path.join(os.tmpdir(), 'syao-interaction.png') }).catch(() => undefined);
+  await page.screenshot({ path: path.join(os.tmpdir(), 'liwen-interaction.png') }).catch(() => undefined);
 
   // 7) 无未捕获异常 / 无控制台错误（真实运行期错误只有跑起来才看得到）。
   const errors = [];
@@ -246,8 +246,8 @@ try {
       console.log(body.replace(/\n{2,}/g, '\n').slice(0, 900));
       console.log('--- textarea 数量:', await page.locator('textarea').count().catch(() => -1));
       console.log('--- button 文本:', (await page.locator('button').allInnerTexts().catch(() => [])).slice(0, 14));
-      await page.screenshot({ path: path.join(os.tmpdir(), 'syao-interaction-fail.png') }).catch(() => undefined);
-      console.log(`--- 截图: ${path.join(os.tmpdir(), 'syao-interaction-fail.png')}`);
+      await page.screenshot({ path: path.join(os.tmpdir(), 'liwen-interaction-fail.png') }).catch(() => undefined);
+      console.log(`--- 截图: ${path.join(os.tmpdir(), 'liwen-interaction-fail.png')}`);
     }
   }
 } finally {
@@ -255,7 +255,7 @@ try {
   await rm(home, { recursive: true, force: true }).catch(() => undefined);
 }
 
-console.log(`\n截图: ${path.join(os.tmpdir(), 'syao-interaction.png')}`);
+console.log(`\n截图: ${path.join(os.tmpdir(), 'liwen-interaction.png')}`);
 const failed = results.filter((r) => !r.ok).length;
 console.log(failed === 0 ? `\nINTERACTION: OK (${results.length} 项)` : `\nINTERACTION: ${failed} 项失败`);
 process.exit(failed === 0 ? 0 : 1);

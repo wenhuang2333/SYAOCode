@@ -21,7 +21,7 @@ import {
 import { createLoopbackPair } from '../src/shared/transport.js';
 import { JsonRpcConnection } from '../src/shared/jsonrpc.js';
 import type { ReverseInvokeGateway } from '../src/shared/gateway.js';
-import type { InvokeResultPayload } from '@syaocode/rpc';
+import type { InvokeResultPayload } from '@liwencode/rpc';
 import { createFakePeer } from './helpers/fake-peer.js';
 import { createFakeRuntime } from './helpers/fake-runtime.js';
 import { buildContext, buildInvocation, defineAdapterContract, peerView } from './helpers/contract.js';
@@ -117,7 +117,7 @@ describe('acp · reverse fs is governed', () => {
       channel: pair.a,
       clientId: CLIENT_ID,
       gateway,
-      agentInfo: { name: 'syaocode', version: '0.3.0-dev' },
+      agentInfo: { name: 'liwencode', version: '0.3.0-dev' },
     });
     await editor.send('initialize', { protocolVersion: 1, clientCapabilities: CLIENT_CAPABILITIES });
     const { sessionId } = (await editor.send('session/new', { cwd: '/repo' })) as { sessionId: string };
@@ -145,7 +145,7 @@ describe('acp · reverse fs is governed', () => {
       channel: pair.a,
       clientId: CLIENT_ID,
       gateway,
-      agentInfo: { name: 'syaocode', version: '0.3.0-dev' },
+      agentInfo: { name: 'liwencode', version: '0.3.0-dev' },
     });
     await editor.send('initialize', { protocolVersion: 1, clientCapabilities: {} });
     const { sessionId } = (await editor.send('session/new', { cwd: '/repo' })) as { sessionId: string };
@@ -173,7 +173,7 @@ describe('acp · reverse fs is governed', () => {
       channel: pair.a,
       clientId: CLIENT_ID,
       gateway,
-      agentInfo: { name: 'syaocode', version: '0.3.0-dev' },
+      agentInfo: { name: 'liwencode', version: '0.3.0-dev' },
     });
     await editor.send('initialize', { protocolVersion: 1, clientCapabilities: CLIENT_CAPABILITIES });
     const { sessionId } = (await editor.send('session/new', { cwd: '/repo' })) as { sessionId: string };
@@ -200,7 +200,7 @@ describe('acp · server handshake', () => {
       channel: pair.a,
       clientId: CLIENT_ID,
       gateway: recordingGateway(),
-      agentInfo: { name: 'syaocode', version: '0.3.0-dev' },
+      agentInfo: { name: 'liwencode', version: '0.3.0-dev' },
       runTurn: async (input) => {
         input.update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } });
         const decision = await input.requestPermission({
@@ -246,7 +246,7 @@ describe('acp · server handshake', () => {
       channel: pair.a,
       clientId: CLIENT_ID,
       gateway: recordingGateway(),
-      agentInfo: { name: 'syaocode', version: '0.3.0-dev' },
+      agentInfo: { name: 'liwencode', version: '0.3.0-dev' },
     });
     await expect(editor.send('initialize', { protocolVersion: 2 })).rejects.toMatchObject({ code: -32022 });
     await edge.server.close();
@@ -262,7 +262,7 @@ describe('acp · server handshake', () => {
       channel: pair.a,
       clientId: CLIENT_ID,
       gateway: recordingGateway(),
-      agentInfo: { name: 'syaocode', version: '0.3.0-dev' },
+      agentInfo: { name: 'liwencode', version: '0.3.0-dev' },
     });
     await expect(editor.send('session/new', { cwd: 'relative/path' })).rejects.toMatchObject({ code: -32602 });
     await edge.server.close();

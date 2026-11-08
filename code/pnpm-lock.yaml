@@ -166,22 +166,22 @@ importers:
 
   .:
     devDependencies:
-      '@syaocode/core':
+      '@liwencode/core':
         specifier: workspace:*
         version: link:packages/core
-      '@syaocode/node':
+      '@liwencode/node':
         specifier: workspace:*
         version: link:packages/node
-      '@syaocode/protocols':
+      '@liwencode/protocols':
         specifier: workspace:*
         version: link:packages/protocols
-      '@syaocode/rpc':
+      '@liwencode/rpc':
         specifier: workspace:*
         version: link:packages/rpc
-      '@syaocode/testing':
+      '@liwencode/testing':
         specifier: workspace:*
         version: link:packages/testing
-      '@syaocode/tools':
+      '@liwencode/tools':
         specifier: workspace:*
         version: link:packages/tools
       '@vitest/coverage-v8':
@@ -193,25 +193,25 @@ importers:
 
   packages/cli:
     dependencies:
-      '@syaocode/core':
+      '@liwencode/core':
         specifier: workspace:*
         version: link:../core
-      '@syaocode/node':
+      '@liwencode/node':
         specifier: workspace:*
         version: link:../node
-      '@syaocode/protocols':
+      '@liwencode/protocols':
         specifier: workspace:*
         version: link:../protocols
-      '@syaocode/providers':
+      '@liwencode/providers':
         specifier: workspace:*
         version: link:../providers
-      '@syaocode/rpc':
+      '@liwencode/rpc':
         specifier: workspace:*
         version: link:../rpc
-      '@syaocode/testing':
+      '@liwencode/testing':
         specifier: workspace:*
         version: link:../testing
-      '@syaocode/tools':
+      '@liwencode/tools':
         specifier: workspace:*
         version: link:../tools
       zod:
@@ -249,7 +249,7 @@ importers:
 
   packages/node:
     dependencies:
-      '@syaocode/core':
+      '@liwencode/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -265,10 +265,10 @@ importers:
 
   packages/protocols:
     dependencies:
-      '@syaocode/core':
+      '@liwencode/core':
         specifier: workspace:*
         version: link:../core
-      '@syaocode/rpc':
+      '@liwencode/rpc':
         specifier: workspace:*
         version: link:../rpc
       zod:
@@ -287,14 +287,14 @@ importers:
 
   packages/providers:
     dependencies:
-      '@syaocode/core':
+      '@liwencode/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
-      '@syaocode/node':
+      '@liwencode/node':
         specifier: workspace:*
         version: link:../node
-      '@syaocode/testing':
+      '@liwencode/testing':
         specifier: workspace:*
         version: link:../testing
       '@types/node':
@@ -309,7 +309,7 @@ importers:
 
   packages/rpc:
     dependencies:
-      '@syaocode/core':
+      '@liwencode/core':
         specifier: workspace:*
         version: link:../core
       zod:
@@ -328,7 +328,7 @@ importers:
 
   packages/testing:
     dependencies:
-      '@syaocode/core':
+      '@liwencode/core':
         specifier: workspace:*
         version: link:../core
       zod:
@@ -347,14 +347,14 @@ importers:
 
   packages/tools:
     dependencies:
-      '@syaocode/core':
+      '@liwencode/core':
         specifier: workspace:*
         version: link:../core
       zod:
         specifier: ^3.24.0
         version: 3.25.76
     devDependencies:
-      '@syaocode/testing':
+      '@liwencode/testing':
         specifier: workspace:*
         version: link:../testing
       '@types/node':

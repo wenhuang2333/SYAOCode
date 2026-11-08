@@ -8,7 +8,7 @@
 
 ## 1. 一句话
 
-**一个内核 + 三种边缘**：`@syaocode/rpc` 是唯一的治理实现（身份 → 策略 → 审批 → 预算 → 幂等 → 派发 → 结算 → 回执 → 审计），`@syaocode/protocols` 只做 MCP/A2A/ACP 的语义翻译与降级标注，CLI/TUI 通过 `/rpc`、`/peer`、`/call`、`/serve`、`/approve` 操作整套治理面。
+**一个内核 + 三种边缘**：`@liwencode/rpc` 是唯一的治理实现（身份 → 策略 → 审批 → 预算 → 幂等 → 派发 → 结算 → 回执 → 审计），`@liwencode/protocols` 只做 MCP/A2A/ACP 的语义翻译与降级标注，CLI/TUI 通过 `/rpc`、`/peer`、`/call`、`/serve`、`/approve` 操作整套治理面。
 
 ```
         MCP edge            A2A edge             ACP edge
@@ -17,7 +17,7 @@
            └───────────┬───────┴────────────┬───────┘
                        ▼                    ▼
                ┌──────────────────────────────────┐
-               │   @syaocode/rpc  (ARF Core)      │
+               │   @liwencode/rpc  (ARF Core)      │
                │   Canonical IR + 十步治理流水线   │
                └──────────────────────────────────┘
                        ▲
@@ -30,14 +30,14 @@
 
 | 包 | 职责 | 依赖 |
 | --- | --- | --- |
-| `@syaocode/rpc` | Canonical IR、十步治理流水线、策略/审批/预算/幂等/回执/审计/注册表/身份、存储与事件日志、fabric 组装 | `@syaocode/core` + `zod` |
-| `@syaocode/protocols` | MCP / A2A / ACP 适配器（JSON-RPC 2.0 自研最小层） | `@syaocode/rpc` |
-| `syaocode`（CLI） | `serve`/`call`/`rpc`/`mcp` 子命令 + `/rpc` 等交互指令 | `@syaocode/rpc`、`@syaocode/protocols` |
+| `@liwencode/rpc` | Canonical IR、十步治理流水线、策略/审批/预算/幂等/回执/审计/注册表/身份、存储与事件日志、fabric 组装 | `@liwencode/core` + `zod` |
+| `@liwencode/protocols` | MCP / A2A / ACP 适配器（JSON-RPC 2.0 自研最小层） | `@liwencode/rpc` |
+| `liwencode`（CLI） | `serve`/`call`/`rpc`/`mcp` 子命令 + `/rpc` 等交互指令 | `@liwencode/rpc`、`@liwencode/protocols` |
 
 **硬约束**（由 `scripts/check-rpc-boundaries.ts` 与 `check-core-purity.ts` 强制）：
 
-1. `@syaocode/rpc` 与 `@syaocode/core` **永不** import 任何协议 SDK，也不 import `node:`；
-2. `@syaocode/protocols` 不得 import `node:`，不得 import `core/src/agent.ts`，不得直接调用 `Tool.execute`；
+1. `@liwencode/rpc` 与 `@liwencode/core` **永不** import 任何协议 SDK，也不 import `node:`；
+2. `@liwencode/protocols` 不得 import `node:`，不得 import `core/src/agent.ts`，不得直接调用 `Tool.execute`；
 3. 适配器只能拿到 `AuthorizedInvocation`，没有任何原始工具/端点句柄（不变量 I13）。
 
 ### 2.1 文件地图（`packages/rpc/src`）
@@ -193,7 +193,7 @@
 | 十步流水线、审批 CAS、SHA-256 审计链、回执链已实现并通过单元/红队/P0 回归测试 | "生产级可治理底座" |
 | 单机/单租户场景下策略、审批、预算、回执可用（P0 已修） | "跨组织联邦治理" |
 | 三协议均与**官方 SDK** 实测互通（8/8、5/5、6/6） | "已通过第三方认证/一致性测试套件"、"吞吐达标"（只测了延迟） |
-| 主 agent 路径（`syao -p` / TUI / ACP `session/prompt`）已接入 ARF；治理记录跨进程可读 | "企业级审计留存"（本地文件、无 retention/轮转） |
+| 主 agent 路径（`liwen -p` / TUI / ACP `session/prompt`）已接入 ARF；治理记录跨进程可读 | "企业级审计留存"（本地文件、无 retention/轮转） |
 | **实验性预览（experimental preview）** | "已通过外部互通验证"（互通是自测探针，非第三方认证） |
 
 ---
@@ -261,13 +261,13 @@ MRTR 的 `requestState` 在**两侧**都做逐字节校验且一次性使用；�
 
 | 命令 | 说明 |
 | --- | --- |
-| `syao serve --mcp\|--acp\|--a2a [--stdio\|--http] [--port N] [--host H]` | 启动协议服务；默认只监听 `127.0.0.1`，非回环地址无 token → `SY-SRV-002` |
-| `syao call <capabilityId> [--input @file\|json] [--json]` | 受治理调用，输出回执 |
-| `syao rpc <tasks\|task\|approvals\|approve\|deny\|budget\|audit\|policy\|status\|store> [--json]` | 治理运维 |
-| `syao rpc audit [--details]` | 审计链校验；`--details` 额外重算每条的明细 sidecar（`ok/missing/mismatch`） |
-| `syao rpc store [--json]` | **写租约与存储状态**：租户目录、epoch、当前持有者、心跳新旧、排队者（06 §10.3） |
-| `syao rpc store unlock` | 强制释放一份"持有者已死"的租约；**会 bump epoch**，旧持有者从此被 fencing 拒绝 |
-| `syao mcp <list\|add\|remove>` | MCP server 配置管理 |
+| `liwen serve --mcp\|--acp\|--a2a [--stdio\|--http] [--port N] [--host H]` | 启动协议服务；默认只监听 `127.0.0.1`，非回环地址无 token → `SY-SRV-002` |
+| `liwen call <capabilityId> [--input @file\|json] [--json]` | 受治理调用，输出回执 |
+| `liwen rpc <tasks\|task\|approvals\|approve\|deny\|budget\|audit\|policy\|status\|store> [--json]` | 治理运维 |
+| `liwen rpc audit [--details]` | 审计链校验；`--details` 额外重算每条的明细 sidecar（`ok/missing/mismatch`） |
+| `liwen rpc store [--json]` | **写租约与存储状态**：租户目录、epoch、当前持有者、心跳新旧、排队者（06 §10.3） |
+| `liwen rpc store unlock` | 强制释放一份"持有者已死"的租约；**会 bump epoch**，旧持有者从此被 fencing 拒绝 |
+| `liwen mcp <list\|add\|remove>` | MCP server 配置管理 |
 
 ### 7.3 退出码
 
@@ -283,7 +283,7 @@ MRTR 的 `requestState` 在**两侧**都做逐字节校验且一次性使用；�
 | 7 | **能力/协议不可用**（`unsupported_capability`、`version_mismatch`、`capability_not_found`） |
 | 130 | 中断 |
 
-映射实现在 `@syaocode/rpc` 的 `CanonicalError.exitCode`。
+映射实现在 `@liwencode/rpc` 的 `CanonicalError.exitCode`。
 
 ---
 
@@ -319,7 +319,7 @@ v0.5 起，同一租户目录的写入由**租户目录写租约**串行化（`p
 | `fsyncMode` | `batch` | `always` / `batch` / `never` |
 | `maxRecordBytes` | 1 MiB | 单条记录上限 |
 
-**排障**：`syao rpc store` 看持有者与队列；确认持有者已死时用 `syao rpc store unlock`。
+**排障**：`liwen rpc store` 看持有者与队列；确认持有者已死时用 `liwen rpc store unlock`。
 
 **不支持**：NFS/SMB 等网络文件系统（`mkdir`/`rename` 不保证原子，"看起来有锁、实际不互斥"比没锁更危险）；跨主机一致性。
 
@@ -346,8 +346,8 @@ corepack pnpm start
 
 ```ts
 // 嵌入式 SDK
-import { createFabric } from '@syaocode/rpc';
-import { nodeRuntime } from '@syaocode/node';
+import { createFabric } from '@liwencode/rpc';
+import { nodeRuntime } from '@liwencode/node';
 
 const fabric = createFabric({
   runtime: nodeRuntime(),
@@ -376,7 +376,7 @@ const bundle = await fabric.evidence.seal(result.taskId);
 | 项 | 状态 |
 | --- | --- |
 | 持久化存储（JSONL/SQLite/Postgres） | 内核提供**内存实现** + 完整接口；`packages/rpc/src/runtime/file-stores.ts` 提供文件实现（tasks/sessions/approvals/budget/idempotency/receipts/audit/events，加载时校验回执链与审计链），CLI 默认启用、跨进程可读。**限制：无跨进程写锁、无 retention/轮转、`writeAll` 非原子**，因此只支持单进程写；设计见 `06` |
-| **MCP 端到端（真实对端）** | **已跑通，双向**：① SYAOCode 作 MCP **client** 调用外部真实 MCP server（`mcp add` → 发现 1 个能力 → `call mcp://demo/tool/echo` 返回 `echo:{"msg":"hi"}` + 回执）；② SYAOCode 作 MCP **server**（`syao serve --mcp --stdio`）被第三方 client 驱动：`server/discover`（supportedVersions `2026-07-28` / ttlMs / cacheScope / serverInfo）→ `tools/list`（6 个受治理工具）→ `tools/call read`（真实文件内容） |
+| **MCP 端到端（真实对端）** | **已跑通，双向**：① LIWENCode 作 MCP **client** 调用外部真实 MCP server（`mcp add` → 发现 1 个能力 → `call mcp://demo/tool/echo` 返回 `echo:{"msg":"hi"}` + 回执）；② LIWENCode 作 MCP **server**（`liwen serve --mcp --stdio`）被第三方 client 驱动：`server/discover`（supportedVersions `2026-07-28` / ttlMs / cacheScope / serverInfo）→ `tools/list`（6 个受治理工具）→ `tools/call read`（真实文件内容） |
 | A2A / ACP 适配器 | 实现完整；**已用官方 SDK 实测互通**（A2A `@a2a-js/sdk@1.3.0` 5/5；ACP `@agentclientprotocol/sdk@2.0.2` 6/6，见 §14）。**未做**：真实第三方编辑器（Zed/Neovim）的长期联调、真实跨组织 A2A 对端 |
 | AgentCard 签名（JWS/Ed25519） | 结构已预留（`signatures` 字段与 `lossy` 标注），签名算法未实现 |
 | OAuth 2.1 / PRM 发现 | 未实现（属协议侧传输安全，ARF 只做其上的治理） |
@@ -391,7 +391,7 @@ const bundle = await fabric.evidence.seal(result.taskId);
 
 ## 10. 与基线文档的关系
 
-本实现**不修改** `document/SYAOCode/` 下的基线文档。建议的同步项见 `document/Agent-RPC/03 §9`，其中与本次实现直接相关的两条：
+本实现**不修改** `document/LIWENCode/` 下的基线文档。建议的同步项见 `document/Agent-RPC/03 §9`，其中与本次实现直接相关的两条：
 
 - `09-错误体系`：已新增 `A2A` 错误域，并填充预留码 `SY-MCP-006`、`SY-SRV-004`；
-- `08-详细设计说明书`：DD-9/DD-17 应并入本实现的 `@syaocode/rpc` + `@syaocode/protocols`，避免两套服务协议。
+- `08-详细设计说明书`：DD-9/DD-17 应并入本实现的 `@liwencode/rpc` + `@liwencode/protocols`，避免两套服务协议。

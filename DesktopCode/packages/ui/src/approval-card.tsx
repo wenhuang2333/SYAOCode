@@ -10,7 +10,7 @@ import type * as React from 'react';
  *  - 已决卡片**保留在时间线中**（由投影的 marker 行承担），不在这里删除。
  */
 
-import type { PendingInteraction } from '@syaocode/dhp';
+import type { PendingInteraction } from '@liwencode/dhp';
 import type { Messages } from './i18n.ts';
 
 export interface ApprovalCardProps {

@@ -19,7 +19,7 @@
  * ever receives an `AuthorizedInvocation` (I13).
  */
 
-import type { Redactor } from '@syaocode/core';
+import type { Redactor } from '@liwencode/core';
 import { CanonicalError } from '../ir/errors.js';
 import { newId } from '../ir/ids.js';
 import { canonicalJson } from '../ir/schemas.js';

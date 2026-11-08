@@ -1,6 +1,6 @@
 import type { Runtime } from './runtime/index.js';
 import type { PermissionSubject, Tool, ToolRisk } from './tool.js';
-import { PermissionError } from './errors/syao-error.js';
+import { PermissionError } from './errors/liwen-error.js';
 import type { PermissionMode } from './events.js';
 
 /**
@@ -22,7 +22,7 @@ export interface PermissionRule {
  * Durable storage for `remember:'project'` approvals (report C5).
  *
  * The kernel must stay host-agnostic, so persistence is injected: the CLI
- * passes a node-backed store (`.syaocode/permissions.json`), tests pass the
+ * passes a node-backed store (`.liwencode/permissions.json`), tests pass the
  * in-memory default. Loaded rules are appended after config rules, so a
  * remembered allow can never outrank an explicit deny (BR-001).
  */
@@ -109,7 +109,7 @@ export interface EngineOptions {
  * the answer is never remembered for the session (report S4 / §13.1).
  * HOME is read through the injected runtime so the engine stays host-agnostic.
  */
-const SENSITIVE_HOME_ENTRIES = ['.ssh', '.aws', '.syaocode/env'];
+const SENSITIVE_HOME_ENTRIES = ['.ssh', '.aws', '.liwencode/env'];
 const WORKSPACE_SECRET_BASENAME = /^\.env(\..*)?$/;
 
 export function commandPathCandidates(command: string): string[] {

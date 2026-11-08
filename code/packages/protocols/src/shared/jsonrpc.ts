@@ -11,7 +11,7 @@
  * `auto` sniffs per message so a single connection can serve both.
  */
 
-import type { IdGenerator, Logger } from '@syaocode/core';
+import type { IdGenerator, Logger } from '@liwencode/core';
 import type { DuplexChannel } from './transport.js';
 
 export type JsonRpcId = string | number;

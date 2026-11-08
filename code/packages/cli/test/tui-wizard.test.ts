@@ -4,7 +4,7 @@ import { guessProtocol, sanitizeProfileName } from '../src/tui/setup-wizard';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { SyaoError } from '@syaocode/core';
+import { LIWENError } from '@liwencode/core';
 import { buildProvider } from '../src/provider-select';
 import { saveProfile } from '../src/model-config';
 import {
@@ -21,7 +21,7 @@ import {
 } from '../src/tui/setup-wizard';
 
 function isolatedHome(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'syao-wizard-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'liwen-wizard-'));
 }
 
 describe('tui/setup-wizard 状态机', () => {
@@ -171,32 +171,32 @@ describe('@profile → Provider 解析', () => {
           baseUrl: 'https://api.example.com/v1',
           protocol: 'openai-chat',
           authField: 'x-api-key',
-          apiKeyEnv: 'SYAO_KEY_WIZ_TEST',
+          apiKeyEnv: 'LIWEN_KEY_WIZ_TEST',
           createdAt: 0,
           updatedAt: 0,
         },
         'sk-wiz',
       );
-      process.env.SYAO_KEY_WIZ_TEST = 'sk-wiz';
+      process.env.LIWEN_KEY_WIZ_TEST = 'sk-wiz';
       const p = buildProvider({ provider: '@myprov', model: '' });
       expect(p.id).toBe('@myprov');
       expect(p.model).toBe('m1');
 
       saveProfile(
         'gem',
-        { model: 'g', baseUrl: 'https://x', protocol: 'gemini', authField: 'query-key', apiKeyEnv: 'SYAO_KEY_GEM', createdAt: 0, updatedAt: 0 },
+        { model: 'g', baseUrl: 'https://x', protocol: 'gemini', authField: 'query-key', apiKeyEnv: 'LIWEN_KEY_GEM', createdAt: 0, updatedAt: 0 },
         'k',
       );
-      expect(() => buildProvider({ provider: '@gem', model: '' })).toThrow(SyaoError);
+      expect(() => buildProvider({ provider: '@gem', model: '' })).toThrow(LIWENError);
       try {
         buildProvider({ provider: '@gem', model: '' });
       } catch (e) {
-        expect(SyaoError.is(e) && e.code === 'SY-PRV-010').toBe(true);
+        expect(LIWENError.is(e) && e.code === 'SY-PRV-010').toBe(true);
       }
       expect(() => buildProvider({ provider: '@nosuch', model: '' })).toThrow(/not found/);
     } finally {
       process.env.HOME = realHome;
-      delete process.env.SYAO_KEY_WIZ_TEST;
+      delete process.env.LIWEN_KEY_WIZ_TEST;
     }
   });
 

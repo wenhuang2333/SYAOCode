@@ -1,20 +1,20 @@
 #!/usr/bin/env node
-import { rulesFromConfig, SyaoError } from '@syaocode/core';
-import { nodeRuntime } from '@syaocode/node';
+import { rulesFromConfig, LIWENError } from '@liwencode/core';
+import { nodeRuntime } from '@liwencode/node';
 import { usageText, parseArgs, UsageError } from './args.js';
 import { EXIT_OK, EXIT_USAGE, runPrint } from './run.js';
 import { formatDoctor, runDoctor } from './doctor.js';
 import { runInteractive } from './interactive.js';
 import { runTui } from './tui/tui.js';
-import { activateAgentGroup, loadSecretsIntoEnv, savedLanguage } from './model-config.js';
+import { activateAgentGroup, ensureLiwenHome, loadSecretsIntoEnv, savedLanguage, userConfigPath } from './model-config.js';
 import { setLanguage, t } from './i18n/index.js';
 import { loadCliConfig } from './effective-config.js';
 import { runVerifyInit } from './verify-command.js';
 import { createCliFabric, type CliFabric } from './arf.js';
 import { createArgvApprovalPresenter, runCallArgv, runMcpArgv, runRpcArgv, runServeArgv } from './rpc-command.js';
-import { EXIT } from '@syaocode/rpc';
+import { EXIT } from '@liwencode/rpc';
 
-export const VERSION = 'syao v0.2.0-dev (SYAOCode trusted foundation + Evidence MVP)';
+export const VERSION = 'liwen v0.2.0-dev (LIWENCode trusted foundation + Evidence MVP)';
 
 /** Wait for the stdout/stderr pipes to drain before an explicit exit. */
 async function flushOutput(): Promise<void> {
@@ -34,7 +34,12 @@ async function flushOutput(): Promise<void> {
 }
 
 async function main(argv: string[]): Promise<number> {
-  // Merge ~/.syaocode/env (0600) into process env first — never overrides
+  // 数据目录：新目录 ~/.liwencode 是唯一写入目录；旧目录 ~/.syaocode 只作迁移源/兜底。
+  // 一次性复制迁移（幂等；失败回滚并保留旧目录），提示与告警在任何读取之前输出。
+  const home = ensureLiwenHome();
+  for (const notice of home.notices) process.stderr.write(`warning: ${notice.message}\n`);
+  for (const warning of home.warnings) process.stderr.write(`warning: [${warning.code}] ${warning.message}\n`);
+  // Merge ~/.liwencode/env (0600) into process env first — never overrides
   // real env vars; secrets never reach sessions or logs (BR-023/FR-121).
   loadSecretsIntoEnv();
   // 语言必须在任何输出前确定：配置文件 > 默认英语（/language 写入，下次启动生效）
@@ -71,8 +76,8 @@ async function main(argv: string[]): Promise<number> {
     const runtime = nodeRuntime();
     const config = await loadCliConfig(args, runtime);
     if (args.configSub === 'path') {
-      process.stdout.write(`user:    ${process.env.HOME ?? ''}/.syaocode/config.json\n`);
-      process.stdout.write(`project: ${args.cwd ?? process.cwd()}/.syaocode/config.json\n`);
+      process.stdout.write(`user:    ${userConfigPath()}\n`);
+      process.stdout.write(`project: ${args.cwd ?? process.cwd()}/.liwencode/config.json\n`);
       return EXIT_OK;
     }
     if (args.configSub === 'get') {
@@ -136,7 +141,7 @@ async function main(argv: string[]): Promise<number> {
   if (args.agents !== undefined && args.model === undefined) {
     const res = activateAgentGroup(args.agents);
     if (!res.ok) {
-      process.stderr.write(`warning: agent group '${args.agents}' not found (SY-CLI-001). Run /set-agents after entering syao.\n`);
+      process.stderr.write(`warning: agent group '${args.agents}' not found (SY-CLI-001). Run /set-agents after entering liwen.\n`);
     }
   }
 
@@ -163,7 +168,7 @@ main(process.argv.slice(2))
     process.exitCode = code;
   })
   .catch((e) => {
-    if (SyaoError.is(e)) {
+    if (LIWENError.is(e)) {
       process.stderr.write(`fatal: ${e.code} ${e.message}\n`);
       process.exitCode = e.code === 'SY-CFG-001' || e.code === 'SY-CFG-002' ? 2 : 1;
     } else {

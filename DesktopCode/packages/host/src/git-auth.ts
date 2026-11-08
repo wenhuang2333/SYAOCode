@@ -42,7 +42,7 @@ import type {
   GitAuthStatusResult,
   GitOauthProvider,
   GitRemoteInfo,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 import {
   keychainEntryFor,
   nonce,

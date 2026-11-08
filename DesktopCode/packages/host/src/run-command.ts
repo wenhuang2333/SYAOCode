@@ -18,7 +18,7 @@
  * 每次执行都写审计（成功与失败都记），审计里**不含**凭据。
  */
 
-import type { Runtime } from '@syaocode/core';
+import type { Runtime } from '@liwencode/core';
 
 /** 单次执行的输出上限（字节）。超出部分丢弃并标记截断。 */
 export const MAX_COMMAND_OUTPUT_BYTES = 256 * 1024;

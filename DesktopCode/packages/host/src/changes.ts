@@ -23,7 +23,7 @@ import type {
   FileChange,
   FileChangeStatus,
   SourceRef,
-} from '@syaocode/dhp';
+} from '@liwencode/dhp';
 import { statFile, type FileStat } from './file-stat.ts';
 import { diffLines } from './workspace.ts';
 
