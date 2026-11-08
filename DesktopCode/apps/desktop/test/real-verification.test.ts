@@ -244,3 +244,19 @@ describe('缺口清单与代码现状的双向核对', () => {
     expect(docs).toContain('agree ? \'\' :');
   });
 });
+
+
+describe('文档里的单文件用例数用权威来源核对', () => {
+  const docs = read('../../scripts/verify-docs.mjs');
+
+  it('用 `vitest list --json`，不用静态计数（静态计数实测会错）', () => {
+    // 教训：`it(` 字符串匹配把 `git-auth.test.ts` 数成 34，真实是 40；
+    // 照静态数改文档只会"改出新错误"。
+    expect(docs).toContain("'vitest', 'list', '--json'");
+    expect(docs).toContain('文档引用的单文件用例数与真实收集数一致');
+  });
+
+  it('vitest 不可用时跳过而不是误报', () => {
+    expect(docs).toContain('无法运行 `vitest list`，跳过单文件用例数核对');
+  });
+});

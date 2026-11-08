@@ -207,5 +207,59 @@ for (const [id, label, predicate] of GAP_EVIDENCE) {
   );
 }
 
+
+// ── 6) 文档里引用的**单文件用例数**必须与真实收集数一致 ──────────────────
+//
+// 为什么不用静态计数：`it(` 的字符串匹配会把辅助函数、`.each` 展开数错——
+// 实测 `git-auth.test.ts` 静态数出 34、真实是 40。**照静态数改文档只会改出新错误**。
+// `vitest list --json` 只收集不执行，给出的是权威数量，几秒可完成。
+const { execFile } = await import('node:child_process');
+const { promisify } = await import('node:util');
+const run = promisify(execFile);
+
+async function collectCounts(pkgDir) {
+  const { stdout } = await run('corepack', ['pnpm', 'exec', 'vitest', 'list', '--json'], {
+    cwd: path.join(DESKTOP, pkgDir),
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  const counts = new Map();
+  for (const test of JSON.parse(stdout)) {
+    const file = path.basename(String(test.file ?? ''));
+    if (file === '') continue;
+    counts.set(file, (counts.get(file) ?? 0) + 1);
+  }
+  return counts;
+}
+
+let counts = new Map();
+try {
+  for (const dir of ['packages/dhp', 'packages/client', 'packages/ui', 'packages/host', 'apps/desktop']) {
+    for (const [file, n] of await collectCounts(dir)) counts.set(file, n);
+  }
+} catch (error) {
+  console.log('NOTE: 无法运行 `vitest list`，跳过单文件用例数核对。', String(error).split('\n')[0]);
+  counts = new Map();
+}
+
+if (counts.size > 0) {
+  // 文档写法：`` `foo.test.ts`（N 例） ``（可能带路径，按 basename 比对）。
+  const cited = new Map();
+  for (const doc of [doc26, doc27]) {
+    for (const m of doc.matchAll(/`([\w./-]+\.test\.ts)`（(\d+) 例）/g)) {
+      const base = path.basename(m[1]);
+      if (!cited.has(base)) cited.set(base, new Set());
+      cited.get(base).add(Number(m[2]));
+    }
+  }
+  const drift = [];
+  for (const [base, claimed] of cited) {
+    const actual = counts.get(base);
+    if (actual === undefined) continue; // 引用了别的包/外部测试，跳过
+    for (const n of claimed) if (n !== actual) drift.push(`${base}: 文档 ${n} / 实际 ${actual}`);
+  }
+  check('文档引用的单文件用例数与真实收集数一致', drift.length === 0, drift.slice(0, 6).join('；'));
+  console.log(`NOTE: 已核对 ${cited.size} 个文件的用例数（源：\`vitest list --json\`，不执行测试）。`);
+}
+
 console.log(failures.length === 0 ? '\nDOCS: OK' : `\nDOCS: ${failures.length} check(s) failed`);
 process.exit(failures.length === 0 ? 0 : 1);
