@@ -159,6 +159,32 @@ function dirOf(path: string): string {
   return idx <= 0 ? '.' : path.slice(0, idx);
 }
 
+/**
+ * 临时文件的**所属进程**是否还活着。
+ *
+ * 临时文件名为 `<path>.tmp.<pid>.<epoch>`（原子写）与 `<path>.tmp.<pid>.repair`
+ * （恢复截断）。恢复阶段只应该回收"主人已经死了"的临时文件：
+ * 活着的主人的临时文件正在被 rename 途中，删掉它会让那次写入以 ENOENT 失败。
+ *
+ * 判断依据是 pid 是否还活着：`process.kill(pid, 0)` 不发信号，只探测。
+ * `EPERM` 表示进程存在但我们无权发信号 → 仍然算活着。
+ */
+function tmpFileOwnerIsAlive(name: string): boolean {
+  const marker = '.tmp.';
+  const at = name.lastIndexOf(marker);
+  if (at < 0) return false;
+  const head = name.slice(at + marker.length).split('.')[0] ?? '';
+  const pid = Number.parseInt(head, 10);
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  if (pid === process.pid) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
 /** A stable signature for "has this file changed since I last read it?". */
 async function statSig(runtime: Runtime, path: string): Promise<string> {
   try {
@@ -376,7 +402,10 @@ export function createFileStores(opts: FileStoreOptions): FileStoreBundle {
     try {
       const entries = await runtime.fs.readdir(dir);
       for (const entry of entries) {
-        if (entry.isFile && entry.name.includes('.tmp.')) {
+        // `.tmp.*` 可能是**另一个活进程**正在写的中间态（写完马上 rename）。
+        // 无差别清理会删掉对方的临时文件，让对方的 rename 抛 ENOENT —— 这正是
+        // 多进程预算场景 C 的真实 flake（06 §11.2）。只回收所属进程已死的临时文件。
+        if (entry.isFile && entry.name.includes('.tmp.') && !tmpFileOwnerIsAlive(entry.name)) {
           await runtime.fs.unlink(`${dir}/${entry.name}`).catch(() => undefined);
         }
       }
