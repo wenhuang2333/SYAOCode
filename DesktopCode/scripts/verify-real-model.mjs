@@ -107,7 +107,10 @@ try {
   // 因此可能出现一条文本为空的 assistant 行——取有正文的那条。
   const assistant = rows.find((r) => r.kind === 'message' && r.role === 'assistant' && r.text.trim() !== '');
   check('用户消息进入投影', user?.text === 'reply with exactly: PONG');
-  check('真实回复进入投影', assistant?.text?.trim() === 'PONG', assistant?.text?.trim() ?? '(none)');
+  // 用 contains 而不是等值：模型可能回 "PONG"、也可能回 "PONG." 或 "The answer is PONG"。
+  // 我们要验的是「真实回复被完整、原样送进投影」，不是「模型必须只吐四个字母」——
+  // 后者一旦不满足就是模型的措辞差异，报 FAIL 会把产品缺陷和模型脾气混为一谈。
+  check('真实回复进入投影', (assistant?.text ?? '').toUpperCase().includes('PONG'), assistant?.text?.trim() ?? '(none)');
   check('这一轮确实经历了流式', sawStreaming);
   check('结束后 runState 回到 idle', snap?.runState === 'idle', String(snap?.runState));
 

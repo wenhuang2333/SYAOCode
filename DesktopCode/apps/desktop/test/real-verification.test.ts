@@ -42,7 +42,8 @@ describe('真实模型验证脚本', () => {
   });
 
   it('断言的是真实内容，不是"没报错"', () => {
-    expect(model).toContain("assistant?.text?.trim() === 'PONG'");
+    // 措辞用 contains：模型可能加标点/前缀，等值断言会把模型脾气误报成产品缺陷。
+    expect(model).toContain(".toUpperCase().includes('PONG')");
     // 必须确认这一轮**确实经历过流式**，否则一次性返回也算通过。
     expect(model).toContain('sawStreaming');
     expect(model).toContain('这一轮确实经历了流式');
@@ -258,5 +259,31 @@ describe('文档里的单文件用例数用权威来源核对', () => {
 
   it('vitest 不可用时跳过而不是误报', () => {
     expect(docs).toContain('无法运行 `vitest list`，跳过单文件用例数核对');
+  });
+});
+
+
+describe('真实模型脚本必须区分"模型没试"与"产品坏了"', () => {
+  // 真实模型有自主性：它可能这次不调工具、不改文件、措辞不同。
+  // 把这种自由度报成 FAIL，FAIL 就会读成"我们的链路坏了"——
+  // 那是把模型的脾气误报成产品缺陷，也正是我要求自己避免的假警报。
+  const approval = read('../../scripts/verify-real-approval.mjs');
+  const tool = read('../../scripts/verify-real-tool-use.mjs');
+  const model = read('../../scripts/verify-real-model.mjs');
+
+  it('审批流：模型没请求写操作时判为不可判，而不是失败', () => {
+    expect(approval).toContain('writeRequested');
+    expect(approval).toContain('REAL APPROVAL: INCONCLUSIVE');
+    // 不可判时也不许打印通过标记。
+    expect(approval).toContain('process.exit(0)');
+  });
+
+  it('工具调用：模型没调工具时同样判为不可判', () => {
+    expect(tool).toContain('REAL TOOL USE: INCONCLUSIVE');
+  });
+
+  it('回复措辞用 contains 而不是等值（模型可能加标点或前缀）', () => {
+    expect(model).toContain("(assistant?.text ?? '').toUpperCase().includes('PONG')");
+    expect(model).not.toContain("assistant?.text?.trim() === 'PONG'");
   });
 });

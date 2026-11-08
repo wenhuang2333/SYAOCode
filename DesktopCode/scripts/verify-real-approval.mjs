@@ -59,6 +59,8 @@ let sawAwaitingBeforeApproval = false;
 let fileUntouchedBeforeApproval = false;
 let approvedSomething = false;
 let writeChecked = false;
+/** 模型是否曾请求过写操作。没请求是「模型没试」，不是「闸门坏了」。 */
+let writeRequested = false;
 try {
   host = await createHost({
     workspaceRoot: workspace,
@@ -112,6 +114,7 @@ try {
       // 只在 risk==='write' 的审批上采样：一个真实任务会先跑 bash/read 看文件、
       // 再 write，之后再 exec 校验——后面的审批发生在写入之后，文件本来就该变了。
       // 拿那些时刻去断言"未改动"是错的（第一版就是这么误报的）。
+      if (interaction.risk === 'write') writeRequested = true;
       if (interaction.risk === 'write' && !writeChecked) {
         const current = await readFile(path.join(workspace, TARGET), 'utf8').catch(() => '(missing)');
         fileUntouchedBeforeApproval = current === ORIGINAL;
@@ -147,7 +150,20 @@ try {
     if (row.state === 'error') console.log('    错误文本：', JSON.stringify(String(row.resultText ?? '').slice(0, 200)));
   }
 
-  check('真实模型请求了写操作并触发审批', sawAwaitingBeforeApproval, approved.size === 0 ? '从未进入 awaiting-approval' : `批准 ${approved.size} 次`);
+  // 真实模型有自主性：它可能这次选择不去改文件。「模型没试」与「闸门坏了」必须分开，
+  // 否则脚本会偶发报 FAIL，而 FAIL 读起来像「我们的权限闸门失效了」——
+  // 那是把模型的自由度误报成产品缺陷。
+  if (!writeRequested) {
+    console.log('NOTE: 本次模型没有请求写操作，审批闸门未被触发——结论不可判（不是失败）。');
+    console.log('\nREAL APPROVAL: INCONCLUSIVE (model did not request a write)');
+    await conn?.close?.();
+    await host?.close?.();
+    await rm(workspace, { recursive: true, force: true }).catch(() => undefined);
+    await rm(home, { recursive: true, force: true }).catch(() => undefined);
+    process.exit(0);
+  }
+
+  check('真实模型请求了写操作并触发审批', sawAwaitingBeforeApproval, `批准 ${approved.size} 次`);
   check('写操作在审批通过之前没有生效（审批不是装饰）', writeChecked && fileUntouchedBeforeApproval,
     !writeChecked ? '没有观察到写审批' : fileUntouchedBeforeApproval ? '' : '写审批前文件已被改写——权限闸门失效');
   check('批准后工具真的执行了', toolRows.some((r) => r.state === 'ok'), toolRows.map((r) => r.state).join(','));

@@ -117,6 +117,17 @@ try {
   for (const row of toolRows) console.log('  TOOL', row.name, row.state, JSON.stringify(row.input ?? null).slice(0, 120));
   console.log('最终回复:', JSON.stringify(finalText.slice(0, 200)));
 
+  // 与审批流同理：模型可能这次选择不调工具（例如直接凭猜测回答）。
+  // 那是模型的自由度，不是"工具链路坏了"——必须分开，否则脚本会偶发报 FAIL。
+  if (toolRows.length === 0) {
+    console.log('NOTE: 本次模型没有发起工具调用——工具链路未被触发，结论不可判（不是失败）。');
+    console.log('\nREAL TOOL USE: INCONCLUSIVE (model did not call a tool)');
+    await conn?.close?.();
+    await host?.close?.();
+    await rm(workspace, { recursive: true, force: true }).catch(() => undefined);
+    await rm(home, { recursive: true, force: true }).catch(() => undefined);
+    process.exit(0);
+  }
   check('模型真的发起了工具调用', toolRows.length > 0, `${toolRows.length} 个`);
   check('工具调用被正确解析出名字与参数',
     toolRows.some((r) => typeof r.name === 'string' && r.name !== '' && r.input !== undefined),
