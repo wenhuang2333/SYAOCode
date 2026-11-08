@@ -218,8 +218,9 @@ const { promisify } = await import('node:util');
 const run = promisify(execFile);
 
 async function collectCounts(pkgDir) {
+  const cwd = path.isAbsolute(pkgDir) ? pkgDir : path.join(DESKTOP, pkgDir);
   const { stdout } = await run('corepack', ['pnpm', 'exec', 'vitest', 'list', '--json'], {
-    cwd: path.join(DESKTOP, pkgDir),
+    cwd,
     maxBuffer: 32 * 1024 * 1024,
   });
   const counts = new Map();
@@ -231,31 +232,72 @@ async function collectCounts(pkgDir) {
   return counts;
 }
 
+// 包名 → 目录（内核 `core` 也收：文档里会引用 `code/packages/core/test/…`）。
+const COLLECTED = [
+  ['dhp', 'packages/dhp'],
+  ['client', 'packages/client'],
+  ['ui', 'packages/ui'],
+  ['host', 'packages/host'],
+  ['desktop', 'apps/desktop'],
+  ['core', path.join('..', 'code', 'packages', 'core')],
+];
+
+// `counts`：basename → 用例数（保持旧口径，供**不带包前缀**的引用使用）。
+// `byPackage`：`包名/文件名` → 用例数。**同名文件在不同包里很常见**
+// （`steer.test.ts` 同时存在于 ui / host / apps/desktop），只按 basename 比较会
+// 把 A 包的数字拿去比 B 包——那会报出假 FAIL，或者更糟：掩盖真漂移。
 let counts = new Map();
+const byPackage = new Map();
 try {
-  for (const dir of ['packages/dhp', 'packages/client', 'packages/ui', 'packages/host', 'apps/desktop']) {
-    for (const [file, n] of await collectCounts(dir)) counts.set(file, n);
+  for (const [pkg, dir] of COLLECTED) {
+    if (pkg === 'core' && !existsSync(path.join(DESKTOP, dir))) continue;
+    for (const [file, n] of await collectCounts(dir)) {
+      counts.set(file, n);
+      byPackage.set(`${pkg}/${file}`, n);
+    }
   }
 } catch (error) {
   console.log('NOTE: 无法运行 `vitest list`，跳过单文件用例数核对。', String(error).split('\n')[0]);
   counts = new Map();
+  byPackage.clear();
+}
+
+/**
+ * 把文档里的引用解析成"真实用例数"。
+ *
+ * - 带包前缀（`host/test/x.test.ts`、`apps/desktop/test/x.test.ts`、
+ *   `code/packages/core/test/x.test.ts`）→ 精确到那个包；
+ * - 只写文件名（`changes.test.ts`）→ 沿用 basename 口径。
+ * 解析不到（引用了本脚本不收集的包）返回 undefined，跳过而不是误报。
+ */
+function resolveCount(token) {
+  const base = path.basename(token);
+  const local = token.match(/^(?:\.\/)?(?:packages\/)?(dhp|client|ui|host)\/(.+)$/);
+  if (local !== null) return byPackage.get(`${local[1]}/${base}`);
+  const desktop = token.match(/^(?:\.\/)?apps\/desktop\/(.+)$/);
+  if (desktop !== null) return byPackage.get(`desktop/${base}`);
+  const kernel = token.match(/^(?:\.\/)?code\/packages\/([^/]+)\//);
+  if (kernel !== null) return byPackage.get(`${kernel[1]}/${base}`);
+  return counts.get(base);
 }
 
 if (counts.size > 0) {
-  // 文档写法：`` `foo.test.ts`（N 例） ``（可能带路径，按 basename 比对）。
+  // 文档写法：`` `foo.test.ts`（N 例） ``（可能带路径，按解析结果比对）。
   const cited = new Map();
   for (const doc of [doc26, doc27]) {
     for (const m of doc.matchAll(/`([\w./-]+\.test\.ts)`（(\d+) 例）/g)) {
-      const base = path.basename(m[1]);
-      if (!cited.has(base)) cited.set(base, new Set());
-      cited.get(base).add(Number(m[2]));
+      const token = m[1];
+      if (!cited.has(token)) cited.set(token, new Set());
+      cited.get(token).add(Number(m[2]));
     }
   }
   const drift = [];
-  for (const [base, claimed] of cited) {
-    const actual = counts.get(base);
-    if (actual === undefined) continue; // 引用了别的包/外部测试，跳过
-    for (const n of claimed) if (n !== actual) drift.push(`${base}: 文档 ${n} / 实际 ${actual}`);
+  for (const [token, claimed] of cited) {
+    const actual = resolveCount(token);
+    if (actual === undefined) continue; // 引用了本脚本不收集的包，跳过
+    for (const n of claimed) {
+      if (n !== actual) drift.push(`${token}: 文档 ${n} / 实际 ${actual}`);
+    }
   }
   check('文档引用的单文件用例数与真实收集数一致', drift.length === 0, drift.slice(0, 6).join('；'));
   console.log(`NOTE: 已核对 ${cited.size} 个文件的用例数（源：\`vitest list --json\`，不执行测试）。`);

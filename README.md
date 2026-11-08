@@ -12,6 +12,7 @@ TypeScript 原生、模型中立、可嵌入、可审计的 coding-agent harness
 | [`code/README.md`](code/README.md) | 源码总览、命令、发布就绪度与设计不变量 |
 | [`code/docs/COMMANDS.md`](code/docs/COMMANDS.md) | `liwen` 命令与 TUI 交互完整手册 |
 | [`code/docs/TEST-REPORT-v0.1.md`](code/docs/TEST-REPORT-v0.1.md) | v0.1 测试报告 |
+| [`code/docs/STEER-CHANNEL.md`](code/docs/STEER-CHANNEL.md) | 内核运行期 steer 通道（运行中补充指令）的 API 与边界 |
 | [`DesktopCode/`](DesktopCode/) | 桌面端（Electron）客户端源码 |
 
 > **本仓库只放代码与 README。** 规格、需求、设计与交付文档集在本地工作区维护，不进公开仓库。
@@ -33,7 +34,7 @@ corepack pnpm start          # 启动参考 CLI（TUI）
 
 | 包 | 内容 |
 | --- | --- |
-| `@liwencode/core` | 内核：消息模型、Runtime 抽象、事件流、agent 循环、权限引擎、79 码错误注册表、配置分层、会话存储、脱敏 |
+| `@liwencode/core` | 内核：消息模型、Runtime 抽象、事件流、agent 循环（含运行期 steer 通道）、权限引擎、79 码错误注册表、配置分层、会话存储、脱敏 |
 | `@liwencode/providers` | OpenAI Chat Completions 适配器 + Anthropic Messages 原生适配器（SSE 流式） |
 | `@liwencode/tools` | read / write / edit / glob / grep / bash（先读后写围栏、唯一匹配编辑、.gitignore 感知检索） |
 | `@liwencode/testing` | MemoryRuntime、MockProvider、provider 合约套件 |

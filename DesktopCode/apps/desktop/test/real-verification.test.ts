@@ -260,6 +260,19 @@ describe('文档里的单文件用例数用权威来源核对', () => {
   it('vitest 不可用时跳过而不是误报', () => {
     expect(docs).toContain('无法运行 `vitest list`，跳过单文件用例数核对');
   });
+
+  it('同名测试文件按**包**区分，不能只按文件名比', () => {
+    // `steer.test.ts` 同时存在于 ui(14) / host(9) / apps/desktop(25)。
+    // 只按 basename 比较 = 拿 A 包的数字去比 B 包：要么假 FAIL，要么掩盖真漂移。
+    expect(docs).toContain('byPackage');
+    expect(docs).toContain('resolveCount');
+    expect(docs).toContain('同名文件在不同包里很常见');
+  });
+
+  it('内核 core 的用例数也要能核对（文档会引用 code/packages/core/test/…）', () => {
+    expect(docs).toContain("'core', path.join('..', 'code', 'packages', 'core')");
+    expect(docs).toContain('code/packages/core');
+  });
 });
 
 

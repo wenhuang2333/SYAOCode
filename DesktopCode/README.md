@@ -1,6 +1,6 @@
 # LIWENCode Desktop
 
-> LIWENCode 的桌面端实现。内核复用 `../code/` 的 `@liwencode/*` 包，**不改一行内核代码**。
+> LIWENCode 的桌面端实现。内核复用 `../code/` 的 `@liwencode/*` 包。**第 31 轮起内核不再是零改动**（steer 通道、数据目录迁移），跨仓库改动必须同时跑两侧测试。
 
 设计与规格文档仅在本地保留：`doc/DesktopDoc/` 与重构补充文档 `doc/newDesktopDoc/`，不随公开仓库发布。
 
@@ -57,6 +57,7 @@ corepack pnpm verify:theme     # 明暗两套主题的 WCAG AA 对比度实测�
 corepack pnpm verify:smoke     # 真实 Electron 启动冒烟（electron → host → dhp → renderer）
 corepack pnpm verify:docs      # 文档里的数字与引用是否与代码一致（文档缺失时跳过）
 corepack pnpm verify:interaction  # 真实窗口交互验证（建会话 / 输入 / 切主题 / 切页 / mock 流式对话）
+corepack pnpm verify:steer       # 真实窗口 steer 闭环（本地 SSE stub → 运行中排队 → 后续模型请求确实收到）
 # 以下需要真实渠道凭据；缺省时脚本跳过并说明
 corepack pnpm verify:real-model           # 真实模型：Host 跑完一轮（真实回复 / 流式 / 思维链分流）
 corepack pnpm verify:real-window          # 真实模型 + 真实 Electron 窗口
@@ -151,7 +152,7 @@ corepack pnpm dev:host
 
 2026-11-06 实测（macOS arm64 / Node 24.18 / Electron 44.10.1）：
 
-- 类型检查、生产构建和 823 项 DesktopCode 测试通过（2026-11-08 第三十一轮重测）。
+- 类型检查、生产构建和 825 项 DesktopCode 测试通过（2026-11-08 第三十一轮重测：dhp 30 · client 11 · ui 23 · host 316 · desktop 445）。
 - 两个隔离项目完成多会话、严格审批、真实 cwd、模型切换、统计、归档恢复和重启恢复验收。
 - 本机临时 SSE Provider 证实请求依次到达 `alpha`、`beta`；第二次请求保留第一次的完整输入与回复。
 - 900px 与 1440px 视口均完成截图检查，无页面级横向溢出；renderer page error 和 console error 均为 0。
@@ -185,7 +186,7 @@ corepack pnpm dev:host
 
 - `../code/` 是**内核**。本目录通过 `link:../../../code/packages/*` 引用它。第 31 轮起内核不再零改动（steer 通道、数据目录迁移），跨仓库改动必须同时跑两侧测试。
 - 新增能力一律在 `DesktopCode/` 内实现；需要改内核的，先记入 `DesktopDoc/00-基线` §7.3 的缺口清单。
-- 本模块的 823 项测试独立运行，不能替代内核回归（内核当前全量 1089 例）。
+- 本模块的 825 项测试独立运行，不能替代内核回归（内核当前全量 1089 例）。
 - 2026-11-08 第三十一轮：内核 `corepack pnpm typecheck && corepack pnpm test` → 8 包 1089 例全绿（含新增 steer 通道与数据目录迁移）。
 
 ```bash
