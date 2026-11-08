@@ -60,6 +60,8 @@ corepack pnpm verify:interaction  # 真实窗口交互验证（建会话 / 输�
 corepack pnpm verify:real-model           # 真实模型：Host 跑完一轮（真实回复 / 流式 / 思维链分流）
 corepack pnpm verify:real-window          # 真实模型 + 真实 Electron 窗口
 corepack pnpm verify:real-commit-message  # 真实模型生成提交信息（含降级路径）
+corepack pnpm verify:real-usage           # 真实用量口径（token / 成本自洽 / 会话一致）
+corepack pnpm verify:real-tool-use        # 真实工具调用闭环（模型自主调工具 → 结果回灌）
 
 # ① 只跑 Host（调试 DHP 协议最方便，不需要窗口）
 corepack pnpm dev:host
