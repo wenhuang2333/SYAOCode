@@ -16,6 +16,8 @@
     "verify:theme": "node scripts/verify-theme.mjs",
     "verify:smoke": "node scripts/smoke-electron.mjs",
     "verify:interaction": "node scripts/verify-interaction.mjs",
+    "verify:real-model": "node --import tsx scripts/verify-real-model.mjs",
+    "verify:real-window": "node --import tsx scripts/verify-real-window.mjs",
     "dev:host": "pnpm run build:host && node scripts/dev-host.mjs",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "package:dir": "pnpm run build && pnpm --filter syaocode-desktop run package:dir",
