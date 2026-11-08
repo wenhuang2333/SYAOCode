@@ -62,6 +62,7 @@ corepack pnpm verify:real-window          # 真实模型 + 真实 Electron 窗�
 corepack pnpm verify:real-commit-message  # 真实模型生成提交信息（含降级路径）
 corepack pnpm verify:real-usage           # 真实用量口径（token / 成本自洽 / 会话一致）
 corepack pnpm verify:real-tool-use        # 真实工具调用闭环（模型自主调工具 → 结果回灌）
+corepack pnpm verify:real-approval        # 真实审批流（写审批通过前文件未被改动）
 
 # ① 只跑 Host（调试 DHP 协议最方便，不需要窗口）
 corepack pnpm dev:host
