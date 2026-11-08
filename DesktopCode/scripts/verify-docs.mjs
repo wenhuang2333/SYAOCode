@@ -158,6 +158,9 @@ const uniq26 = [...new Set(counts26)];
 const uniq27 = [...new Set(counts27)];
 if (uniq26.length > 0 && uniq27.length > 0) {
   check('两份文档的测试数一致', JSON.stringify(uniq26) === JSON.stringify(uniq27), `26: ${uniq26} / 27: ${uniq27}`);
+  // 诚实说明边界：这里只保证两份文档**互相一致**，不保证等于**实际运行数**——
+  // 那需要跑一遍 `pnpm test`，属于测试套件自己的事（它的输出就是权威）。
+  console.log(`NOTE: 两份文档都写 ${uniq26.join('/')}；与真实运行数的核对由 \`pnpm test\` 的输出负责。`);
 } else {
   console.log('NOTE: 未从两份文档中解析出测试数，跳过一致性检查。');
 }
