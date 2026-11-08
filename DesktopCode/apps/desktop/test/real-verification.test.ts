@@ -80,3 +80,48 @@ describe('真实窗口验证脚本', () => {
     expect(window_).toContain('结束后不再显示流式指示');
   });
 });
+
+describe('真实模型：用量口径（N-22）', () => {
+  const usage = read('../../scripts/verify-real-usage.mjs');
+
+  it('断言 token 数与厂商返回一致，而不是"非零就算过"', () => {
+    expect(usage).toContain('输入 token 数来自真实请求（> 0）');
+    expect(usage).toContain('输出 token 数来自真实回复（> 0）');
+    // total 必须恰好等于 input + output —— 防止凭空多算。
+    expect(usage).toContain('总 token = 输入 + 输出');
+    expect(usage).toContain('输入 token 量级合理（≥ 20）');
+  });
+
+  it('成本口径只要求自洽，不预设金额（厂商可能真的报 0）', () => {
+    // 踩过的坑：一开始断言"未配单价必须是 null"，但网关会在 usage 里带 `cost`，
+    // provider 如实采纳 0 —— 那不是撒谎。真正要防的是自相矛盾。
+    expect(usage).toContain('成本口径自洽');
+    expect(usage).toContain('成本是有限数');
+    expect(usage).not.toContain("cost === null || cost === undefined || (unknownCostRequests > 0 && cost === 0)");
+  });
+
+  it('核对会话详情与全局台账一致（两处数字不能各说各话）', () => {
+    expect(usage).toContain('会话详情的用量与全局台账一致');
+    expect(usage).toContain('上下文占用已采集');
+  });
+});
+
+describe('真实模型：工具调用闭环', () => {
+  const tool = read('../../scripts/verify-real-tool-use.mjs');
+
+  it('用"只有真读到文件才会出现的标记串"作为证据', () => {
+    // 只断言"有 tool 行"是不够的：工具可能空跑。标记串证明结果真的回灌给了模型。
+    expect(tool).toContain('ZQ7-MARKER-42');
+    expect(tool).toContain('最终回复引用了文件里的真实内容');
+  });
+
+  it('要求工具真的执行成功，而不是一直 running / error', () => {
+    expect(tool).toContain("r.state === 'ok'");
+    expect(tool).toContain('工具执行成功');
+  });
+
+  it('缺凭据时跳过且不打印通过', () => {
+    expect(tool).toContain('SKIP: set REAL_API_KEY, REAL_BASE_URL and REAL_MODEL.');
+    expect(tool).toContain('REAL TOOL USE: OK');
+  });
+});

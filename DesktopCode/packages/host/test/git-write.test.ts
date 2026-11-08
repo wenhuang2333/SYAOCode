@@ -629,7 +629,10 @@ describe('凭据注入与审计脱敏', () => {
         expect(record.detail).not.toContain(token);
         expect(record.detail).not.toContain(token.slice(0, 8));
         expect(record.detail).not.toContain('test-user');
-        expect(record.detail).not.toContain(String(token.length));
+        // token 长度不得泄露。**必须按词边界匹配**：审计里含远端 URL，
+        // 而 URL 的端口是随机的——裸 `toContain('35')` 会在端口恰好含 35 时
+        // 误报（如 `:59359` 里的 "35"）。词边界只匹配独立的数字，保留原意。
+        expect(record.detail).not.toMatch(new RegExp(`\\b${String(token.length)}\\b`));
       }
       expect(audit.records.some((r) => r.result === 'failed')).toBe(true);
 
