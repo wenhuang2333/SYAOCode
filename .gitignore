@@ -32,3 +32,7 @@ coverage/
 .DS_Store
 .syaocode/local.json
 sessions/
+
+# 含明文密钥的本地凭据文件（**绝不**入库）
+AI 后端.txt
+测试 api.txt
