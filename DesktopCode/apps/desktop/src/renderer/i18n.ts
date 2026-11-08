@@ -731,6 +731,13 @@ export interface DesktopMessages {
     /** 产出 aria-label 里的"来源工具"后缀。 */
     readonly artifactLineAria: string;
   };
+  readonly number: {
+    /** 紧凑数字后缀（中文用「万/亿」，英文用 K/M/B）。 */
+    readonly compactTenThousand: string;
+    readonly compactHundredMillion: string;
+    /** 未知大小（`null` 不是 0）。 */
+    readonly unknownSize: string;
+  };
   readonly relative: {
     /** 刚刚（含未来时间戳，避免显示"负几分钟前"）。 */
     readonly justNow: string;
@@ -1188,6 +1195,11 @@ const zh: DesktopMessages = {
     artifactToolLabel: '来源工具',
     artifactLineAria: '{name}，{kind}，{size}，来源工具 {tool}',
   },
+  number: {
+    compactTenThousand: '万',
+    compactHundredMillion: '亿',
+    unknownSize: '未知大小',
+  },
   relative: {
     justNow: '刚刚',
     minutesAgo: '{n} 分钟前',
@@ -1633,6 +1645,11 @@ const en: DesktopMessages = {
     artifactSizeLabel: 'Size',
     artifactToolLabel: 'Source tool',
     artifactLineAria: '{name}, {kind}, {size}, source tool {tool}',
+  },
+  number: {
+    compactTenThousand: 'K',
+    compactHundredMillion: 'M',
+    unknownSize: 'Unknown size',
   },
   relative: {
     justNow: 'just now',

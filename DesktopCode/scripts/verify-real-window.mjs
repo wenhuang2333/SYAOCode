@@ -120,6 +120,22 @@ const env = {
 delete env['ELECTRON_RUN_AS_NODE'];
 
 let app;
+/**
+ * 被中断时也要收掉 Electron 子进程。
+ *
+ * 若脚本被 Ctrl-C / 超时杀掉而没走 `finally`，Electron 会变成孤儿进程活下来，
+ * 占着窗口与单实例锁，导致**下一次**运行报
+ * "Target page, context or browser has been closed" —— 看起来像功能坏了，
+ * 其实只是上一次没退干净。（本仓库真踩过。）
+ */
+const closeOnSignal = (signal) => {
+  void (async () => {
+    await app?.close?.().catch(() => undefined);
+    process.exit(signal === 'SIGINT' ? 130 : 143);
+  })();
+};
+process.once('SIGINT', () => closeOnSignal('SIGINT'));
+process.once('SIGTERM', () => closeOnSignal('SIGTERM'));
 try {
   await seedConfiguration(workspace);
   check('真实渠道与默认模型已持久化', true);

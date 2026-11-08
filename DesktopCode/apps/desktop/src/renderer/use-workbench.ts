@@ -9,6 +9,8 @@ import {
   type WorkspaceTreeResult, type WorkspaceReadFileResult,
 } from '@syaocode/dhp';
 import { isSigningFailure, type GitCommitInput } from './git-sidebar';
+import { tv } from './i18n-views';
+import type { Lang } from './i18n';
 
 interface Bridge {
   readonly host: { info(): Promise<{ port: number; workspaceRoot: string }> };
@@ -52,10 +54,10 @@ export function envelopeOf(baseRevision: number, commandId: string): { readonly 
  *
  * 两种都要能识别失败，否则界面会拿"未完成"当"成功"。
  */
-export function unwrapGitResult<T>(raw: unknown): T | undefined {
+export function unwrapGitResult<T>(raw: unknown, lang: Lang = 'zh'): T | undefined {
   if (typeof raw === 'object' && raw !== null && 'status' in raw) {
     const ack = raw as AckResult;
-    if (!isSuccessfulStatus(ack.status)) throw new Error(ack.reason ?? `操作未完成：${ack.status}`);
+    if (!isSuccessfulStatus(ack.status)) throw new Error(ack.reason ?? tv(lang, 'errors.operationIncomplete', { status: ack.status }));
     return ack.data as T | undefined;
   }
   return raw as T | undefined;
@@ -141,7 +143,7 @@ export function useWorkbench() {
   const actionPending = useRef(false);
 
   const request = useCallback(async <T,>(method: string, params?: unknown): Promise<T> => {
-    if (!conn.current || conn.current.connectionState !== 'ready') throw new Error('本地运行时未连接，请稍后重试。');
+    if (!conn.current || conn.current.connectionState !== 'ready') throw new Error(tv(language, 'errors.runtimeNotConnected'));
     return await conn.current.request(method, params) as T;
   }, []);
 
@@ -217,7 +219,7 @@ export function useWorkbench() {
 
   useEffect(() => {
     const bridge = window.syao;
-    if (!bridge) { setStatus('error'); setError('请通过 LIWENCode 桌面应用启动工作台，本页面需要安全的本机连接。'); return; }
+    if (!bridge) { setStatus('error'); setError(tv(language, 'errors.desktopBridgeMissing')); return; }
     let disposed = false;
     let connection: DhpConnection | undefined;
     const boot = async () => {
@@ -277,7 +279,7 @@ export function useWorkbench() {
     };
     void boot();
     const offCrash = bridge.events.onHostCrashed(() => {
-      setStatus('error'); setError('本地运行时已退出。请重新启动应用；已保存的会话会在启动后恢复。');
+      setStatus('error'); setError(tv(language, 'errors.runtimeExited'));
     });
     return () => {
       disposed = true;
@@ -316,12 +318,12 @@ export function useWorkbench() {
   const envelope = useCallback((baseRevision: number) => envelopeOf(baseRevision, `cmd_${crypto.randomUUID()}`), []);
 
   const command = useCallback(async (method: string, payload: Record<string, unknown> = {}, sid = active.current): Promise<AckResult> => {
-    if (!sid) throw new Error('请先创建或选择会话。');
+    if (!sid) throw new Error(tv(language, 'errors.noSession'));
     const current = await request<SessionSnapshot>(Method.SessionSnapshot, { sessionId: sid });
     const result = await request<AckResult>(method, { ...payload, sessionId: sid, ...envelope(current.revision) });
     if (!isSuccessfulStatus(result.status)) {
       if (active.current === sid) store.current?.replacement(await request<SessionSnapshot>(Method.SessionSnapshot, { sessionId: sid }));
-      throw new Error(result.reason ?? `操作未完成：${result.status}`);
+      throw new Error(result.reason ?? tv(language, 'errors.operationIncomplete', { status: result.status }));
     }
     if (active.current === sid) {
       const next = await request<SessionSnapshot>(Method.SessionSnapshot, { sessionId: sid });
@@ -335,7 +337,7 @@ export function useWorkbench() {
 
   /** Git 状态 + 分支 + 远端 + 认证：一次刷新读齐。 */
   const gitRefresh = useCallback(async (root: string): Promise<void> => {
-    if (!root) { setGitError('请先选择工作区目录。'); return; }
+    if (!root) { setGitError(tv(language, 'errors.noWorkspace')); return; }
     setGitLoading(true);
     try {
       const status = await request<GitStatusResult>(FeatureMethod.GitStatus, { workspaceRoot: root });
@@ -426,7 +428,7 @@ export function useWorkbench() {
   const gitWrite = useCallback(async <T,>(method: string, payload: Record<string, unknown>, root: string): Promise<T | undefined> => {
     const revision = gitStatus?.revision ?? 0;
     const raw = await request<unknown>(method, { ...payload, ...envelope(revision) });
-    const result = unwrapGitResult<T>(raw);
+    const result = unwrapGitResult<T>(raw, language);
     await gitRefresh(root);
     return result;
   }, [request, envelope, gitStatus, gitRefresh]);
@@ -447,7 +449,7 @@ export function useWorkbench() {
    * 签名失败也不写普通错误条，避免与三路径面板重复。
    */
   const gitCommit = useCallback(async (root: string, input: GitCommitInput): Promise<void> => {
-    if (actionPending.current) throw new Error('已有操作正在进行，请稍后重试。');
+    if (actionPending.current) throw new Error(tv(language, 'errors.actionInFlight'));
     actionPending.current = true;
     setMutating(true);
     setError('');
@@ -506,8 +508,8 @@ export function useWorkbench() {
         scope: input.scope,
         ...envelope(revision),
       });
-      const result = unwrapGitResult<GitUploadResult>(raw);
-      if (!result || !result.sha) throw new Error('上传结果不完整，请重试。');
+      const result = unwrapGitResult<GitUploadResult>(raw, language);
+      if (!result || !result.sha) throw new Error(tv(language, 'errors.uploadIncomplete'));
       setGitUpload(result);
       setGitError('');
       await gitRefresh(root);
@@ -561,21 +563,21 @@ export function useWorkbench() {
   /** 凭据写入（主进程窄桥，只写不读回）。 */
   const gitSetToken = useCallback(async (root: string, remote: string, url: string, token: string): Promise<void> => {
     const bridge = window.syao?.git;
-    if (!bridge) throw new Error('主进程尚未提供凭据通道，令牌不会被保存。');
+    if (!bridge) throw new Error(tv(language, 'errors.noCredentialChannel'));
     await bridge.setToken({ workspaceRoot: root, remote, url, token });
     await gitRefresh(root);
   }, [gitRefresh]);
 
   const gitClearAuth = useCallback(async (root: string, remote: string, url: string): Promise<void> => {
     const bridge = window.syao?.git;
-    if (!bridge) throw new Error('主进程尚未提供凭据通道。');
+    if (!bridge) throw new Error(tv(language, 'errors.noCredentialChannelPlain'));
     await bridge.clear({ workspaceRoot: root, remote, url });
     await gitRefresh(root);
   }, [gitRefresh]);
 
   const gitUseSshAgent = useCallback(async (root: string, remote: string, url: string): Promise<void> => {
     const bridge = window.syao?.git;
-    if (!bridge?.useSshAgent) throw new Error('主进程尚未提供 SSH 凭据通道。');
+    if (!bridge?.useSshAgent) throw new Error(tv(language, 'errors.noSshCredentialChannel'));
     await bridge.useSshAgent({ workspaceRoot: root, remote, url });
     await gitRefresh(root);
   }, [gitRefresh]);
@@ -647,8 +649,8 @@ export function useWorkbench() {
 
 
   const createSession = useCallback(() => perform(async () => {
-    if (!workspaceRoot) throw new Error('请先添加项目目录。');
-    const result = await request<{ snapshot: SessionSnapshot }>(Method.SessionCreate, { title: '新会话', workspaceRoot });
+    if (!workspaceRoot) throw new Error(tv(language, 'errors.noProject'));
+    const result = await request<{ snapshot: SessionSnapshot }>(Method.SessionCreate, { title: tv(language, 'errors.newSessionTitle'), workspaceRoot });
     await refresh();
     await selectSession(result.snapshot.meta.sessionId);
   }), [perform, workspaceRoot, request, refresh, selectSession]);
@@ -670,7 +672,7 @@ export function useWorkbench() {
   const send = useCallback((text: string) => perform(async () => {
     const sid = active.current;
     if (!text.trim()) return;
-    if (store.current?.current?.runState !== 'idle') throw new Error('当前会话仍在执行，请等待完成或停止。');
+    if (store.current?.current?.runState !== 'idle') throw new Error(tv(language, 'errors.sessionBusy'));
     const result = await command(Method.TurnSend, { text: text.trim() }, sid);
     const execution = (result.data as { executionId?: string } | undefined)?.executionId;
     if (execution) executions.current.set(sid, execution);
@@ -686,7 +688,7 @@ export function useWorkbench() {
    */
   const runShellCommand = useCallback(async (command: string): Promise<SessionRunCommandResult> => {
     const sid = active.current;
-    if (!sid) throw new Error('请先创建或选择会话。');
+    if (!sid) throw new Error(tv(language, 'errors.noSession'));
     return await request<SessionRunCommandResult>(FeatureMethod.SessionRunCommand, { sessionId: sid, command });
   }, [request]);
 

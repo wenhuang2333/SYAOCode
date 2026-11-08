@@ -15,6 +15,10 @@
  *     否则"改了其中一个"会变成难查的 bug。
  */
 
+import { readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { desktopMessages, t } from '../src/renderer/i18n.ts';
 import { tv, viewsMessages } from '../src/renderer/i18n-views.ts';
@@ -117,4 +121,48 @@ describe('文案与内核行为的一致性（本轮核实的几处）', () => {
     expect(paths).toContain('workbench.welcome.noticeAsking');
     expect(paths).toContain('workbench.welcome.noticeNotAsking');
   });
+});
+
+
+describe('渲染层的 .ts 文件也不能藏裸中文（此前的盲区）', () => {
+  // 之前的扫描只覆盖 `.tsx`，漏掉了 `use-workbench.ts`（16 条运行期错误文案）、
+  // `format.ts`（亿/万、未知大小）与 `theme.ts`（主题标签）。
+  // 后果是：用户切到英文后，界面整体是英文，**唯独出错的红色横幅还是中文**。
+  const CATALOG_FILES = new Set(['i18n.ts', 'i18n-views.ts', 'i18n-agents.ts', 'i18n-mcp.ts']);
+  const RENDERER_DIR = fileURLToPath(new URL('../src/renderer/', import.meta.url));
+
+  it('除文案目录外，renderer 下的 .ts 文件没有裸中文字面量', () => {
+    const offenders: string[] = [];
+    for (const name of readdirSync(RENDERER_DIR)) {
+      if (!name.endsWith('.ts') || CATALOG_FILES.has(name)) continue;
+      const raw = readFileSync(path.join(RENDERER_DIR, name), 'utf8');
+      const code = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      const literals = code.match(/(['"`])(?:\\.|(?!\1)[^\\])*\1/g) ?? [];
+      const chinese = literals.filter((literal) => /[\u4e00-\u9fa5]/.test(literal));
+      if (chinese.length > 0) offenders.push(`${name}: ${chinese.slice(0, 3).join(' ')}`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('错误文案随语言切换（不是只有界面文案切换）', () => {
+    // 这批是运行期错误，会直接进顶部红色横幅。
+    expect(tv('zh', 'errors.runtimeNotConnected')).toMatch(/[\u4e00-\u9fa5]/);
+    expect(tv('en', 'errors.runtimeNotConnected')).not.toMatch(/[\u4e00-\u9fa5]/);
+    expect(tv('en', 'errors.desktopBridgeMissing')).toContain('LIWENCode');
+  });
+});
+
+
+describe('Electron 验证脚本被中断时要收掉子进程', () => {
+  // 若脚本被 Ctrl-C 杀掉而没走 finally，Electron 会变成孤儿进程占着单实例锁，
+  // 下一次运行报 "Target page ... has been closed" —— 看起来像功能坏了。
+  const files = ['../../../scripts/verify-interaction.mjs', '../../../scripts/verify-real-window.mjs'];
+  for (const rel of files) {
+    it(`${rel.split('/').pop()} 注册了 SIGINT/SIGTERM 清理`, () => {
+      const source = readFileSync(new URL(rel, import.meta.url), 'utf8');
+      expect(source).toContain("process.once('SIGINT'");
+      expect(source).toContain("process.once('SIGTERM'");
+      expect(source).toContain('closeOnSignal');
+    });
+  }
 });

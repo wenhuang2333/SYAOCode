@@ -13,11 +13,17 @@ export type ResolvedTheme = 'light' | 'dark';
 
 export const THEME_STORAGE_KEY = 'syao:theme';
 
-export const THEME_OPTIONS: readonly { readonly value: ThemePreference; readonly label: string }[] = [
-  { value: 'system', label: '跟随系统' },
-  { value: 'light', label: '浅色' },
-  { value: 'dark', label: '深色' },
-];
+/**
+ * 三档偏好的**顺序**（循环切换用）。
+ *
+ * 标签**不放在这里**：它们属于文案目录（`i18n-views.ts` 的 `workbench.topbar.theme*`，
+ * 由 `themeLabel(lang, preference)` 取）。此前后者已经存在、这里也留了一份中文，
+ * 两份必然漂移——删掉本地那份，只留顺序。
+ */
+export const THEME_ORDER: readonly ThemePreference[] = ['system', 'light', 'dark'];
+
+/** 兼容既有测试/调用方的别名（只含档位，不含文案）。 */
+export const THEME_OPTIONS: readonly { readonly value: ThemePreference }[] = THEME_ORDER.map((value) => ({ value }));
 
 /** 从任意输入解析偏好；无法识别时退回 `system`（不抛错，存储可能被清空）。 */
 export function parseThemePreference(raw: string | null | undefined): ThemePreference {

@@ -158,8 +158,8 @@ export function changeLineLabel(change: FileChange, lang: Lang = 'zh'): string {
 }
 
 /** 产出大小文案。 */
-export function artifactSizeText(artifact: Artifact): string {
-  return formatBytes(artifact.sizeBytes);
+export function artifactSizeText(artifact: Artifact, lang: Lang = 'zh'): string {
+  return formatBytes(artifact.sizeBytes, lang);
 }
 
 /** 产出 `aria-label`：名称 / 类型 / 大小 / 来源工具 / 时间。 */
@@ -167,7 +167,7 @@ export function artifactLineLabel(artifact: Artifact, lang: Lang = 'zh'): string
   return t(lang, 'detail.artifactLineAria', {
     name: artifact.name,
     kind: artifactKindLabels(lang)[artifact.kind],
-    size: artifactSizeText(artifact),
+    size: artifactSizeText(artifact, lang),
     tool: artifact.tool,
   });
 }

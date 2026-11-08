@@ -18,6 +18,29 @@ import type { Lang } from './i18n';
 export type { Lang };
 
 export interface ViewsMessages {
+  /**
+   * 宿主侧错误提示（`use-workbench.ts`）。
+   *
+   * 单独成组：这些是**运行期错误**，会直接出现在顶部红色横幅里。
+   * 它们此前是硬编码中文——用户切到英文后，界面整体是英文，
+   * 唯独出错的横幅还是中文。半翻译的界面比全中文更难判断发生了什么。
+   */
+  readonly errors: {
+    readonly operationIncomplete: string;
+    readonly runtimeNotConnected: string;
+    readonly desktopBridgeMissing: string;
+    readonly runtimeExited: string;
+    readonly noSession: string;
+    readonly noWorkspace: string;
+    readonly actionInFlight: string;
+    readonly uploadIncomplete: string;
+    readonly noCredentialChannel: string;
+    readonly noCredentialChannelPlain: string;
+    readonly noSshCredentialChannel: string;
+    readonly noProject: string;
+    readonly sessionBusy: string;
+    readonly newSessionTitle: string;
+  };
 
   readonly workbench: {
     readonly nav: {
@@ -899,8 +922,7 @@ export interface ViewsMessages {
   };
 }
 
-const zh: ViewsMessages = {
-  workbench: {
+const zh: ViewsMessages = {  workbench: {
     nav: {
       chat: '工作台',
       usage: '用量统计',
@@ -1378,8 +1400,24 @@ const zh: ViewsMessages = {
       dateOrder: '开始日期不能晚于结束日期，请调整日期范围。',
     },
   },
-};
 
+  errors: {
+    operationIncomplete: '操作未完成：{status}',
+    runtimeNotConnected: '本地运行时未连接，请稍后重试。',
+    desktopBridgeMissing: '请通过 LIWENCode 桌面应用启动工作台，本页面需要安全的本机连接。',
+    runtimeExited: '本地运行时已退出。请重新启动应用；已保存的会话会在启动后恢复。',
+    noSession: '请先创建或选择会话。',
+    noWorkspace: '请先选择工作区目录。',
+    actionInFlight: '已有操作正在进行，请稍后重试。',
+    uploadIncomplete: '上传结果不完整，请重试。',
+    noCredentialChannel: '主进程尚未提供凭据通道，令牌不会被保存。',
+    noCredentialChannelPlain: '主进程尚未提供凭据通道。',
+    noSshCredentialChannel: '主进程尚未提供 SSH 凭据通道。',
+    noProject: '请先添加项目目录。',
+    sessionBusy: '当前会话仍在执行，请等待完成或停止。',
+    newSessionTitle: '新会话',
+  },
+};
 const en: ViewsMessages = {
   workbench: {
     nav: {
@@ -1858,6 +1896,23 @@ const en: ViewsMessages = {
       dateRangeRequired: 'Choose a valid start and end date.',
       dateOrder: 'The start date cannot be later than the end date; adjust the range.',
     },
+  },
+
+  errors: {
+    operationIncomplete: 'The operation did not complete: {status}',
+    runtimeNotConnected: 'The local runtime is not connected. Try again shortly.',
+    desktopBridgeMissing: 'Open the workbench from the LIWENCode desktop app; this page needs a secure local connection.',
+    runtimeExited: 'The local runtime exited. Restart the app; saved sessions will be restored on startup.',
+    noSession: 'Create or select a session first.',
+    noWorkspace: 'Choose a workspace folder first.',
+    actionInFlight: 'Another operation is already running. Try again shortly.',
+    uploadIncomplete: 'The upload returned an incomplete result. Try again.',
+    noCredentialChannel: 'The main process does not expose a credential channel, so the token will not be stored.',
+    noCredentialChannelPlain: 'The main process does not expose a credential channel.',
+    noSshCredentialChannel: 'The main process does not expose an SSH credential channel.',
+    noProject: 'Add a project folder first.',
+    sessionBusy: 'This session is still running; wait for it to finish or stop it.',
+    newSessionTitle: 'New session',
   },
 };
 

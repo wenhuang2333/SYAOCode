@@ -15,12 +15,19 @@ export function formatNumber(value: number | null | undefined): string {
   return numberFormat.format(value);
 }
 
-/** 紧凑数字（万 / 亿），用于角标。 */
-export function formatCompactNumber(value: number | null | undefined): string {
+/** 紧凑数字（中文「万/亿」、英文「K/M」），用于角标。 */
+export function formatCompactNumber(value: number | null | undefined, lang: Lang = 'zh'): string {
   if (value == null || !Number.isFinite(value)) return '—';
   const abs = Math.abs(value);
-  if (abs >= 100_000_000) return `${(value / 100_000_000).toFixed(1)}亿`;
-  if (abs >= 10_000) return `${(value / 10_000).toFixed(1)}万`;
+  // 中文习惯「万/亿」，英文习惯「K/M」——直接照搬会让英文界面出现「1.2亿」。
+  if (lang === 'en') {
+    if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`;
+    if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+    if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+    return `${value}`;
+  }
+  if (abs >= 100_000_000) return `${(value / 100_000_000).toFixed(1)}${t(lang, 'number.compactHundredMillion')}`;
+  if (abs >= 10_000) return `${(value / 10_000).toFixed(1)}${t(lang, 'number.compactTenThousand')}`;
   return numberFormat.format(value);
 }
 
@@ -39,8 +46,8 @@ export function formatDuration(ms: number | null | undefined): string {
 }
 
 /** 字节数；`null` 表示"未知大小"，不冒充 0。 */
-export function formatBytes(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value) || value < 0) return '未知大小';
+export function formatBytes(value: number | null | undefined, lang: Lang = 'zh'): string {
+  if (value == null || !Number.isFinite(value) || value < 0) return t(lang, 'number.unknownSize');
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;

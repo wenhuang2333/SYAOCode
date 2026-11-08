@@ -13,7 +13,15 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+
+const run = promisify(execFile);
+// 测试文件在 apps/desktop/test/ → 仓库根在 ../../
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 const read = (rel: string): string => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
 const model = read('../../scripts/verify-real-model.mjs');
@@ -154,4 +162,36 @@ describe('真实模型：审批流（N-24 / N-25）', () => {
   it('覆盖多步工具调用（同一轮内多次调用并收敛）', () => {
     expect(approval).toContain('同一轮内发生多次工具调用并收敛');
   });
+});
+
+
+describe('没有凭据时必须跳过，而不是"通过"或失败', () => {
+  // 这是这些脚本能进 CI 的前提。逐个实跑，不靠读源码推断——
+  // 读源码只能证明"写了 SKIP"，证明不了"真的会跳过"。
+  const scripts = [
+    ['verify-real-model', 'REAL MODEL: OK'],
+    ['verify-real-window', 'REAL WINDOW: OK'],
+    ['verify-real-usage', 'REAL USAGE: OK'],
+    ['verify-real-tool-use', 'REAL TOOL USE: OK'],
+    ['verify-real-approval', 'REAL APPROVAL: OK'],
+    ['verify-real-commit-message', 'COMMIT MESSAGE: OK'],
+  ] as const;
+
+  for (const [name, okMarker] of scripts) {
+    it(`${name}：无凭据时退出 0、说明跳过，且**不**打印通过标记`, async () => {
+      const env = { ...process.env } as NodeJS.ProcessEnv;
+      delete env['REAL_API_KEY'];
+      delete env['REAL_BASE_URL'];
+      delete env['REAL_MODEL'];
+      delete env['SYAO_PLAYWRIGHT'];
+      const { stdout, stderr } = await run(
+        'node',
+        ['--import', 'tsx', path.join(ROOT, 'scripts', `${name}.mjs`)],
+        { cwd: ROOT, env },
+      );
+      const output = `${stdout}${stderr}`;
+      expect(output).toContain('SKIP');
+      expect(output).not.toContain(okMarker);
+    }, 60_000);
+  }
 });
