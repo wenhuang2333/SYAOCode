@@ -182,9 +182,27 @@ export interface TurnSteerParams {
   readonly commandId: string;
   readonly baseRevision: number;
   readonly sessionId: string;
+  /**
+   * **必填**：必须命中当前执行 id（`06` §5.5 / `28` §2）。
+   * 不匹配 = 迟到的 steer，Host 回 `noop`（reason `execution already changed`），
+   * **不得**排入下一轮执行。
+   */
+  readonly expectedExecutionId: string;
+  /** 补充指令文本，1..10 000 字符（`28` §2）。 */
   readonly text: string;
 }
-export type TurnSteerResult = AckResult;
+
+/**
+ * `turn/steer` 的业务结果（放在 ACK 的 `data` 里）。
+ *
+ * **`queued: true` 只表示"已接受排队"**：不表示模型已看到，更不表示执行成功。
+ * 终态只能从事件流读：`steer.consumed` / `steer.not_consumed`。
+ */
+export interface TurnSteerResult {
+  readonly queued: true;
+  readonly executionId: string;
+  readonly steerId: string;
+}
 
 export interface InteractionResolveParams {
   readonly commandId: string;

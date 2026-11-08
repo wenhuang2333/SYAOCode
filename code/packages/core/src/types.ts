@@ -41,6 +41,8 @@ export type Role = 'user' | 'assistant';
 export interface MessageMeta {
   providerData?: unknown;
   createdAt: number;
+  /** Present when this user message was injected from the steer channel (contract §3.3). */
+  steerId?: string;
 }
 
 export interface Message {

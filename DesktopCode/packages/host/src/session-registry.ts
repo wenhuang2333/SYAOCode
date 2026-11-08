@@ -11,6 +11,7 @@ import {
   type AgentEvent,
   type Message,
   type PermissionMode,
+  type SteerQueueHandle,
   type Usage,
 } from '@liwencode/core';
 import {
@@ -24,6 +25,7 @@ import {
   type SessionSnapshot,
   type DesktopSessionSummary,
 } from '@liwencode/dhp';
+import type { PendingSteer } from './desktop-state.ts';
 
 /** 事件环大小：足够覆盖"客户端断线 30 秒"期间的补洞需求。 */
 export const EVENT_RING_SIZE = 4096;
@@ -49,6 +51,13 @@ export interface SessionState {
   /** 当前正在执行的 turn 的执行 id（用于 `turn/stop` 的 expectedExecutionId）。 */
   executionId?: string;
   abort?: AbortController;
+  /**
+   * 已接受排队、尚未注入的 steer（`28` §4 崩溃恢复）。
+   *
+   * 它**不是**对话真相（对话只以内核 history 为准），只是"重启后要补一条
+   * `steer.not_consumed`"的记账；消费/未消费事件到达时立刻移除。
+   */
+  pendingSteers: PendingSteer[];
 }
 
 export type DeltaListener = (delta: SessionDelta) => void;
@@ -65,7 +74,7 @@ export class SessionRegistry {
 
   constructor(private readonly now: () => number = Date.now, private readonly onChange: () => void = () => {}) {}
 
-  restore(saved: { snapshot: SessionSnapshot; turn: number; archived: boolean }): SessionState {
+  restore(saved: { snapshot: SessionSnapshot; turn: number; archived: boolean; pendingSteers?: readonly PendingSteer[] }): SessionState {
     const old = saved.snapshot;
     const interrupted = old.runState !== 'idle' || old.pendingInteractions.length > 0;
     const rows: ProjectionRow[] = old.rows.map((r) => {
@@ -75,7 +84,20 @@ export class SessionRegistry {
     });
     if (interrupted) rows.push({ kind: 'marker', key: `restart:${old.epoch + 1}`, seq: old.seq, tone: 'warn', text: 'Host restarted; previous run and approvals were interrupted.' });
     const snapshot: SessionSnapshot = { ...old, rows, epoch: old.epoch + 1, revision: old.revision + 1, runState: 'idle', pendingInteractions: [] };
-    const s: SessionState = { sessionId: old.meta.sessionId, title: old.meta.title, createdAt: old.meta.createdAt, updatedAt: old.meta.updatedAt, epoch: snapshot.epoch, snapshot, events: [], ringFloor: snapshot.seq + 1, runState: 'idle', turn: saved.turn, archived: saved.archived };
+    const s: SessionState = {
+      sessionId: old.meta.sessionId,
+      title: old.meta.title,
+      createdAt: old.meta.createdAt,
+      updatedAt: old.meta.updatedAt,
+      epoch: snapshot.epoch,
+      snapshot,
+      events: [],
+      ringFloor: snapshot.seq + 1,
+      runState: 'idle',
+      turn: saved.turn,
+      archived: saved.archived,
+      pendingSteers: [...(saved.pendingSteers ?? [])],
+    };
     this.states.set(s.sessionId, s);
     return s;
   }
@@ -109,6 +131,7 @@ export class SessionRegistry {
       ringFloor: 1,
       runState: 'idle',
       turn: 0,
+      pendingSteers: [],
     };
     this.states.set(params.sessionId, state);
     return state;
@@ -408,6 +431,10 @@ export function toSessionEvents(ev: AgentEvent): SessionEvent[] {
       }
       return out;
     }
+    case 'steer.consumed':
+      return [{ type: 'steer.consumed', steerId: ev.steerId, text: ev.text, turn: ev.turn }];
+    case 'steer.not_consumed':
+      return [{ type: 'steer.not_consumed', steerId: ev.steerId, text: ev.text, reason: ev.reason }];
     // 审批事件由 broker 负责产生（它们携带 UI 需要的归一化字段），
     // 这里**不**重复翻译，避免出现两条来源不同的审批卡片。
     case 'permission.request':
@@ -446,15 +473,21 @@ export async function pumpAgentEvents(
   hooks: {
     readonly onPending: (pending: readonly PendingInteraction[]) => void;
     readonly pendingOf: () => readonly PendingInteraction[];
+    /** steer 状态事件（Host 据此清理 pendingSteers 记账；真相仍是内核 history）。 */
+    readonly onSteer?: (ev: Extract<SessionEvent, { type: 'steer.consumed' | 'steer.not_consumed' }>) => void;
   },
+  opts: { readonly steer?: SteerQueueHandle } = {},
 ): Promise<{ endReason: string; finalText: string; permissionDenied: boolean }> {
   // No sessionId option: history is seeded exactly once by Host, never reloaded by run().
-  for await (const ev of agent.run(input, { signal })) {
+  // `steer` 缺省时行为与没有 steer 通道时完全一致（`28` §3.1 回归要求）。
+  const runOpts = { signal, ...(opts.steer !== undefined ? { steer: opts.steer } : {}) };
+  for await (const ev of agent.run(input, runOpts)) {
     for (const mapped of toSessionEvents(ev)) {
       // Kernel turns are internal tool iterations. Only Host finally ends the run.
       if (mapped.type === 'turn.end') continue;
       registry.append(sessionId, mapped.type === 'error' ? { ...mapped, fatal: false } : mapped);
       if (mapped.type === 'permission.request' || mapped.type === 'permission.result') hooks.onPending(hooks.pendingOf());
+      if (mapped.type === 'steer.consumed' || mapped.type === 'steer.not_consumed') hooks.onSteer?.(mapped);
     }
   }
 

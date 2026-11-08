@@ -222,6 +222,23 @@ export interface ViewsMessages {
       readonly modelFootnote: string;
       /** Enter 发送 · Shift Enter 换行 */
       readonly enterHint: string;
+      // ── 运行中的补充指令（steer，`28` §6）──────────────────────────
+      /** 作为补充指令排队（运行中发送按钮文案） */
+      readonly steerSend: string;
+      /** 运行中：输入补充指令，将在下一安全边界注入后续模型请求 */
+      readonly steerPlaceholder: string;
+      /** 当前执行仍在进行：提交将作为补充指令排队，不打断当前输出 */
+      readonly steerHint: string;
+      /** 补充指令未排队：{reason} */
+      readonly steerFailed: string;
+      /** 当前没有正在运行的任务，请直接发送消息。 */
+      readonly steerNotRunning: string;
+      /** 无法确认当前执行 id（可能刚重连）。为避免排错队，请等本轮结束后再发送。 */
+      readonly steerNoExecution: string;
+      /** 执行已经变化，补充指令未排队（本轮可能已结束）。 */
+      readonly steerExecutionChanged: string;
+      /** 连接中断：补充指令状态未确认，正在与本地运行时核对。 */
+      readonly steerUnconfirmed: string;
     };
     readonly permission: {
       /** 只读规划 */
@@ -1019,6 +1036,14 @@ const zh: ViewsMessages = {  workbench: {
       mockFootnote: '离线演示模型 · 不会调用真实厂商 API',
       modelFootnote: '模型输出仅供参考，工具执行由权限引擎控制',
       enterHint: 'Enter 发送 · Shift Enter 换行',
+      steerSend: '作为补充指令排队',
+      steerPlaceholder: '运行中：输入补充指令，将在下一安全边界注入后续模型请求',
+      steerHint: '当前执行仍在进行：提交将作为补充指令排队，不打断当前输出，也不等于批准任何审批。',
+      steerFailed: '补充指令未排队：{reason}',
+      steerNotRunning: '当前没有正在运行的任务，请直接发送消息。',
+      steerNoExecution: '无法确认当前执行 id（可能刚重连）。为避免排错队，请等本轮结束后再发送。',
+      steerExecutionChanged: '执行已经变化，补充指令未排队（本轮可能已结束）。',
+      steerUnconfirmed: '连接中断：补充指令状态未确认，正在与本地运行时核对。',
     },
     permission: {
       plan: '只读规划',
@@ -1516,6 +1541,14 @@ const en: ViewsMessages = {
       mockFootnote: 'Offline demo model · does not call any real vendor API',
       modelFootnote: 'Model output is advisory only; tool execution is governed by the permission engine',
       enterHint: 'Enter to send · Shift+Enter for a newline',
+      steerSend: 'Queue as follow-up',
+      steerPlaceholder: 'Running: type a follow-up to inject before the next model request',
+      steerHint: 'The current run is still active: submitting queues this as a follow-up. It does not interrupt the current output and does not approve any request.',
+      steerFailed: 'Follow-up not queued: {reason}',
+      steerNotRunning: 'Nothing is running right now — send a normal message instead.',
+      steerNoExecution: 'Cannot confirm the current execution id (the connection may have just reconnected). To avoid queueing into the wrong run, wait until this run ends and send again.',
+      steerExecutionChanged: 'The execution changed, so the follow-up was not queued (this run may already be over).',
+      steerUnconfirmed: 'Connection lost: the follow-up state is unconfirmed; reconciling with the local runtime.',
     },
     permission: {
       plan: 'Read-only plan',

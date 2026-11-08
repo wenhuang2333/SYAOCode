@@ -395,3 +395,8 @@ body{font-size:13px;background:var(--sy-surface-gray-100);line-height:1.6}button
 .inline-confirm .data-note{color:var(--sy-text-muted)}
 .inline-confirm .agent-group-actions{margin-top:2px}
 .inline-confirm button:focus-visible{outline:2px solid var(--sy-danger);outline-offset:2px}
+
+/* 运行中的补充指令（steer，`28` §6）：提示条必须和 shell 命令提示区分开，
+   用 violet 而不是 orange；它表达的是"排队"，不是"本地命令"。 */
+.composer-steer-hint{border-color:var(--sy-border-violet-085);background:var(--sy-surface-violet-100-2);color:var(--sy-text-violet-055)}
+.composer-shell .composer-actions>.btn-primary.composer-steer{background:var(--sy-surface-violet-060);border-color:var(--sy-surface-violet-060)}

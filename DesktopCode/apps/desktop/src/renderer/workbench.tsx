@@ -143,7 +143,8 @@ function ModelPicker({ w, close }: { w: Workbench; close: () => void }) {
   </div>;
 }
 
-function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: 'bypass') => void; onSlot: (slot: 'git' | 'detail') => void }) {
+/** 会话视图（导出供静态渲染测试：运行中必须显示"作为补充指令排队"的语义）。 */
+export function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: 'bypass') => void; onSlot: (slot: 'git' | 'detail') => void }) {
   // 文案随配置里的语言走；`Conversation` 是独立组件，自己取一份。
   const m = messages(w.language);
   const [picker, setPicker] = useState(false);
@@ -168,6 +169,17 @@ function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: '
   const trigger = detectTrigger(w.draft, caret);
   const shellHint = shellHintFor(w.draft, w.language);
   const canStop = Boolean(w.sessionId) && w.snapshot !== undefined && !idle && !w.mutating;
+  /**
+   * 运行中：发送动作变成「作为补充指令排队」（`28` §6）。
+   * 快照未加载时**不**进入 steer 模式（否则没有会话也会显示排队文案）。
+   */
+  const steerMode = w.snapshot !== undefined && !idle;
+  /**
+   * 重连/断线期间，本地无法确认 queued 行是否仍成立：
+   * 显示"状态未确认"，而不是继续假装它还在队列里（`28` §6 最后一行）。
+   */
+  const steerUnconfirmed = w.status !== 'ready'
+    && (w.snapshot?.rows ?? []).some((row) => row.kind === 'steer' && row.state === 'queued');
   useEffect(() => { follow.current = true; }, [w.sessionId]);
   useEffect(() => { if (follow.current) bottom.current?.scrollIntoView({ block: 'end' }); }, [w.snapshot?.seq, w.sessionId]);
   useEffect(() => { setPicker(false); }, [w.sessionId]);
@@ -312,12 +324,16 @@ function Conversation({ w, confirm, onSlot }: { w: Workbench; confirm: (value: '
       {picker && <ModelPicker w={w} close={() => setPicker(false)} />}
       <Composer value={w.draft} onChange={w.setDraft} onSubmit={(text) => {
         follow.current = true;
-        // `!` 分支：本地执行，绝不交给模型（也不经过 w.send）。
+        // `!` 分支：本地执行，绝不交给模型（也不经过 w.send / w.steer）。
+        // shell 命令不是 steer——运行中照旧本地执行，语义不变。
         if (isShellCommand(text)) { void submitShell(text); return; }
+        if (steerMode) { void w.steer(text); return; }
         void w.send(text);
-      }} m={m} disabled={disabled} busy={w.mutating || (Boolean(w.sessionId) && !idle) || shellBusy} awaitingApproval={pending.length > 0} />
+      }} m={m} disabled={disabled} busy={w.mutating || shellBusy} awaitingApproval={pending.length > 0} steerMode={steerMode} steerSubmitLabel={tv(w.language, 'workbench.conversation.steerSend')} steerPlaceholder={tv(w.language, 'workbench.conversation.steerPlaceholder')} />
       <ComposerPalette lang={w.language} text={w.draft} caret={caret} files={files} filesLoading={filesLoading} filesError={filesError} canStop={canStop} disabled={disabled} anchorRef={composer} onAction={paletteAction} onText={applyComposerText} />
+      {steerMode && <div className="composer-shell-hint composer-steer-hint" role="status">{tv(w.language, 'workbench.conversation.steerHint')}</div>}
       {shellHint && <div className="composer-shell-hint" role="status">{shellHint}</div>}
+      {steerUnconfirmed && <div className="composer-notice" role="status">{tv(w.language, 'workbench.conversation.steerUnconfirmed')}</div>}
       {notice && <div className="composer-notice" role="status">{notice}</div>}
       <div className="composer-toolbar">
         <div className="composer-options">

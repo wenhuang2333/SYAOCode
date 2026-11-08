@@ -33,6 +33,7 @@ import {
 } from './evidence.js';
 import { lintClaims, verdictOf, type ClaimCheck, type Verdict } from './claims.js';
 import { discoverVerification, runVerification, type DiscoveredCommand, type VerificationOptions } from './verify.js';
+import type { SteerNotConsumedReason, SteerQueueHandle } from './steer.js';
 
 /**
  * createAgent + run loop (DD-2). The loop owns nothing global: every state
@@ -98,6 +99,12 @@ export interface RunOptions {
   /** Resume a previous session (history reloaded from the store). */
   sessionId?: string;
   maxTurnsOverride?: number;
+  /**
+   * Run-scoped steer channel (N-2 / FR-N-032, contract §3.1). The run loop
+   * drains it at safe boundaries and closes it when the run ends. Omitted =
+   * no steer capability, i.e. the loop behaves exactly as before.
+   */
+  steer?: SteerQueueHandle;
 }
 
 export interface RunSummary {
@@ -192,6 +199,9 @@ export function createAgent(config: AgentConfig): Agent {
 
   async function* run(input: string | Message[], opts: RunOptions = {}): AsyncGenerator<AgentEvent, RunSummary> {
     const signal = opts.signal ?? new AbortController().signal;
+    // Steer channel (contract §3.1): `undefined` = no steer capability, and the
+    // loop below then takes exactly the pre-steer code path.
+    const steer = opts.steer;
     const effectiveLimits: Limits = {
       ...limits,
       ...(opts.maxTurnsOverride !== undefined ? { maxTurns: opts.maxTurnsOverride } : {}),
@@ -439,6 +449,26 @@ export function createAgent(config: AgentConfig): Agent {
         currentTurnId = `turn_${turns}`;
         yield out({ type: 'turn.start', turn: turns });
 
+        // ── steer injection boundary (contract §3.2/§3.3) ──
+        // Drained only here — after `turn.start`, before the request is built —
+        // so a provider stream or a tool batch that is still running is never
+        // interrupted, and every `tool_use`/`tool_result` pair stays intact.
+        // A run that is already stopping must not consume: those items are
+        // reported as `steer.not_consumed` when the run ends instead.
+        if (steer !== undefined && !signal.aborted) {
+          for (const submission of steer.drain()) {
+            const injected: Message = {
+              id: runtime.ids.next('msg'),
+              role: 'user',
+              content: [{ type: 'text', text: submission.text }],
+              meta: { createdAt: runtime.clock.now(), steerId: submission.id },
+            };
+            history.push(injected);
+            await session?.append(resumedSessionId, [messageEntry(resumedSessionId, runtime)(injected)]);
+            yield out({ type: 'steer.consumed', steerId: submission.id, text: submission.text, turn: turns });
+          }
+        }
+
         // ── model call ──
         const tools: ToolDefinition[] | undefined =
           registry.list().length > 0 ? registry.definitions() : undefined;
@@ -537,6 +567,14 @@ export function createAgent(config: AgentConfig): Agent {
 
         const calls = toolCallsOf(assistant);
         if (calls.length === 0) {
+          // Contract §3.2: a steer submitted during this (final) model output
+          // must not end the run. Close the turn first, then loop once more so
+          // the next iteration injects it and calls the model again.
+          if (steer !== undefined && steer.size > 0 && !signal.aborted) {
+            yield out({ type: 'turn.end', turn: turns });
+            currentTurnId = undefined;
+            continue loop;
+          }
           finalText = assistant.content
             .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
             .map((b) => b.text)
@@ -703,6 +741,19 @@ export function createAgent(config: AgentConfig): Agent {
       }
     }
 
+    // ── steer leftovers (contract §3.2/§3.4) ──
+    // The loop re-checks the queue at its completion decision, so a steer
+    // submitted during the last model output is injected into a further turn.
+    // Whatever is still pending here arrived after that boundary (e.g. during
+    // verification): report it instead of dropping it silently, and close the
+    // channel so no later run can replay it.
+    if (steer !== undefined) {
+      const reason = notConsumedReasonOf(endReason);
+      for (const submission of steer.close()) {
+        yield out({ type: 'steer.not_consumed', steerId: submission.id, text: submission.text, reason });
+      }
+    }
+
     const endEvent = out({ type: 'session.end', reason: endReason });
     bus.end();
     yield endEvent;
@@ -740,6 +791,31 @@ export function createAgent(config: AgentConfig): Agent {
       bus.end();
     },
   };
+}
+
+/** Map a run end reason to the steer `not_consumed` reason (contract §3.4). */
+function notConsumedReasonOf(endReason: EndReason): SteerNotConsumedReason {
+  switch (endReason) {
+    case 'aborted':
+      return 'aborted';
+    case 'max_turns':
+      return 'max_turns';
+    case 'budget_exhausted':
+      return 'budget_exhausted';
+    case 'timeout':
+      return 'timeout';
+    case 'fatal_error':
+      return 'fatal_error';
+    case 'repeated_failure':
+      return 'repeated_failure';
+    // A clean stop still closes the channel: a steer that missed the final
+    // injection boundary is reported as 'closed' (visible, never replayed).
+    case 'completed':
+    case 'permission_denied':
+    case 'unverified':
+    case 'verification_failed':
+      return 'closed';
+  }
 }
 
 function messageEntry(sessionId: string, runtime: Runtime) {

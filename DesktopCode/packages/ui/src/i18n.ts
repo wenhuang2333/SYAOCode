@@ -36,6 +36,21 @@ export interface Messages {
   readonly toolRunning: string;
   readonly toolOk: string;
   readonly toolError: string;
+  /**
+   * steer 投影行（`28-多轮steer行为契约` §5/§6）。
+   *
+   * steer 不是普通用户消息：它是"运行中的补充指令"，必须一眼能与 user 行区分。
+   * 三种状态都要有独立文案；未注入（notConsumed）**必须**显示原因。
+   */
+  readonly steerRow: string;
+  readonly steerQueued: string;
+  readonly steerConsumed: string;
+  /** 已注入并带轮次（`{turn}` 由渲染器替换）。 */
+  readonly steerConsumedTurn: string;
+  /** 未注入且带原因（`{reason}` 由渲染器替换）。 */
+  readonly steerNotConsumedReason: string;
+  /** 未注入但 Host 没给原因：不编造，显示"原因未知"。 */
+  readonly steerNotConsumedUnknown: string;
 }
 
 const zh: Messages = {
@@ -64,6 +79,12 @@ const zh: Messages = {
   toolRunning: '执行中',
   toolOk: '已完成',
   toolError: '失败',
+  steerRow: '补充指令',
+  steerQueued: '已排队',
+  steerConsumed: '已注入',
+  steerConsumedTurn: '已注入（第 {turn} 轮）',
+  steerNotConsumedReason: '未注入：{reason}',
+  steerNotConsumedUnknown: '未注入：原因未知（Host 未提供）',
 };
 
 const en: Messages = {
@@ -92,6 +113,12 @@ const en: Messages = {
   toolRunning: 'running',
   toolOk: 'done',
   toolError: 'failed',
+  steerRow: 'Follow-up',
+  steerQueued: 'Queued',
+  steerConsumed: 'Delivered',
+  steerConsumedTurn: 'Delivered (turn {turn})',
+  steerNotConsumedReason: 'Not delivered: {reason}',
+  steerNotConsumedUnknown: 'Not delivered: reason unknown (the Host did not report one)',
 };
 
 const BUNDLES: Readonly<Record<Lang, Messages>> = { zh, en };

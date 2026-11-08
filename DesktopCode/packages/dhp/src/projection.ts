@@ -12,7 +12,7 @@
  */
 
 /** 行类型。UI 的虚拟列表按 kind 选择渲染器。 */
-export type ProjectionRowKind = 'message' | 'thinking' | 'toolCall' | 'marker';
+export type ProjectionRowKind = 'message' | 'thinking' | 'toolCall' | 'marker' | 'steer';
 
 export interface MessageRow {
   readonly kind: 'message';
@@ -60,7 +60,31 @@ export interface MarkerRow {
   readonly text: string;
 }
 
-export type ProjectionRow = MessageRow | ThinkingRow | ToolCallRow | MarkerRow;
+/**
+ * steer 行（`28-多轮steer行为契约` §5）。
+ *
+ * 一条 steer **只有一行**：`steer.queued` 建行（queued），后续
+ * `steer.consumed` / `steer.not_consumed` 按 `steerId` 就地改状态。
+ * 三种状态分别表示：已接受排队 / 已在安全边界注入模型历史 / 未注入（带原因）。
+ *
+ * 它不是用户消息的替身 —— steer 文本的**唯一真相**是内核注入的那条 user 消息；
+ * 这一行只是过程状态（避免把"排队"误显示成"已发送"）。
+ */
+export interface SteerRow {
+  readonly kind: 'steer';
+  readonly key: string;
+  readonly seq: number;
+  readonly steerId: string;
+  readonly text: string;
+  readonly state: 'queued' | 'consumed' | 'notConsumed';
+  /** 未注入原因（`aborted` / `max_turns` / `budget_exhausted` / `timeout` /
+   *  `fatal_error` / `repeated_failure` / `closed` / `host_restarted`）。 */
+  readonly reason?: string;
+  /** 被消费到的轮次（consumed 态才有）。 */
+  readonly turn?: number;
+}
+
+export type ProjectionRow = MessageRow | ThinkingRow | ToolCallRow | MarkerRow | SteerRow;
 
 /** 待处理交互（审批 / 向导 / ask_user）。它是投影的一部分，因此重连后会自动恢复。 */
 export interface PendingInteraction {
@@ -145,6 +169,9 @@ export type SessionEvent =
   | { readonly type: 'verification.result'; readonly ok: boolean; readonly detail: string }
   | { readonly type: 'usage'; readonly inputTokens: number; readonly outputTokens: number; readonly costUsd?: number }
   | { readonly type: 'budget.warning'; readonly kind: 'tokens' | 'cost' | 'turns'; readonly ratio: number }
+  | { readonly type: 'steer.queued'; readonly steerId: string; readonly text: string; readonly executionId: string }
+  | { readonly type: 'steer.consumed'; readonly steerId: string; readonly text: string; readonly turn: number }
+  | { readonly type: 'steer.not_consumed'; readonly steerId: string; readonly text: string; readonly reason: string }
   | { readonly type: 'error'; readonly code: string; readonly message: string; readonly fatal: boolean }
   | { readonly type: 'turn.end'; readonly turn: number }
   | { readonly type: 'session.end'; readonly reason: string; readonly errorCode?: string };
@@ -175,6 +202,10 @@ export const NON_DROPPABLE_EVENTS: readonly SessionEvent['type'][] = [
   'verification.start',
   'verification.result',
   'budget.warning',
+  // steer 的三种状态转移是"过程证据"：丢掉会让用户永远看到 queued（或看不到未注入原因）。
+  'steer.queued',
+  'steer.consumed',
+  'steer.not_consumed',
   'error',
   'turn.end',
   'session.end',
@@ -316,14 +347,18 @@ function foldEvent(
   ev: SessionEvent,
   seq: number,
 ): FoldState {
-  const last = rows[rows.length - 1];
+  // 流式行只追加到"最后一条内容行"：steer 行是过程注记，可能追加在流式消息之后，
+  // 但它**不得**把同一条 assistant 消息切成两行（否则时间线上会出现重复的半截消息）。
+  const last = lastContentRow(rows);
 
   switch (ev.type) {
     case 'text.delta': {
       // 追加到当前未完成的 assistant 行；没有就新建。
-      if (last !== undefined && last.kind === 'message' && last.role === 'assistant' && !last.final) {
-        const next: MessageRow = { ...last, text: last.text + ev.text, seq };
-        return { rows: [...rows.slice(0, -1), next], pending, runState: 'streaming' };
+      if (last !== undefined && last.row.kind === 'message' && last.row.role === 'assistant' && !last.row.final) {
+        const next: MessageRow = { ...last.row, text: last.row.text + ev.text, seq };
+        const copy = [...rows];
+        copy[last.index] = next;
+        return { rows: copy, pending, runState: 'streaming' };
       }
       const row: MessageRow = {
         kind: 'message',
@@ -337,9 +372,11 @@ function foldEvent(
     }
 
     case 'thinking.delta': {
-      if (last !== undefined && last.kind === 'thinking' && !last.final) {
-        const next: ThinkingRow = { ...last, text: last.text + ev.text, seq };
-        return { rows: [...rows.slice(0, -1), next], pending, runState: 'streaming' };
+      if (last !== undefined && last.row.kind === 'thinking' && !last.row.final) {
+        const next: ThinkingRow = { ...last.row, text: last.row.text + ev.text, seq };
+        const copy = [...rows];
+        copy[last.index] = next;
+        return { rows: copy, pending, runState: 'streaming' };
       }
       const row: ThinkingRow = {
         kind: 'thinking',
@@ -354,14 +391,16 @@ function foldEvent(
 
     case 'message.complete': {
       // 收尾当前行；若类型不匹配则补建（`05` DD-D-302：补建错行好过丢内容）。
-      if (last !== undefined && last.kind === 'message' && !last.final) {
+      if (last !== undefined && last.row.kind === 'message' && !last.row.final) {
         const next: MessageRow = {
-          ...last,
-          text: ev.text !== '' ? ev.text : last.text,
+          ...last.row,
+          text: ev.text !== '' ? ev.text : last.row.text,
           final: true,
           seq,
         };
-        return { rows: [...rows.slice(0, -1), next], pending, runState };
+        const copy = [...rows];
+        copy[last.index] = next;
+        return { rows: copy, pending, runState };
       }
       const row: MessageRow = {
         kind: 'message',
@@ -498,6 +537,68 @@ function foldEvent(
       return { rows: [...rows, row], pending, runState };
     }
 
+    case 'steer.queued': {
+      // 建行（同 steerId 重复到达时按幂等更新，不新增第二行）。
+      const idx = findSteerRow(rows, ev.steerId);
+      if (idx >= 0) {
+        const cur = rows[idx] as SteerRow;
+        const copy = [...rows];
+        copy[idx] = { ...cur, text: ev.text, state: 'queued', seq };
+        return { rows: copy, pending, runState };
+      }
+      const row: SteerRow = {
+        kind: 'steer',
+        key: `s:${ev.steerId}`,
+        seq,
+        steerId: ev.steerId,
+        text: ev.text,
+        state: 'queued',
+      };
+      return { rows: [...rows, row], pending, runState };
+    }
+
+    case 'steer.consumed': {
+      // 把同 steerId 的行置为 consumed 并记 turn；找不到就补建（重启后补记不得丢事件）。
+      const idx = findSteerRow(rows, ev.steerId);
+      if (idx >= 0) {
+        const cur = rows[idx] as SteerRow;
+        const copy = [...rows];
+        copy[idx] = { ...cur, state: 'consumed', turn: ev.turn, seq };
+        return { rows: copy, pending, runState };
+      }
+      const row: SteerRow = {
+        kind: 'steer',
+        key: `s:${ev.steerId}`,
+        seq,
+        steerId: ev.steerId,
+        text: ev.text,
+        state: 'consumed',
+        turn: ev.turn,
+      };
+      return { rows: [...rows, row], pending, runState };
+    }
+
+    case 'steer.not_consumed': {
+      // 未注入必须带原因 —— 丢原因等于让用户无法判断"为什么没发出去"。
+      const idx = findSteerRow(rows, ev.steerId);
+      if (idx >= 0) {
+        const cur = rows[idx] as SteerRow;
+        const copy = [...rows];
+        copy[idx] = { ...cur, state: 'notConsumed', reason: ev.reason, seq };
+        return { rows: copy, pending, runState };
+      }
+      const row: SteerRow = {
+        kind: 'steer',
+        key: `s:${ev.steerId}`,
+        seq,
+        steerId: ev.steerId,
+        text: ev.text,
+        state: 'notConsumed',
+        reason: ev.reason,
+      };
+      return { rows: [...rows, row], pending, runState };
+    }
+
     case 'error': {
       const row: MarkerRow = {
         kind: 'marker',
@@ -532,6 +633,20 @@ function foldEvent(
     case 'usage':
       return { rows, pending, runState };
   }
+}
+
+/** 最后一条"内容行"（跳过 steer 过程注记）及其下标。 */
+function lastContentRow(rows: ProjectionRow[]): { row: ProjectionRow; index: number } | undefined {
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const row = rows[i];
+    if (row !== undefined && row.kind !== 'steer') return { row, index: i };
+  }
+  return undefined;
+}
+
+/** 按 `steerId` 找 steer 行（一条 steer 只有一行）。 */
+function findSteerRow(rows: ProjectionRow[], steerId: string): number {
+  return rows.findIndex((r) => r.kind === 'steer' && r.steerId === steerId);
 }
 
 /** 把未收尾的行标记为 final（会话结束时不留"永远流式中"的行）。 */

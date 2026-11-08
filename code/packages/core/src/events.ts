@@ -71,6 +71,9 @@ export type AgentEventBody =
   | { type: 'tool.receipt'; receipt: ToolReceipt }
   | { type: 'verification.start'; command: string; index: number; total: number }
   | { type: 'verification.result'; result: VerificationResult }
+  // ── steer channel (N-2 / FR-N-032, contract §3.4) ──
+  | { type: 'steer.consumed'; steerId: string; text: string; turn: number }
+  | { type: 'steer.not_consumed'; steerId: string; text: string; reason: string }
   | UsageEvent
   | { type: 'budget.warning'; kind: 'tokens' | 'cost' | 'turns'; ratio: number }
   | { type: 'error'; error: SerializedError; fatal: boolean }

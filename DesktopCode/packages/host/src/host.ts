@@ -45,7 +45,8 @@ import {
   z,
 } from './workbench-validation.ts';
 import { FeatureMethod, FeatureNotification, WorkbenchMethod } from '@liwencode/dhp';
-import type { Message } from '@liwencode/core';
+import { createSteerQueue, STEER_DEFAULT_MAX_ITEMS, STEER_MAX_TEXT_LENGTH } from '@liwencode/core';
+import type { Message, SteerQueueHandle } from '@liwencode/core';
 import { randomUUID } from 'node:crypto';
 import {
   Method,
@@ -67,6 +68,7 @@ import {
   type SessionListResult,
   type SessionSnapshotResult,
   type SessionSubscribeResult,
+  type TurnSteerResult,
   type WorkspaceDiffResult,
   type WorkspaceReadFileResult,
   type WorkspaceTreeResult,
@@ -149,6 +151,8 @@ interface SessionRuntime {
   busy: boolean;
   commandActive: boolean;
   run: Promise<void> | undefined;
+  /** 当前执行的 steer 队列（每次 turn/send 新建，run 结束即 close）。 */
+  steer: SteerQueueHandle | undefined;
 }
 
 export interface RunningHost {
@@ -213,12 +217,18 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
   const runtimes = new Map<string, SessionRuntime>();
   let workbench: WorkbenchService;
   const registry = new SessionRegistry(Date.now, () => workbench?.scheduleSave());
-  workbench = new WorkbenchService(store, registry, env, () => [...runtimes.values()].map((rt) => ({ snapshot: rt.state.snapshot, messages: rt.agent?.history ?? rt.messages, turn: rt.state.turn, archived: rt.state.archived })));
+  workbench = new WorkbenchService(store, registry, env, () => [...runtimes.values()].map((rt) => ({ snapshot: rt.state.snapshot, messages: rt.agent?.history ?? rt.messages, turn: rt.state.turn, archived: rt.state.archived, pendingSteers: rt.state.pendingSteers })));
   let server: DhpServerHandle;
   try {
     for (const saved of store.data.sessions) {
       const state = registry.restore(saved);
-      runtimes.set(state.sessionId, { state, agent: undefined, broker: undefined, messages: repairHistory(saved.messages), busy: false, commandActive: false, run: undefined });
+      runtimes.set(state.sessionId, { state, agent: undefined, broker: undefined, messages: repairHistory(saved.messages), busy: false, commandActive: false, run: undefined, steer: undefined });
+      // 崩溃恢复（`28` §4）：排队中的 steer **不自动重放**，补一条 not_consumed
+      // 让用户看到并可手动重发。补记必须先于任何新执行，避免被误认为仍有效。
+      for (const pending of state.pendingSteers) {
+        registry.append(state.sessionId, { type: 'steer.not_consumed', steerId: pending.id, text: pending.text, reason: 'host_restarted' });
+      }
+      state.pendingSteers = [];
     }
     workbench.initializeChannels();
     workbench.importConfiguredModel((await effective()).model);
@@ -243,6 +253,35 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
   const mutable = (): void => { if (closing) throw new DhpProtocolError('not_ready', 'Host is shutting down'); };
   const requireIdle = (rt: SessionRuntime): void => {
     if (rt.busy || rt.state.runState !== 'idle') throw new DhpProtocolError('conflict_in_flight', 'Session is busy');
+  };
+  /**
+   * run 结束时的 steer 收尾（`28` §4）：关闭队列，并把**内核没报过**、
+   * Host 仍记账的未消费项补成 `steer.not_consumed`（fail-closed，不静默丢）。
+   *
+   * 去重依据是 `pendingSteers`：内核的 consumed/not_consumed 事件到达时已经移除；
+   * 仍留在表里的就是没人报过的（例如内核异常退出），必须以 'closed' 收尾。
+   */
+  const finalizeSteer = (rt: SessionRuntime): void => {
+    const queue = rt.steer;
+    rt.steer = undefined;
+    const leftover = queue?.close() ?? [];
+    const report = (item: { id: string; text: string }): void => {
+      if (!rt.state.pendingSteers.some((p) => p.id === item.id)) return;
+      rt.state.pendingSteers = rt.state.pendingSteers.filter((p) => p.id !== item.id);
+      registry.append(rt.state.sessionId, {
+        type: 'steer.not_consumed',
+        steerId: item.id,
+        text: item.text,
+        reason: 'closed',
+      });
+    };
+    for (const item of leftover) report(item);
+    // 安全网：队列里已没有、但 Host 仍在记账的项（内核异常退出/未上报）同样必须有终态。
+    for (const item of [...rt.state.pendingSteers]) report(item);
+  };
+  /** steer 终态事件到达 → 清掉 Host 记账（对话真相仍只在内核 history）。 */
+  const settleSteer = (rt: SessionRuntime, steerId: string): void => {
+    rt.state.pendingSteers = rt.state.pendingSteers.filter((p) => p.id !== steerId);
   };
   const subscriptions = new Map<string, Map<string, { unsubscribe(): void; notify(method: string, params: unknown): void }>>();
   const disconnects = new Map<string, () => void>();
@@ -674,7 +713,7 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
       permissionMode: parseInput(permissionSchema, p.permissionMode ?? cfg.permissionMode),
       workspaceRoot: root,
     });
-    runtimes.set(sessionId, { state, agent: undefined, broker: undefined, messages: [], busy: false, commandActive: false, run: undefined });
+    runtimes.set(sessionId, { state, agent: undefined, broker: undefined, messages: [], busy: false, commandActive: false, run: undefined, steer: undefined });
     await workbench.save();
     server.broadcast(Notification.SessionChanged, {
       sessionId,
@@ -712,6 +751,8 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
     rt.state.abort?.abort();
     rt.broker?.drain('会话已关闭');
     await rt.run;
+    // run 的 finally 已经收尾过；这里兜底一次，保证关闭前排队项一定有终态。
+    finalizeSteer(rt);
     await rt.agent?.close();
     runtimes.delete(p.sessionId);
     for (const conn of [...subscriptions.keys()]) removeSubscription(conn, p.sessionId);
@@ -786,6 +827,7 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
       busy: false,
       commandActive: false,
       run: undefined,
+      steer: undefined,
     });
     await workbench.save();
     server.broadcast(Notification.SessionChanged, { sessionId, change: 'created', title: state.title });
@@ -902,6 +944,9 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
         requireIdle(rt);
         if (rt.state.archived) throw new DhpProtocolError('denied', 'Restore archived session before sending');
         rt.busy = true;
+        // 每次执行一个 steer 队列：接受排队 → 内核在安全边界注入 → run 结束 close。
+        const steer = createSteerQueue();
+        rt.steer = steer;
         try {
         const agent = ensureAgent(p.sessionId);
         const executionId = `exe_${randomUUID()}`;
@@ -919,10 +964,20 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
         rt.run = (async () => {
           try {
             // Already seeded and saved; [] avoids duplicate history, no store resume option.
-            await pumpAgentEvents(agent, registry, p.sessionId, [], ac.signal, {
-              onPending: (pending) => registry.setPending(p.sessionId, pending),
-              pendingOf: () => pendingOf(p.sessionId),
-            });
+            await pumpAgentEvents(
+              agent,
+              registry,
+              p.sessionId,
+              [],
+              ac.signal,
+              {
+                onPending: (pending) => registry.setPending(p.sessionId, pending),
+                pendingOf: () => pendingOf(p.sessionId),
+                // 内核报告终态后清掉 Host 记账；对话真相始终只在内核 history。
+                onSteer: (ev) => settleSteer(rt, ev.steerId),
+              },
+              { steer },
+            );
           } catch (err) {
             registry.append(p.sessionId, {
               type: 'error',
@@ -933,6 +988,8 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
           } finally {
             rt.broker?.drain('Run finished');
             registry.setPending(p.sessionId, []);
+            // 先收尾 steer（未消费项带 'closed'），再结束本轮：事件顺序可解释。
+            finalizeSteer(rt);
             const repaired = repairHistory(agent.history);
             agent.history.splice(0, agent.history.length, ...repaired);
             rt.messages = agent.history;
@@ -951,6 +1008,7 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
         };
         } catch (e) {
           rt.busy = false;
+          finalizeSteer(rt);
           delete rt.state.abort; delete rt.state.executionId;
           if (rt.state.runState !== 'idle') registry.append(p.sessionId, { type: 'turn.end', turn: rt.state.turn });
           throw e;
@@ -982,19 +1040,115 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
     );
   });
 
+  // ── 方法：turn/steer（N-2 / FR-N-032，`28` §2）───────────────────────
+  //
+  // 语义边界（实现注释即契约，不得放宽）：
+  //  1. `queued: true` 只表示"已接受排队"，不表示模型已看到，更不表示成功；
+  //     终态只能从事件流读（steer.consumed / steer.not_consumed）。
+  //  2. expectedExecutionId 必填：不匹配 → noop，**不得**排入下一轮执行。
+  //  3. steer 不改变权限模式/模型/工具白名单，也不构成任何审批的批准或提权。
+  //  4. 队列满 fail-closed（不静默丢弃），给用户可操作原因。
   register(Method.TurnSteer, async (params) => {
-    const p = parseInput(commandSchema.extend({ text: z.string() }).strict(), params);
+    const p = parseInput(
+      commandSchema
+        .extend({
+          expectedExecutionId: z.string().min(1),
+          text: z
+            .string()
+            .min(1)
+            .max(STEER_MAX_TEXT_LENGTH)
+            .refine((s) => s.trim().length > 0),
+        })
+        .strict(),
+      params,
+    );
     return runCommand(
-      { commandId: p.commandId, baseRevision: p.baseRevision, sessionId: p.sessionId, payload: { steer: p.text } },
+      {
+        commandId: p.commandId,
+        baseRevision: p.baseRevision,
+        sessionId: p.sessionId,
+        payload: { steer: p.text, expectedExecutionId: p.expectedExecutionId },
+      },
       async () => {
         const rt = runtimes.get(p.sessionId);
         if (rt === undefined) throw new DhpProtocolError('capability_not_found', 'unknown session');
-        // v1：给用户一个诚实的"暂不支持"，而不是静默丢弃。
+        if (rt.state.archived) {
+          return {
+            commandId: p.commandId,
+            status: 'rejected' as const,
+            revision: rt.state.snapshot.revision,
+            reason: 'Restore archived session before steering',
+          };
+        }
+        const executionId = rt.state.executionId;
+        const queue = rt.steer;
+        if (executionId === undefined || !rt.busy || queue === undefined) {
+          // 执行已结束 / 从未开始：不排队、不猜测，直接拒绝（ACK ≠ 终态）。
+          return {
+            commandId: p.commandId,
+            status: 'rejected' as const,
+            revision: rt.state.snapshot.revision,
+            reason: 'no active execution',
+          };
+        }
+        if (p.expectedExecutionId !== executionId) {
+          // 迟到的 steer：与 turn/stop 同语义，绝不排到下一轮执行。
+          return {
+            commandId: p.commandId,
+            status: 'noop' as const,
+            revision: rt.state.snapshot.revision,
+            reason: 'execution already changed',
+          };
+        }
+
+        const steerId = `steer_${randomUUID()}`;
+        const pushed = queue.push({ id: steerId, text: p.text });
+        if (!pushed.accepted) {
+          switch (pushed.reason) {
+            case 'queue_full':
+              return {
+                commandId: p.commandId,
+                status: 'rejected' as const,
+                revision: rt.state.snapshot.revision,
+                reason: `steer queue is full (max ${STEER_DEFAULT_MAX_ITEMS} pending)`,
+              };
+            case 'closed':
+              // 队列已关闭 = 执行刚好结束，按"没有活动执行"处理。
+              return {
+                commandId: p.commandId,
+                status: 'rejected' as const,
+                revision: rt.state.snapshot.revision,
+                reason: 'no active execution',
+              };
+            case 'duplicate':
+              return {
+                commandId: p.commandId,
+                status: 'rejected' as const,
+                revision: rt.state.snapshot.revision,
+                reason: 'duplicate steer id',
+              };
+            case 'empty':
+            case 'too_long':
+              throw new DhpProtocolError('invalid_request', 'Invalid steer text');
+          }
+        }
+
+        // 接受后**立即**落事件（用户马上看到 queued 态），并记账用于崩溃恢复。
+        registry.append(p.sessionId, {
+          type: 'steer.queued',
+          steerId,
+          text: p.text,
+          executionId,
+        });
+        rt.state.pendingSteers.push({ id: steerId, text: p.text });
+        const data: TurnSteerResult = { queued: true, executionId, steerId };
         return {
           commandId: p.commandId,
-          status: 'rejected' as const,
+          status: 'accepted' as const,
+          // steer 是执行期瞬时状态，不是命令级状态：**不** bump revision，
+          // 否则客户端手里正拿着的 revision 会无端变 stale。
           revision: rt.state.snapshot.revision,
-          reason: 'steer 尚未实现（v1 仅支持 stop 后重新发送）',
+          data,
         };
       },
     );
@@ -1180,6 +1334,8 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
     const p = parseInput(sessionIdSchema.extend({ archived: z.boolean() }).strict(), params);
     const rt = requireRuntime(p.sessionId); requireIdle(rt);
     if (rt.commandActive) throw new DhpProtocolError('conflict_in_flight', 'A session command is in flight');
+    // 归档 = 结束语义：仍记账的排队项必须有明确终态（正常路径下此时为空）。
+    finalizeSteer(rt);
     rt.state.archived = p.archived;
     registry.bumpRevision(p.sessionId); notifySnapshot(p.sessionId);
     await workbench.save();

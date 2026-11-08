@@ -66,6 +66,23 @@ export function unwrapGitResult<T>(raw: unknown, lang: Lang = 'zh'): T | undefin
 export type Page = 'chat' | 'usage' | 'sessions' | 'files' | 'agents' | 'resources' | 'settings';
 export type ConnectionStatus = 'booting' | 'ready' | 'reconnecting' | 'error';
 
+/**
+ * steer 目标判定（`28-多轮steer行为契约` §2 / §6）。
+ *
+ * 硬规则：`expectedExecutionId` **必填**，且必须命中当前执行。
+ * 渲染层**不**允许本地伪造排队——执行 id 未知（典型：重连后）时只能拒绝并提示，
+ * 让用户等本轮结束后重发，而不是把补充指令塞进一个可能错误的执行。
+ */
+export type SteerTarget =
+  | { readonly ok: true; readonly executionId: string }
+  | { readonly ok: false; readonly reason: 'idle' | 'unknown-execution' };
+
+export function steerTargetFor(runState: string | undefined, executionId: string | undefined): SteerTarget {
+  if (runState === undefined || runState === 'idle') return { ok: false, reason: 'idle' };
+  if (executionId === undefined || executionId === '') return { ok: false, reason: 'unknown-execution' };
+  return { ok: true, executionId };
+}
+
 export function initialQuery(): UsageQuery {
   const end = new Date();
   end.setHours(23, 59, 59, 999);
@@ -241,6 +258,9 @@ export function useWorkbench() {
           socketFactory: (url): WebSocketLike => new WebSocket(url) as unknown as WebSocketLike,
           onStateChange: (s) => {
             if (disposed) return;
+            // 重连后**无法确认**执行 id 是否仍是同一次执行：清空映射，
+            // 让 steer 走"未知执行 id → 拒绝并提示"的路径，而不是排进错误的执行。
+            if (s !== 'ready') executions.current.clear();
             setStatus(s === 'ready' ? 'ready' : s === 'closed' ? 'error' : s === 'reconnecting' ? 'reconnecting' : 'booting');
             // 冒烟探测：只有真正连上 Host 才算 ready。正常运行时该通道不存在，忽略即可。
             if (s === 'ready') void window.liwen?.smoke?.rendererReady().catch(() => undefined);
@@ -248,6 +268,9 @@ export function useWorkbench() {
           onSnapshot: (sid, s) => { if (!disposed && sid === active.current) projection.replacement(s); },
           onDelta: (sid, d) => {
             if (!disposed && sid === active.current) projection.delta(d);
+            // 执行结束：清掉该会话的执行 id（`turn.end` 可能是 steer 续轮，
+            // 不能当成执行结束——只有 `session.end` 才是 run 的终态）。
+            if (d.events.some((e) => e.type === 'session.end')) executions.current.delete(sid);
             if (d.events.some((e) => ['turn.end', 'usage', 'error'].includes(e.type))) refreshSoon();
           },
           onSessionChanged: () => refreshSoon(),
@@ -677,7 +700,41 @@ export function useWorkbench() {
     const execution = (result.data as { executionId?: string } | undefined)?.executionId;
     if (execution) executions.current.set(sid, execution);
     setDrafts((prev) => ({ ...prev, [sid]: prev[sid]?.trim() === text.trim() ? '' : prev[sid] ?? '' }));
-  }), [perform, command]);
+  }), [perform, command, language]);
+
+  /**
+   * 运行中的补充指令（steer，N-2 / FR-N-032，`28` §6）。
+   *
+   * 硬规则：
+   *  1. **不本地伪造排队**——`queued` 行只来自 Host 的 `steer.queued` 事件；
+   *     这里成功只清草稿，不往时间线塞乐观行。
+   *  2. `expectedExecutionId` 必填；执行 id 未知（重连后）→ 拒绝并提示。
+   *  3. 失败（rejected / noop / invalid_request / 队列满）**必须显示给用户**：
+   *     统一走 `perform`，错误进顶部错误横幅，不只写控制台。
+   */
+  const steer = useCallback((text: string) => perform(async () => {
+    const sid = active.current;
+    const trimmed = text.trim();
+    if (!sid) throw new Error(tv(language, 'errors.noSession'));
+    if (trimmed === '') return;
+    const target = steerTargetFor(store.current?.current?.runState, executions.current.get(sid));
+    if (!target.ok) {
+      throw new Error(tv(language, target.reason === 'idle'
+        ? 'workbench.conversation.steerNotRunning'
+        : 'workbench.conversation.steerNoExecution'));
+    }
+    let result: AckResult;
+    try {
+      result = await command(Method.TurnSteer, { text: trimmed, expectedExecutionId: target.executionId }, sid);
+    } catch (error) {
+      // Host 的 reason 是可操作文案（无活动执行 / 已归档 / 队列满…）：原样带给用户。
+      throw new Error(tv(language, 'workbench.conversation.steerFailed', { reason: (error as Error).message }));
+    }
+    // `noop` 表示执行已经变化（迟到的 steer）：**不得**排入下一轮，必须提示。
+    if (result.status === 'noop') throw new Error(tv(language, 'workbench.conversation.steerExecutionChanged'));
+    // accepted / duplicate 都表示"已接受排队"。仍不写本地行：终态由事件流决定。
+    setDrafts((prev) => ({ ...prev, [sid]: prev[sid]?.trim() === trimmed ? '' : prev[sid] ?? '' }));
+  }), [perform, command, language]);
 
   /**
    * 在会话工作区根直接执行一条命令（FR-N-036 的 `!` 前缀）。
@@ -711,6 +768,8 @@ export function useWorkbench() {
 
   const archive = useCallback((sid: string, archived: boolean) => perform(async () => {
     await request(WorkbenchMethod.SessionArchive, { sessionId: sid, archived });
+    // 归档/关闭后不再接受 steer：执行 id 一并清掉，避免残留映射。
+    executions.current.delete(sid);
     const data = await refresh();
     if (archived && active.current === sid) await selectSession(data?.sessions.find((s) => !s.archived)?.sessionId ?? '');
   }), [perform, request, refresh, selectSession]);
@@ -778,7 +837,7 @@ export function useWorkbench() {
     page, setPage, language, setLanguage, changeLanguage, draft: drafts[sessionId] ?? '',
     setDraft: (text: string) => setDrafts((prev) => ({ ...prev, [sessionId]: text })),
     loadingSession, mutating, query, setQuery, report, loadingUsage,
-    selectSession, selectWorkspace, createSession, openWorkspace, send, stop, runShellCommand, sessionChangeDiff,
+    selectSession, selectWorkspace, createSession, openWorkspace, send, steer, stop, runShellCommand, sessionChangeDiff,
     configure, rename, archive, resolve, saveChannel, readTree, readFile,
     // Git（工作区口径）
     gitStatus, gitBranches, gitGraph, gitRemotes, gitAuth, gitPreflight, gitUpload, gitDiff,

@@ -97,7 +97,7 @@ const projectionSrc = await read('packages/dhp/src/projection.ts');
 // 19 类"事件"指的是 `SessionEvent` 这个联合类型的成员
 // （`SessionDelta` 只是包了一层 events 数组）。
 const eventBlock = projectionSrc.match(/export type SessionEvent =([\s\S]*?\n\s*\};)/)?.[1] ?? '';
-const eventKinds = new Set(eventBlock.match(/type: '[a-z.]+'/g) ?? []).size;
+const eventKinds = new Set(eventBlock.match(/type: '[a-z._]+'/g) ?? []).size;
 
 const tokens = new Set((await read('apps/desktop/src/renderer/theme-tokens.css')).match(/--sy-[a-z0-9-]+\s*:/g) ?? []).size;
 

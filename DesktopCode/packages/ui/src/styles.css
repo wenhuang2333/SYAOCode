@@ -104,6 +104,31 @@ body {
 .marker-warn { color: var(--sy-warn); }
 .marker-success { color: var(--sy-success); }
 
+/* steer 行（`28` §6）：运行中的补充指令，必须与普通 user 消息一眼区分。
+   queued = 待注入（虚线边），consumed = 已注入（实线边 + 成功色），
+   notConsumed = 未注入（警示色 + 原因）。 */
+.steer {
+  display: flex; align-items: baseline; gap: var(--sy-space-3);
+  border-left: 3px dashed var(--sy-border);
+  border-radius: var(--sy-radius);
+  background: var(--sy-surface-1);
+  padding: var(--sy-space-2) var(--sy-space-3);
+  margin-left: 72px;
+}
+.steer .role { flex: 0 0 84px; color: var(--sy-text-muted); font-size: 12px; }
+.steer .content { flex: 1; white-space: pre-wrap; word-break: break-word; }
+.steer-state {
+  flex-shrink: 0; font-size: 11px; padding: 1px 8px; border-radius: 999px;
+  background: var(--sy-surface-2); color: var(--sy-text-muted);
+  text-transform: none;
+}
+.steer-queued { border-left-color: var(--sy-warn); }
+.steer-queued .steer-state { color: var(--sy-warn); }
+.steer-consumed { border-left-color: var(--sy-success); }
+.steer-consumed .steer-state { color: var(--sy-success); }
+.steer-notConsumed { border-left-color: var(--sy-danger); }
+.steer-notConsumed .steer-state { color: var(--sy-danger); }
+
 /* 审批卡片：内联在时间线中（不是模态框） */
 .approval-card {
   border: 1px solid var(--sy-border);

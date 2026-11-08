@@ -6,7 +6,7 @@
  */
 
 export { ApprovalCard, type ApprovalCardProps } from './approval-card.tsx';
-export { Composer, deleteLastCodePoint, type ComposerProps } from './composer.tsx';
-export { Timeline, RowView, type TimelineProps } from './timeline.tsx';
+export { Composer, canSubmitComposer, deleteLastCodePoint, type ComposerGate, type ComposerProps } from './composer.tsx';
+export { Timeline, RowView, steerStateLabel, type TimelineProps } from './timeline.tsx';
 export { StatusBar, type StatusBarProps } from './status-bar.tsx';
 export { messages, t, type Lang, type Messages } from './i18n.ts';

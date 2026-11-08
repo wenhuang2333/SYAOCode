@@ -146,12 +146,12 @@ corepack pnpm dev:host
 | 内嵌终端（PTY） | 未接（`terminal/*` 方法已在协议里，Host 侧未实现） |
 | 治理面可视化（任务/预算/审计链） | 接口存在，`governance/*` 返回占位数据（ARF Fabric 未装配） |
 | MCP、技能、多代理编排、工作区检查点回滚 | 界面明确标为未接入，不伪造能力状态 |
-| 多轮 steer | 明确返回 `rejected` + 原因（不静默丢弃） |
+| 多轮 steer | **已实现**：运行中补充指令在安全边界注入、不打断当前流；时间线可见「已排队 / 已注入 / 未注入」三态，`verify:steer` 真实窗口 26 项 |
 | 自动更新 / 签名公证 | 未做（配置骨架在 `electron-builder.yml`） |
 
 2026-11-06 实测（macOS arm64 / Node 24.18 / Electron 44.10.1）：
 
-- 类型检查、生产构建和 747 项 DesktopCode 测试通过。
+- 类型检查、生产构建和 823 项 DesktopCode 测试通过（2026-11-08 第三十一轮重测）。
 - 两个隔离项目完成多会话、严格审批、真实 cwd、模型切换、统计、归档恢复和重启恢复验收。
 - 本机临时 SSE Provider 证实请求依次到达 `alpha`、`beta`；第二次请求保留第一次的完整输入与回复。
 - 900px 与 1440px 视口均完成截图检查，无页面级横向溢出；renderer page error 和 console error 均为 0。
@@ -171,7 +171,7 @@ corepack pnpm dev:host
 | 3 | 内核 `session.end` 被当成"会话关闭" | 一轮结束就切断会话 → 多轮对话不可用 | 内核 `session.end` → DHP `turn.end`；`session.end` 只由 `session/close` 产生 |
 | 4 | `dhp` 包 import `@liwencode/core` | 浏览器打包时把内核（含 `node:`）一起拖进来 | DHP 与内核解耦，用结构化 `TextBlockLike` |
 | 5 | `z.unknown()` 接受 `undefined` | 既无 `method` 也无 `result` 的畸形帧被当成"成功响应" | `.refine(o => 'result' in o)` |
-| 6 | `tool.receipt` 未纳入不可丢事件 | 证据链在 UI 侧断链 | 补入 + 测试断言 19 类事件全覆盖 |
+| 6 | `tool.receipt` 未纳入不可丢事件 | 证据链在 UI 侧断链 | 补入 + 测试断言 22 类事件全覆盖（第 31 轮新增 3 类 steer 事件） |
 | 7 | 本 shell 里 `ELECTRON_RUN_AS_NODE=1` 是**全局设置** | `electron .` 直接以 Node 模式跑，`require('electron')` 返回 undefined，应用"静默不启动" | 启动脚本显式 `env -u ELECTRON_RUN_AS_NODE` |
 | 8 | `dev-desktop.mjs` 硬编码 `DesktopCode/node_modules/.bin/electron` | Electron 是 `apps/desktop` 的 devDep，pnpm 隔离布局下根目录没有它 → `spawn ... ENOENT`，应用根本起不来 | 用 `createRequire(appDir/package.json)('electron')` 逐级解析二进制 |
 | 9 | 主进程 `spawn` Host 时 `stdio` 没有 `ipc` 槽 | Host 的 ready 帧走 `process.send()`，无 IPC 通道即被静默丢弃 → 窗口永远停在"正在启动本地运行时…" | `stdio: ['ignore','pipe','pipe','ipc']` + `child.on('message')`；另加 30s 未就绪的**大声失败** |
@@ -183,10 +183,10 @@ corepack pnpm dev:host
 
 ## 7. 与 `../code/` 的关系
 
-- `../code/` 是**只读的内核**。本目录通过 `link:../../../code/packages/*` 引用它。
+- `../code/` 是**内核**。本目录通过 `link:../../../code/packages/*` 引用它。第 31 轮起内核不再零改动（steer 通道、数据目录迁移），跨仓库改动必须同时跑两侧测试。
 - 新增能力一律在 `DesktopCode/` 内实现；需要改内核的，先记入 `DesktopDoc/00-基线` §7.3 的缺口清单。
-- 本模块的 767 项测试独立运行，不能替代内核回归。
-- 2026-11-06 单独复测 `@liwencode/rpc`：21 个测试文件、325 项测试通过；本轮未修改内核。
+- 本模块的 823 项测试独立运行，不能替代内核回归（内核当前全量 1089 例）。
+- 2026-11-08 第三十一轮：内核 `corepack pnpm typecheck && corepack pnpm test` → 8 包 1089 例全绿（含新增 steer 通道与数据目录迁移）。
 
 ```bash
 cd ../code && corepack pnpm typecheck && corepack pnpm test

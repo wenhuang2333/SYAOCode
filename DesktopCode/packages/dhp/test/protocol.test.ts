@@ -22,6 +22,9 @@ import {
   newCommandId,
   type SessionSnapshot,
   type SessionEvent,
+  type SteerRow,
+  type TurnSteerParams,
+  type TurnSteerResult,
 } from '../src/index.ts';
 
 describe('DHP 错误码', () => {
@@ -164,9 +167,9 @@ describe('事件分类', () => {
     for (const t of COALESCIBLE_EVENTS) expect(NON_DROPPABLE_EVENTS).not.toContain(t);
   });
 
-  it('内核 19 类事件全部被分类', () => {
+  it('内核事件全部被分类（含 steer 三态）', () => {
     const all = [...COALESCIBLE_EVENTS, ...NON_DROPPABLE_EVENTS, 'usage'];
-    expect(new Set(all).size).toBe(19);
+    expect(new Set(all).size).toBe(22);
   });
 
   it('文本 delta 被拼接', () => {
@@ -210,5 +213,107 @@ describe('命令信封与幂等', () => {
 
   it('commandId 形态唯一', () => {
     expect(newCommandId()).not.toBe(newCommandId());
+  });
+});
+
+describe('steer 契约与投影（`28` §5）', () => {
+  const meta = {
+    sessionId: 's1',
+    title: 't',
+    createdAt: 0,
+    updatedAt: 0,
+    permissionMode: 'default',
+    model: 'mock:default',
+    workspaceRoot: '/w',
+  };
+
+  /** 从空快照开始连续应用一串事件（帧内 fromSeq 必须衔接）。 */
+  function applyAll(events: readonly SessionEvent[]): SessionSnapshot {
+    const res = applyDelta(emptySnapshot(meta), {
+      sessionId: 's1',
+      epoch: 1,
+      fromSeq: 1,
+      toSeq: events.length,
+      events,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error('projection rejected contiguous delta');
+    return res.snapshot;
+  }
+
+  it('TurnSteerParams 必填 expectedExecutionId；TurnSteerResult 只承诺 queued', () => {
+    const params: TurnSteerParams = {
+      commandId: 'cmd_12345678',
+      baseRevision: 1,
+      sessionId: 's1',
+      expectedExecutionId: 'exe_1',
+      text: '补充一句',
+    };
+    expect(params.expectedExecutionId).toBe('exe_1');
+    // 缺 expectedExecutionId 在类型层不可表达（运行时由 Host schema 再校验一次）。
+    const result: TurnSteerResult = { queued: true, executionId: 'exe_1', steerId: 'steer_1' };
+    expect(result.queued).toBe(true);
+  });
+
+  it('三种 steer 事件不可丢、不可合并', () => {
+    for (const t of ['steer.queued', 'steer.consumed', 'steer.not_consumed'] as const) {
+      expect(NON_DROPPABLE_EVENTS).toContain(t);
+      expect(COALESCIBLE_EVENTS).not.toContain(t);
+    }
+  });
+
+  it('queued 建行 → consumed 就地更新并记录 turn', () => {
+    const snap = applyAll([
+      { type: 'steer.queued', steerId: 'st1', text: '先看测试', executionId: 'exe_1' },
+      { type: 'steer.consumed', steerId: 'st1', text: '先看测试', turn: 2 },
+    ]);
+    const rows = snap.rows.filter((r) => r.kind === 'steer') as SteerRow[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.state).toBe('consumed');
+    expect(rows[0]?.turn).toBe(2);
+    expect(rows[0]?.text).toBe('先看测试');
+  });
+
+  it('not_consumed 就地更新并保留原因', () => {
+    const snap = applyAll([
+      { type: 'steer.queued', steerId: 'st1', text: 'x', executionId: 'exe_1' },
+      { type: 'steer.not_consumed', steerId: 'st1', text: 'x', reason: 'aborted' },
+    ]);
+    const rows = snap.rows.filter((r) => r.kind === 'steer') as SteerRow[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.state).toBe('notConsumed');
+    expect(rows[0]?.reason).toBe('aborted');
+  });
+
+  it('找不到 queued 行时补建（重启补记不丢事件）', () => {
+    const snap = applyAll([
+      { type: 'steer.not_consumed', steerId: 'st_lost', text: 'y', reason: 'host_restarted' },
+    ]);
+    const rows = snap.rows.filter((r) => r.kind === 'steer') as SteerRow[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.steerId).toBe('st_lost');
+    expect(rows[0]?.reason).toBe('host_restarted');
+  });
+
+  it('steer 行不切断流式 assistant 消息（不产生重复半截消息）', () => {
+    const snap = applyAll([
+      { type: 'turn.start', turn: 1 },
+      { type: 'text.delta', text: 'a' },
+      { type: 'steer.queued', steerId: 'st1', text: '补充', executionId: 'exe_1' },
+      { type: 'text.delta', text: 'b' },
+      { type: 'message.complete', role: 'assistant', text: 'ab', stopReason: 'end_turn' },
+    ]);
+    const messages = snap.rows.filter((r) => r.kind === 'message');
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.kind === 'message' && messages[0].text).toBe('ab');
+    expect(snap.rows.filter((r) => r.kind === 'steer')).toHaveLength(1);
+  });
+
+  it('queued 不改变运行态（ACK ≠ 终态）', () => {
+    const snap = applyAll([
+      { type: 'turn.start', turn: 1 },
+      { type: 'steer.queued', steerId: 'st1', text: 'z', executionId: 'exe_1' },
+    ]);
+    expect(snap.runState).toBe('streaming');
   });
 });

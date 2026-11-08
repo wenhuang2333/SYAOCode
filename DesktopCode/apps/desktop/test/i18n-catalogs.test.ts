@@ -156,7 +156,7 @@ describe('渲染层的 .ts 文件也不能藏裸中文（此前的盲区）', ()
 describe('Electron 验证脚本被中断时要收掉子进程', () => {
   // 若脚本被 Ctrl-C 杀掉而没走 finally，Electron 会变成孤儿进程占着单实例锁，
   // 下一次运行报 "Target page ... has been closed" —— 看起来像功能坏了。
-  const files = ['../../../scripts/verify-interaction.mjs', '../../../scripts/verify-real-window.mjs'];
+  const files = ['../../../scripts/verify-interaction.mjs', '../../../scripts/verify-real-window.mjs', '../../../scripts/verify-steer.mjs'];
   for (const rel of files) {
     it(`${rel.split('/').pop()} 注册了 SIGINT/SIGTERM 清理`, () => {
       const source = readFileSync(new URL(rel, import.meta.url), 'utf8');

@@ -23,6 +23,7 @@
     "verify:real-usage": "node --import tsx scripts/verify-real-usage.mjs",
     "verify:real-tool-use": "node --import tsx scripts/verify-real-tool-use.mjs",
     "verify:real-approval": "node --import tsx scripts/verify-real-approval.mjs",
+    "verify:steer": "node --import tsx scripts/verify-steer.mjs",
     "dev:host": "pnpm run build:host && node scripts/dev-host.mjs",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "package:dir": "pnpm run build && pnpm --filter liwencode-desktop run package:dir",

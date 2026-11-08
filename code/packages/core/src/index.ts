@@ -77,6 +77,10 @@ export { discoverVerification, runVerification, verificationPassed } from './ver
 export type { ClaimCheck, ClaimKind, ClaimStatus, Verdict } from './claims.js';
 export { lintClaims, verdictOf } from './claims.js';
 
+// steer (N-2 / FR-N-032, contract §3.1)
+export type { SteerNotConsumedReason, SteerPushResult, SteerQueue, SteerQueueHandle, SteerRejectReason, SteerSubmission } from './steer.js';
+export { createSteerQueue, STEER_DEFAULT_MAX_ITEMS, STEER_MAX_TEXT_LENGTH } from './steer.js';
+
 // agent
 export type { Agent, AgentConfig, Limits, RunOptions, RunSummary } from './agent.js';
 export { createAgent, planBatches, totalTokensOf } from './agent.js';

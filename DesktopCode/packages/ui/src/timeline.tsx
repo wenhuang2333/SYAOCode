@@ -6,13 +6,34 @@ import type * as React from 'react';
  * 新增行类型会在这里编译失败——这是有意的，避免"新事件悄悄不显示"。
  */
 
-import type { ProjectionRow } from '@liwencode/dhp';
+import type { ProjectionRow, SteerRow } from '@liwencode/dhp';
 import type { Messages } from './i18n.ts';
 import { Markdown } from './markdown.tsx';
 
 export interface TimelineProps {
   readonly rows: readonly ProjectionRow[];
   readonly m: Messages;
+}
+
+/**
+ * steer 行的状态文案（`28-多轮steer行为契约` §5/§6）。
+ *
+ * 纯函数：同一行同一文案，便于单测；三种状态必须可区分，
+ * `notConsumed` **必须**把原因显示出来（Host 没给原因时也不编造）。
+ */
+export function steerStateLabel(m: Messages, row: SteerRow): string {
+  switch (row.state) {
+    case 'queued':
+      return m.steerQueued;
+    case 'consumed':
+      return row.turn === undefined
+        ? m.steerConsumed
+        : m.steerConsumedTurn.replace('{turn}', String(row.turn));
+    case 'notConsumed':
+      return row.reason === undefined || row.reason === ''
+        ? m.steerNotConsumedUnknown
+        : m.steerNotConsumedReason.replace('{reason}', row.reason);
+  }
 }
 
 export function Timeline({ rows, m }: TimelineProps): React.JSX.Element {
@@ -77,5 +98,16 @@ export function RowView({ row, m }: { row: ProjectionRow; m: Messages }): React.
 
     case 'marker':
       return <div className={`row marker marker-${row.tone}`}>{row.text}</div>;
+
+    case 'steer':
+      // steer 是"运行中的补充指令"，不是普通用户消息：独立行型 + 独立状态徽标，
+      // 三种状态用 `data-steer-state` 暴露给测试与真实窗口取证脚本。
+      return (
+        <article className={`row steer steer-${row.state}`} data-steer-state={row.state}>
+          <span className="role">{m.steerRow}</span>
+          <div className="content">{row.text}</div>
+          <span className="steer-state">{steerStateLabel(m, row)}</span>
+        </article>
+      );
   }
 }

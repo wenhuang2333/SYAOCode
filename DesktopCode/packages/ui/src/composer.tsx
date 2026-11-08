@@ -20,9 +20,45 @@ export interface ComposerProps {
   readonly onSubmit: (text: string) => void;
   readonly m: Messages;
   readonly disabled?: boolean;
-  /** 存在待处理审批时为 true：提示等待并禁止提交。 */
+  /** 存在待处理审批时为 true：send 模式下提示等待并禁止提交。 */
   readonly awaitingApproval?: boolean;
   readonly busy?: boolean;
+  /**
+   * 运行中：提交语义是「作为补充指令排队」（`28` §6），**不是**启动第二个并发执行。
+   *
+   * 与 send 模式的两点差异：
+   *  1. 等待审批**不**阻止提交——契约明确「等待审批时 steer 可排队，审批仍按原流程结算」；
+   *  2. 按钮文案必须表达「排队」，不能看起来像再发一条普通消息。
+   *
+   * 文案由调用方传入（桌面端文案目录负责），共享包不硬编码业务文案。
+   */
+  readonly steerMode?: boolean;
+  /** steer 模式下的按钮文案。 */
+  readonly steerSubmitLabel?: string;
+  /** steer 模式下的输入占位。 */
+  readonly steerPlaceholder?: string;
+}
+
+/** 提交闸门的输入（纯函数，便于单测；组件与测试共用同一判定）。 */
+export interface ComposerGate {
+  readonly value: string;
+  readonly disabled?: boolean | undefined;
+  readonly awaitingApproval?: boolean | undefined;
+  readonly busy?: boolean | undefined;
+  readonly steerMode?: boolean | undefined;
+}
+
+/**
+ * 是否可以提交。
+ *
+ * send 模式：等待审批时禁止（避免把审批当普通消息绕过）。
+ * steer 模式：等待审批**不**阻止（排队不等于批准，见 `28` §2 硬规则 3）。
+ */
+export function canSubmitComposer(gate: ComposerGate): boolean {
+  if (gate.value.trim() === '') return false;
+  if (gate.disabled === true || gate.busy === true) return false;
+  if (gate.steerMode !== true && gate.awaitingApproval === true) return false;
+  return true;
 }
 
 /** 超过这个长度就折叠为摘要（防止一次粘贴 10MB 卡住 UI）。 */
@@ -36,16 +72,21 @@ export function Composer({
   disabled,
   awaitingApproval,
   busy,
+  steerMode,
+  steerSubmitLabel,
+  steerPlaceholder,
 }: ComposerProps): React.JSX.Element {
   const [composing, setComposing] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const ref = useRef<HTMLTextAreaElement | null>(null);
 
+  const gate: ComposerGate = { value, disabled, awaitingApproval, busy, steerMode };
+  const canSubmit = canSubmitComposer(gate);
+
   const submit = useCallback((): void => {
-    const text = value.trim();
-    if (text === '' || disabled === true || awaitingApproval === true || busy === true) return;
-    onSubmit(text);
-  }, [value, disabled, awaitingApproval, busy, onSubmit]);
+    if (!canSubmitComposer({ value, disabled, awaitingApproval, busy, steerMode })) return;
+    onSubmit(value.trim());
+  }, [value, disabled, awaitingApproval, busy, steerMode, onSubmit]);
 
   return (
     <div className="composer">
@@ -61,8 +102,9 @@ export function Composer({
         ref={ref}
         value={value}
         disabled={disabled === true}
-        placeholder={m.composerPlaceholder}
+        placeholder={steerMode === true && steerPlaceholder !== undefined ? steerPlaceholder : m.composerPlaceholder}
         aria-label="对话输入"
+        data-submit-mode={steerMode === true ? 'steer' : 'send'}
         rows={3}
         onCompositionStart={() => setComposing(true)}
         onCompositionEnd={() => setComposing(false)}
@@ -93,8 +135,14 @@ export function Composer({
       />
       <div className="composer-actions">
         {awaitingApproval === true && <span className="awaiting">等待审批</span>}
-        <button type="button" className="btn btn-primary" onClick={submit} disabled={disabled === true || busy === true || awaitingApproval === true || !value.trim()}>
-          {busy === true ? m.sending : m.send}
+        <button
+          type="button"
+          className={`btn btn-primary${steerMode === true ? ' composer-steer' : ''}`}
+          data-submit-mode={steerMode === true ? 'steer' : 'send'}
+          onClick={submit}
+          disabled={!canSubmit}
+        >
+          {busy === true ? m.sending : steerMode === true ? (steerSubmitLabel ?? m.send) : m.send}
         </button>
       </div>
     </div>

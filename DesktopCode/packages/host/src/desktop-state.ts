@@ -17,11 +17,24 @@ import type {
 } from '@liwencode/dhp';
 import { channelSchema, modelSpecSchema, nonnegative, permissionSchema, timestamp, titleSchema, z } from './workbench-validation.ts';
 
+/**
+ * 已接受排队、尚未注入的 steer（`28` §4 崩溃恢复）。
+ *
+ * 只用于"Host 重启后补一条 `steer.not_consumed`（reason `host_restarted`）"，
+ * **绝不**用于自动重放：steer 文本的唯一真相是内核注入的那条 user 消息。
+ */
+export interface PendingSteer {
+  id: string;
+  text: string;
+}
+
 export interface SavedSession {
   snapshot: SessionSnapshot;
   messages: Message[];
   turn: number;
   archived: boolean;
+  /** 排队中的 steer。旧状态文件没有该字段 → 缺省视为空（不阻塞迁移）。 */
+  pendingSteers?: PendingSteer[];
 }
 
 /** MCP 服务的**持久化**部分：状态（ready/error）是运行时的，不落盘。 */
@@ -122,7 +135,8 @@ const message = z.object({
     z.object({ type: z.literal('tool_use'), id: z.string(), name: z.string(), input: z.unknown() }).strict(),
     z.object({ type: z.literal('tool_result'), toolUseId: z.string(), content: z.array(z.union([text, imageBlock])), isError: z.boolean().optional(), trust: z.enum(['trusted', 'untrusted']).optional() }).strict(),
   ])),
-  meta: z.object({ createdAt: timestamp, providerData: z.unknown().optional() }).strict().optional(),
+  // `steerId`：由内核 steer 通道注入的用户消息（`28` §3.3）。落盘必须能读回，否则重启丢历史。
+  meta: z.object({ createdAt: timestamp, providerData: z.unknown().optional(), steerId: z.string().optional() }).strict().optional(),
 }).strict();
 const rowBase = z.object({ key: z.string(), seq: nonnegative.int() });
 const row = z.union([
@@ -130,6 +144,8 @@ const row = z.union([
   rowBase.extend({ kind: z.literal('thinking'), text: z.string(), final: z.boolean(), collapsed: z.boolean() }).strict(),
   rowBase.extend({ kind: z.literal('toolCall'), callId: z.string(), name: z.string(), input: z.unknown(), state: z.enum(['proposed', 'running', 'ok', 'error']), progress: z.string().optional(), resultText: z.string().optional(), resultBlocks: nonnegative.optional(), durationMs: nonnegative.optional() }).strict(),
   rowBase.extend({ kind: z.literal('marker'), tone: z.enum(['info', 'warn', 'error', 'success']), text: z.string() }).strict(),
+  // steer 过程行（`28` §5）：重启后必须能原样读回三种状态，否则会丢"未注入原因"。
+  rowBase.extend({ kind: z.literal('steer'), steerId: z.string().min(1), text: z.string(), state: z.enum(['queued', 'consumed', 'notConsumed']), reason: z.string().optional(), turn: nonnegative.int().optional() }).strict(),
 ]);
 const pending = z.object({
   id: z.string(), kind: z.enum(['permission', 'question', 'plan']), createdAt: timestamp, expiresAt: timestamp.optional(), sessionId: z.string(),
@@ -138,6 +154,7 @@ const pending = z.object({
   options: z.array(z.object({ id: z.string(), label: z.string(), scope: z.enum(['once', 'session', 'project', 'deny']) }).strict()),
   explain: z.string().optional(), sensitive: z.boolean().optional(),
 }).strict();
+const pendingSteerSchema = z.object({ id: z.string().min(1), text: z.string().min(1).max(10_000) }).strict();
 const snapshot = z.object({
   meta: z.object({ sessionId: z.string().min(1), title: titleSchema, createdAt: timestamp, updatedAt: timestamp, model: modelSpecSchema, permissionMode: permissionSchema, workspaceRoot: z.string().min(1) }).strict(),
   rows: z.array(row), seq: nonnegative.int(), epoch: nonnegative.int().positive(), revision: nonnegative.int(),
@@ -199,7 +216,7 @@ const gitAuditSchema = z.object({
 
 const sharedShape = {
   workspaces: z.array(z.object({ id: z.string(), name: z.string(), root: z.string().refine(path.isAbsolute), addedAt: timestamp }).strict()),
-  sessions: z.array(z.object({ snapshot, messages: z.array(message), turn: nonnegative.int(), archived: z.boolean() }).strict()),
+  sessions: z.array(z.object({ snapshot, messages: z.array(message), turn: nonnegative.int(), archived: z.boolean(), pendingSteers: z.array(pendingSteerSchema).optional() }).strict()),
   channels: z.array(channelSchema),
   ledger: z.array(z.object({ id: z.string(), sessionId: z.string(), workspaceRoot: z.string(), channelId: z.string(), model: z.string(), startedAt: timestamp, endedAt: timestamp, status: z.enum(['ok', 'error', 'cancelled']), inputTokens: nonnegative.nullable(), outputTokens: nonnegative.nullable(), cacheReadTokens: nonnegative.nullable(), costUsd: nonnegative.nullable() }).strict().refine((r) => r.endedAt >= r.startedAt)),
   contexts: z.record(contextSchema),
