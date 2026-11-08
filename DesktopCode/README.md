@@ -56,6 +56,10 @@ corepack pnpm verify:layout    # 响应式布局真浏览器验证（需本机 P
 corepack pnpm verify:theme     # 明暗两套主题的 WCAG AA 对比度实测（同上）
 corepack pnpm verify:smoke     # 真实 Electron 启动冒烟（electron → host → dhp → renderer）
 corepack pnpm verify:interaction  # 真实窗口交互验证（建会话 / 输入 / 切主题 / 切页 / mock 流式对话）
+# 以下需要真实渠道凭据；缺省时脚本跳过并说明
+corepack pnpm verify:real-model           # 真实模型：Host 跑完一轮（真实回复 / 流式 / 思维链分流）
+corepack pnpm verify:real-window          # 真实模型 + 真实 Electron 窗口
+corepack pnpm verify:real-commit-message  # 真实模型生成提交信息（含降级路径）
 
 # ① 只跑 Host（调试 DHP 协议最方便，不需要窗口）
 corepack pnpm dev:host
