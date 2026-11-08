@@ -8,6 +8,7 @@
  */
 
 import * as fs from 'node:fs/promises';
+import * as http from 'node:http';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -664,5 +665,64 @@ describe('Agent 群激活后的执行模型（FR-N-003）', () => {
     const sessionId = await newSession(c);
     const snap = await c.request<SessionSnapshot>(Method.SessionSnapshot, { sessionId });
     expect(snap.meta.model).toBe('probe:common-x');
+  });
+});
+
+describe('提交信息生成必须按**渠道**构建 provider（回归）', () => {
+  it('自定义渠道 id（非内置 provider 名）也能真正调用模型，而不是静默回退', async () => {
+    // 背景：`modelSpec` 形如 `<channelId>:<modelId>`，而 `buildProvider()` 只认
+    // mock / deepseek / openai-compatible / anthropic 这几个**内置 provider id**。
+    // 内置渠道恰好同名，所以既有测试一直没暴露；用户自建渠道（如 `mycorp`）会走到
+    // default 分支 → "model unavailable" → 静默回退成兜底文案。
+    // 真实模型联调才暴露：提交信息生成对**自定义渠道**完全不可用。
+    await initRepo();
+    await fs.writeFile(path.join(root, 'calc.ts'), 'export const add = (a: number, b: number) => a + b;\n');
+    const { execFile } = await import('node:child_process');
+    await new Promise<void>((resolve, reject) => {
+      execFile('git', ['add', 'calc.ts'], { cwd: root }, (error) => (error ? reject(error) : resolve()));
+    });
+
+    // 本地 stub 端点扮演 OpenAI 兼容服务，不联网。
+    const requests: unknown[] = [];
+    const stub = http.createServer((request, response) => {
+      let body = '';
+      request.on('data', (chunk) => { body += String(chunk); });
+      request.on('end', () => {
+        requests.push(JSON.parse(body));
+        // 必须回 SSE：provider 走的是流式解析，回普通 JSON 会抛
+        // "unparsable SSE chunk"（顺带说明这条测试确实打到了真实解析路径）。
+        response.writeHead(200, { 'content-type': 'text/event-stream' });
+        response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: 'feat: add a sum helper' } }] })}\n\n`);
+        response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`);
+        response.write('data: [DONE]\n\n');
+        response.end();
+      });
+    });
+    await new Promise<void>((resolve) => stub.listen(0, '127.0.0.1', resolve));
+    const address = stub.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+
+    try {
+      const c = await boot();
+      await c.request(WorkbenchMethod.ChannelSave, {
+        // 注意：id 是 `mycorp`，**不是**任何内置 provider 名。
+        id: 'mycorp', name: 'MyCorp', protocol: 'openai-compatible',
+        baseUrl: `http://127.0.0.1:${port}/v1`, apiKeyEnv: 'PROBE_API_KEY',
+        models: [{ id: 'fast', name: 'fast' }],
+      });
+      await c.request(Method.ConfigSet, { key: 'model', value: 'mycorp:fast' });
+
+      const generated = await c.request<{ message: string; source: 'model' | 'fallback'; reason: string | null }>(
+        F.GitCommitMessage,
+        { workspaceRoot: root },
+      );
+      expect(generated.source).toBe('model');
+      expect(generated.reason).toBeNull();
+      expect(generated.message).toBe('feat: add a sum helper');
+      // 真的打到了 stub（而不是某种本地伪造）。
+      expect(requests.length).toBeGreaterThan(0);
+    } finally {
+      await new Promise<void>((resolve) => stub.close(() => resolve()));
+    }
   });
 });

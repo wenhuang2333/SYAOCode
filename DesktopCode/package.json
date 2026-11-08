@@ -18,6 +18,7 @@
     "verify:interaction": "node scripts/verify-interaction.mjs",
     "verify:real-model": "node --import tsx scripts/verify-real-model.mjs",
     "verify:real-window": "node --import tsx scripts/verify-real-window.mjs",
+    "verify:real-commit-message": "node --import tsx scripts/verify-real-commit-message.mjs",
     "dev:host": "pnpm run build:host && node scripts/dev-host.mjs",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "package:dir": "pnpm run build && pnpm --filter syaocode-desktop run package:dir",

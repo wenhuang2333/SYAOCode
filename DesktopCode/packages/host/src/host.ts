@@ -72,7 +72,7 @@ import {
   type WorkspaceTreeResult,
 } from '@syaocode/dhp';
 import type { Agent } from '@syaocode/core';
-import { buildProvider, createDesktopAgent, parseModelSpec } from './agent-factory.ts';
+import { buildChannelProvider, buildProvider, createDesktopAgent, parseModelSpec } from './agent-factory.ts';
 import { AgentsService, AgentsServiceError } from './agents-service.ts';
 import { CommitMessageService } from './commit-message.ts';
 import { CommandDeniedError, runCommand as runShellCommand } from './run-command.ts';
@@ -396,7 +396,24 @@ export async function createHost(opts: HostOptions = {}): Promise<RunningHost> {
     modelSpec: string,
     req: { system: string; prompt: string; signal: AbortSignal },
   ): Promise<string> => {
-    const built = buildProvider(parseModelSpec(modelSpec), nodeRuntime(), env);
+    // 必须按**渠道配置**构建 provider，而不是把渠道 id 当 provider 种类。
+    //
+    // `modelSpec` 形如 `<channelId>:<modelId>`；`buildProvider` 只认
+    // mock / deepseek / openai-compatible / anthropic 这几个**内置 provider id**。
+    // 两者恰好同名时（内置渠道）看不出差别，但用户自建的渠道（如 `live`）
+    // 会永远走到 `buildProvider` 的 default 分支 → "model unavailable" → 静默回退。
+    // 提交信息生成因此对**自定义渠道**完全不可用——真实模型联调才暴露出来。
+    // `workbench.model()` 返回的是**原始** `ChannelConfig`；`channels()` 返回的是
+    // 展示用的 `ChannelInfo`（多了 builtin / credentialReady 等字段），
+    // 而 `channelSchema` 是 `.strict()`，把 ChannelInfo 传进去会校验失败。
+    let built: ReturnType<typeof buildChannelProvider>;
+    try {
+      const { channel, model } = workbench.model(modelSpec);
+      built = buildChannelProvider(channel, model.id, nodeRuntime(), env);
+    } catch {
+      // 渠道不存在（例如内置 provider 名）→ 退回按 provider 种类构建。
+      built = buildProvider(parseModelSpec(modelSpec), nodeRuntime(), env);
+    }
     if (!built.ok) throw new Error(built.reason);
     const messages: Message[] = [{
       id: `commit_${Date.now().toString(36)}`,
