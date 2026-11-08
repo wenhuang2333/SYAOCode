@@ -135,7 +135,7 @@ corepack pnpm dev:host
 
 2026-11-06 实测（macOS arm64 / Node 24.18 / Electron 44.10.1）：
 
-- 类型检查、生产构建和 731 项 DesktopCode 测试通过。
+- 类型检查、生产构建和 739 项 DesktopCode 测试通过。
 - 两个隔离项目完成多会话、严格审批、真实 cwd、模型切换、统计、归档恢复和重启恢复验收。
 - 本机临时 SSE Provider 证实请求依次到达 `alpha`、`beta`；第二次请求保留第一次的完整输入与回复。
 - 900px 与 1440px 视口均完成截图检查，无页面级横向溢出；renderer page error 和 console error 均为 0。
@@ -169,7 +169,7 @@ corepack pnpm dev:host
 
 - `../code/` 是**只读的内核**。本目录通过 `link:../../../code/packages/*` 引用它。
 - 新增能力一律在 `DesktopCode/` 内实现；需要改内核的，先记入 `DesktopDoc/00-基线` §7.3 的缺口清单。
-- 本目录的 731 项测试独立运行，不能替代内核回归。
+- 本目录的 739 项测试独立运行，不能替代内核回归。
 - 2026-11-06 单独复测 `@syaocode/rpc`：21 个测试文件、325 项测试通过；本轮未修改内核。
 
 ```bash
