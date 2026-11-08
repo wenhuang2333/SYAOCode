@@ -222,3 +222,25 @@ describe('文档核对脚本（verify:docs）', () => {
     expect(docs).toContain('Math.abs');
   });
 });
+
+
+describe('缺口清单与代码现状的双向核对', () => {
+  const docs = read('../../scripts/verify-docs.mjs');
+
+  it('既查"代码有但册子说没有"，也查"册子说有但代码没有"', () => {
+    // N-9（OAuth 界面）与 N-15（提交信息联调）都曾长期被误标为未完成，
+    // 害得读者（包括我自己）以为还有工作没做。
+    expect(docs).toContain('GAP_EVIDENCE');
+    expect(docs).toContain('代码已具备，登记册却仍标未完成');
+    expect(docs).toContain('代码不具备，登记册却已标完成');
+  });
+
+  it('用代码谓词判定，而不是关键词重叠（后者会把 N-1 误报成矛盾）', () => {
+    expect(docs).toContain("hasText('apps/desktop/src/renderer/git-sidebar.tsx', 'onOauthStart')");
+    expect(docs).toContain("index.has('verify-real-window.mjs')");
+  });
+
+  it('通过时不打印失败措辞（否则绿色输出会误导）', () => {
+    expect(docs).toContain('agree ? \'\' :');
+  });
+});

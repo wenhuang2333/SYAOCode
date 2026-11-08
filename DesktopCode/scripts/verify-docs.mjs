@@ -165,5 +165,47 @@ if (uniq26.length > 0 && uniq27.length > 0) {
   console.log('NOTE: 未从两份文档中解析出测试数，跳过一致性检查。');
 }
 
+
+// ── 5) 缺口清单不得与代码现状矛盾（双向）────────────────────────────────
+//
+// 登记册写错方向同样误导人：把**已完成**的事写成未完成，会让读者以为还有工作，
+// 也会让我自己在汇报时低估进度（N-9 OAuth 界面、N-15 提交信息联调都曾如此）。
+//
+// 这里用**代码谓词**做双向核对：
+//   谓词成立 → 该条必须是**已关闭**（标题划掉）
+//   谓词不成立 → 该条必须是**未关闭**（否则就是虚报完成）
+// 每条都写明"凭什么"，不用关键词模糊匹配（那会把 N-1 误报成矛盾）。
+const gapRow = (id) => doc26.split('\n').find((line) => line.startsWith(`| ${id} |`)) ?? '';
+const isClosed = (id) => gapRow(id).includes('~~');
+const hasText = async (rel, needle) => {
+  try { return (await read(rel)).includes(needle); } catch { return false; }
+};
+
+const GAP_EVIDENCE = [
+  ['N-9', 'OAuth 设备码界面已接线', async () =>
+    (await hasText('apps/desktop/src/renderer/git-sidebar.tsx', 'onOauthStart'))
+    && (await hasText('apps/desktop/src/renderer/use-workbench.ts', 'gitOauthStart'))],
+  ['N-15', '提交信息已用真实模型联调', async () => index.has('verify-real-commit-message.mjs')],
+  ['N-19', '真实窗口 + 真实模型已验证', async () => index.has('verify-real-window.mjs')],
+  ['N-22', '真实用量口径已验证', async () => index.has('verify-real-usage.mjs')],
+  ['N-20', '界面文案已抽取到目录', async () => index.has('i18n-views.ts')],
+];
+
+for (const [id, label, predicate] of GAP_EVIDENCE) {
+  if (gapRow(id) === '') {
+    check(`缺口 ${id} 仍在清单里（或已删除）`, false, '找不到该行——删条目时请同步删除本核对');
+    continue;
+  }
+  const evidence = await predicate();
+  const closed = isClosed(id);
+  const agree = evidence === closed;
+  check(
+    `缺口 ${id} 的状态与代码一致（${label}）`,
+    agree,
+    // 只有不一致时才解释，否则"通过"却打印失败措辞会误导读者。
+    agree ? '' : evidence ? '代码已具备，登记册却仍标未完成' : '代码不具备，登记册却已标完成',
+  );
+}
+
 console.log(failures.length === 0 ? '\nDOCS: OK' : `\nDOCS: ${failures.length} check(s) failed`);
 process.exit(failures.length === 0 ? 0 : 1);
