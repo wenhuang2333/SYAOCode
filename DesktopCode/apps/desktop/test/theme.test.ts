@@ -83,14 +83,49 @@ describe('主题验证脚本', () => {
 });
 
 describe('令牌层（深色主题的基石）', () => {
+  /**
+   * 按选择器取**一个**声明块（大括号配对）。
+   *
+   * 早期实现用 `slice(indexOf(a), indexOf(b))` 切文本，于是"深色块"把后面的
+   * 标度层 `:root` 与 reduced-motion 覆盖也算进去，两份名单天然不等。
+   */
+  function blockOf(css: string, selector: string): string {
+    const start = css.indexOf(selector);
+    expect(start, `缺少选择器 ${selector}`).toBeGreaterThan(-1);
+    const open = css.indexOf('{', start);
+    let depth = 0;
+    for (let i = open; i < css.length; i += 1) {
+      if (css[i] === '{') depth += 1;
+      else if (css[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return css.slice(open + 1, i);
+      }
+    }
+    throw new Error(`选择器 ${selector} 的块没有闭合`);
+  }
+
+  const tokenNames = (block: string): string[] =>
+    [...block.matchAll(/(--sy-[a-z0-9-]+)\s*:/g)].map((m) => m[1]!).sort();
+
   it('两种主题各有完整的一份令牌：深色缺一个就会回退成浅色值', () => {
-    const light = tokens.slice(tokens.indexOf("[data-theme='light']"), tokens.indexOf("[data-theme='dark']"));
-    const dark = tokens.slice(tokens.indexOf("[data-theme='dark']"));
-    const names = (block: string): string[] => [...block.matchAll(/^\s+(--sy-[a-z0-9-]+):/gm)].map((m) => m[1]!);
-    const lightNames = names(light).sort();
-    const darkNames = names(dark).sort();
-    expect(lightNames.length).toBeGreaterThan(300);
-    expect(darkNames).toEqual(lightNames);
+    const light = tokenNames(blockOf(tokens, "[data-theme='light']"));
+    const dark = tokenNames(blockOf(tokens, "[data-theme='dark']"));
+    // 令牌层是"语义 + 标度"，刻意保持小而全；数量下限防的是**回退成裸色**，不是越多越好。
+    expect(light.length).toBeGreaterThan(40);
+    expect(dark).toEqual(light);
+  });
+
+  it('标度层（间距/圆角/字号/时长）与主题无关，只有一份', () => {
+    // `:root,` 同时是浅色主题的载体，所以标度层只能按**独立成行的 `:root {`** 来取。
+    const scale = tokenNames(blockOf(tokens, ':root {'));
+    for (const needed of ['--sy-space-4', '--sy-radius-lg', '--sy-text-md', '--sy-leading-md', '--sy-duration', '--sy-ease']) {
+      expect(scale, `标度层缺少 ${needed}`).toContain(needed);
+    }
+    // 字号必须成对给出：只调字号不调行高是界面显乱的主因。
+    for (const size of ['xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl']) {
+      expect(scale).toContain(`--sy-text-${size}`);
+      expect(scale).toContain(`--sy-leading-${size}`);
+    }
   });
 
   it('CSS 里不再有裸颜色（否则深色主题必然漏掉那些地方）', () => {
@@ -168,4 +203,93 @@ describe('界面语言跟随配置（FR-N-037 / config 是单一真相）', () =
     expect(i18n).toContain("export type Lang = 'en' | 'zh'");
     expect(i18n).toContain('⟦');
   });
+});
+
+/**
+ * 令牌自身的对比度（纯函数，无浏览器）。
+ *
+ * `verify-theme.mjs` 量的是**真实渲染**结果，但它依赖 Playwright，没装就跳过。
+ * 这里补一层不依赖环境的下限：把令牌表里的颜色自己算一遍 WCAG 对比度。
+ * 它抓的是"改了一个色值就把可读性写坏"这类回归——过去 text-4 在着色底上
+ * 掉到 4.1:1 就是这么来的。
+ */
+describe('令牌色值的 WCAG 下限（纯计算）', () => {
+  const parse = (value: string): [number, number, number] | null => {
+    const hex = value.trim().match(/^#([0-9a-f]{6})$/i);
+    if (hex) {
+      const h = hex[1]!;
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    }
+    return null; // alpha 发丝线/遮罩不参与文字对比度计算
+  };
+  const lum = ([r, g, b]: [number, number, number]): number => {
+    const f = (x: number): number => (x <= 76.95 ? x / 3294.6 : ((x / 255 + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const ratio = (fg: [number, number, number], bg: [number, number, number]): number => {
+    const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x);
+    return (a + 0.05) / (b + 0.05);
+  };
+  const block = (selector: string): Record<string, string> => {
+    const start = tokens.indexOf(selector);
+    const open = tokens.indexOf('{', start);
+    let depth = 0;
+    let end = tokens.length;
+    for (let i = open; i < tokens.length; i += 1) {
+      if (tokens[i] === '{') depth += 1;
+      else if (tokens[i] === '}' && (depth -= 1) === 0) { end = i; break; }
+    }
+    return Object.fromEntries([...tokens.slice(open, end).matchAll(/(--sy-[a-z0-9-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1]!, m[2]!]));
+  };
+
+  // 文字必须能在它**可能**出现的每一层底色上读清楚。
+  const SURFACES = ['--sy-bg', '--sy-surface', '--sy-bg-subtle', '--sy-bg-muted', '--sy-surface-hover', '--sy-surface-active', '--sy-elevated', '--sy-code-bg', '--sy-nav-active', '--sy-nav-hover', '--sy-accent-soft', '--sy-primary-soft'];
+  const TEXT = ['--sy-text-1', '--sy-text-2', '--sy-text-3'];
+
+  for (const [name, selector] of [['light', "[data-theme='light']"], ['dark', "[data-theme='dark']"]] as const) {
+    it(`${name}：正文三档在全部表面色上 ≥4.5:1`, () => {
+      const t = block(selector);
+      const offenders: string[] = [];
+      for (const fg of TEXT) for (const bg of SURFACES) {
+        const f = parse(t[fg]!), g = parse(t[bg]!);
+        if (f && g && ratio(f, g) < 4.5) offenders.push(`${fg}/${bg}=${ratio(f, g).toFixed(2)}`);
+      }
+      expect(offenders).toEqual([]);
+    });
+
+    it(`${name}：第四档只用于偶发说明，仅在无着色表面上仍达标`, () => {
+      const t = block(selector);
+      // 规则：text-4 只允许出现在**无着色**表面上。落到 nav-active / surface-active /
+      // accent-soft 这类着色底时它会掉到 4.5 以下，所以那些位置一律用 text-3
+      // （见 workbench.css 末尾"文字分层的硬规则"）。
+      const plain = ['--sy-bg', '--sy-surface', '--sy-elevated', '--sy-code-bg', '--sy-bg-subtle'];
+      const f = parse(t['--sy-text-4']!);
+      expect(f).not.toBeNull();
+      for (const bg of plain) {
+        const g = parse(t[bg]!);
+        if (g) expect(ratio(f!, g), `text-4/${bg}`).toBeGreaterThanOrEqual(4.5);
+      }
+      // 四档必须真的分得开。用**对底色的对比度**排序，方向无关：
+      // 浅色主题里"更淡"是亮度更高，深色主题里正好相反。
+      const bgc = parse(t['--sy-bg']!)!;
+      expect(ratio(parse(t['--sy-text-4']!)!, bgc)).toBeLessThan(ratio(parse(t['--sy-text-3']!)!, bgc));
+      expect(ratio(parse(t['--sy-text-3']!)!, bgc)).toBeLessThan(ratio(parse(t['--sy-text-2']!)!, bgc));
+      expect(ratio(parse(t['--sy-text-2']!)!, bgc)).toBeLessThan(ratio(parse(t['--sy-text-1']!)!, bgc));
+    });
+
+    it(`${name}：主按钮与状态色的前景/底色成对达标`, () => {
+      const t = block(selector);
+      const pairs: Array<[string, string]> = [
+        ['--sy-on-primary', '--sy-primary'], ['--sy-on-accent', '--sy-accent'],
+        ['--sy-success', '--sy-success-bg'], ['--sy-warn', '--sy-warn-bg'], ['--sy-danger', '--sy-danger-bg'],
+        ['--sy-accent-text', '--sy-accent-soft'],
+      ];
+      for (const [fg, bg] of pairs) {
+        const f = parse(t[fg]!), g = parse(t[bg]!);
+        expect(f, fg).not.toBeNull();
+        expect(g, bg).not.toBeNull();
+        expect(ratio(f!, g!), `${fg}/${bg}`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+  }
 });

@@ -93,7 +93,10 @@ describe.skipIf(!hasGpg)('真实 GPG 签名提交', () => {
       //    用 `git verify-commit` 独立复核，退出码非 0 即抛错。
       // `git verify-commit` 把"Good signature"写到 **stderr**，不是 stdout；
       // 用 spawnSync 同时取两者，并单独断言退出码（非 0 即签名无效）。
-      const verified = spawnSync('git', ['verify-commit', headAfter], { cwd: repo, env, encoding: 'utf8' });
+      // 文案要**锁语言**：中文机器上 gpg 输出的是"完好的签名"，断言英文才跨机器稳定。
+      const verified = spawnSync('git', ['verify-commit', headAfter], {
+        cwd: repo, env: { ...env, LC_ALL: 'C', LANGUAGE: '' }, encoding: 'utf8',
+      });
       expect(verified.status).toBe(0);
       expect(`${verified.stdout ?? ''}${verified.stderr ?? ''}`).toContain('Good signature');
 

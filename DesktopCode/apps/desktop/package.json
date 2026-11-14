@@ -21,20 +21,21 @@
     "@liwencode/client": "workspace:*",
     "@liwencode/dhp": "workspace:*",
     "@liwencode/host": "workspace:*",
-    "@liwencode/ui": "workspace:*"
+    "@liwencode/ui": "workspace:*",
+    "lucide-react": "^1.72.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
-    "electron": "^44.0.0",
-    "electron-vite": "^4.0.0",
-    "electron-builder": "^26.0.0",
-    "typescript": "^5.7.2",
-    "vite": "^8.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.0.0",
+    "electron-vite": "^4.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "vitest": "^3.2.4",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "typescript": "^5.7.2",
+    "vite": "^8.0.0",
+    "vitest": "^3.2.4"
   }
 }

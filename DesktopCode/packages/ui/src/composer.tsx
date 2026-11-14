@@ -12,6 +12,7 @@ import type * as React from 'react';
  */
 
 import { useCallback, useRef, useState } from 'react';
+import { LoaderCircle, SendHorizontal } from 'lucide-react';
 import type { Messages } from './i18n.ts';
 
 export interface ComposerProps {
@@ -142,6 +143,9 @@ export function Composer({
           onClick={submit}
           disabled={!canSubmit}
         >
+          {busy === true
+            ? <LoaderCircle size={14} strokeWidth={2} className="icon-spin" aria-hidden="true" />
+            : <SendHorizontal size={14} strokeWidth={1.9} aria-hidden="true" />}
           {busy === true ? m.sending : steerMode === true ? (steerSubmitLabel ?? m.send) : m.send}
         </button>
       </div>
